@@ -47,10 +47,7 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
         ]),
         Line::from(vec![
             Span::styled(" Reason: ", Style::default().fg(theme.fg_muted)),
-            Span::styled(
-                app.gpu_capability.reason(),
-                Style::default().fg(theme.info),
-            ),
+            Span::styled(app.gpu_capability.reason(), Style::default().fg(theme.info)),
         ]),
         Line::from(vec![
             Span::styled(" Source: ", Style::default().fg(theme.fg_muted)),

@@ -37,13 +37,19 @@ fn render_gpu(app: &App, width: u16, height: u16) -> String {
 fn bootstrap_disabled_is_visible_without_becoming_a_sample() {
     let mut app = App::new();
     assert_eq!(app.gpu_capability.state(), Some(CapabilityState::Disabled));
-    assert_eq!(app.gpu_capability.reason(), "Collector not implemented in P0");
+    assert_eq!(
+        app.gpu_capability.reason(),
+        "Collector not implemented in P0"
+    );
     for _ in 0..100 {
         app.on_tick();
     }
     assert!(app.gpu_ai.devices.is_empty());
     assert!(app.gpu_ai.workloads.is_empty());
-    assert!(matches!(app.gpu_ai.status, DataSourceStatus::NotProbed { .. }));
+    assert!(matches!(
+        app.gpu_ai.status,
+        DataSourceStatus::NotProbed { .. }
+    ));
     let output = render_gpu(&app, 120, 40);
     assert!(output.contains("[DISABLED]"));
     assert!(output.contains("Collector not implemented in P0"));
@@ -110,10 +116,16 @@ fn explicit_demo_toggle_preserves_core_state_and_returns_to_unprobed() {
     app.toggle_gpu_mode();
     assert_eq!(app.gpu_ai.view_mode, GpuViewMode::SimulatedFixture);
     assert!(app.gpu_ai.status.is_simulated());
-    assert_eq!(app.gpu_capability.state(), Some(CapabilityState::PermissionDenied));
+    assert_eq!(
+        app.gpu_capability.state(),
+        Some(CapabilityState::PermissionDenied)
+    );
     app.toggle_gpu_mode();
     assert_eq!(app.gpu_ai.view_mode, GpuViewMode::HostReality);
-    assert!(matches!(app.gpu_ai.status, DataSourceStatus::NotProbed { .. }));
+    assert!(matches!(
+        app.gpu_ai.status,
+        DataSourceStatus::NotProbed { .. }
+    ));
     assert!(app.gpu_ai.devices.is_empty());
     assert!(render_gpu(&app, 120, 40).contains("[PERMISSION DENIED]"));
 }
