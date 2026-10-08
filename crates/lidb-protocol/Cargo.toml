@@ -1,0 +1,12 @@
+[package]
+name = "lidb-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Forward-compatible local IPC negotiation contracts for LiDashBoard"
+
+[lib]
+name = "lidb_protocol"
+path = "src/lib.rs"
