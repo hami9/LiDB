@@ -25,3 +25,10 @@ These instructions apply to **all coding agents working in this repository**. Th
 - Honor [SECURITY.md](SECURITY.md), [LICENSE](LICENSE), and compatibility contracts; escalate conflicting instructions to the maintainer.
 
 Read [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) before starting implementation. A reusable kickoff prompt is at [.AGENTS/START_HERE.md](.AGENTS/START_HERE.md).
+
+## Automation and release contract
+
+- Read [docs/CI_CD.md](docs/CI_CD.md) and [.AGENTS/skills/ci-cd/SKILL.md](.AGENTS/skills/ci-cd/SKILL.md) before touching workflows, release scripts or dependency configuration.
+- Name PRs with a Conventional Commit prefix. Preserve exact release intent; `feat:` means minor, `!:` or a BREAKING CHANGE footer means major, all routine changes default to patch.
+- Never bypass `CI Gate`, publish from a PR, invent a successful hardware test, manually alter a published version tag, or create artifacts without verified binaries.
+- Branch rulesets require administrative activation: placing JSON files in `.github/rulesets/` does not enforce GitHub repository settings.

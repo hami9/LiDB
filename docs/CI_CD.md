@@ -32,10 +32,10 @@ If multiple changes are merged between releases, the strongest bump wins. **One 
 1. Release job runs **only on main**, after a complete reusable CI gate. No untrusted PR code ever receives a publishing token.
 2. Release is blocked until `Cargo.toml` exists, x86_64 and aarch64 checks pass, and a real `target/release/lidash` executable is produced on both architectures.
 3. Latest-main check prevents outdated queued runs from tagging stale commits. A release is not published if the proposed tag already exists.
-4. Both architecture tarballs and their SHA-256 files must be present and pass checksum verification before publication.
+4. Both architecture tarballs and their SHA-256 files must be present and pass checksum verification before publication; each archive additionally receives a GitHub build-provenance attestation.
 5. GitHub prerelease flag is used for `0.x.y` versions, indicating immature API support.
 6. Workflow tokens default to read-only; only the final publishing job has `contents: write`. Never use `pull_request_target` for build-and-execute workflows.
-7. Treat checksums as **integrity checks, not cryptographic provenance attestations**. Artifact signing, SBOM and verified provenance are future release-hardening gates and must not be claimed as implemented.
+7. Checksums are integrity checks, while GitHub artifact attestations provide cryptographic build provenance, **not a guarantee of binary safety**. Verify released archives with `gh attestation verify <file> -R hami9/LiDB`. Artifact attestations are configured but remain **untested until the first real binary release**. SBOM and reproducible build hardening remain future gates.
 8. Agent tasks must keep worklogs and disclose tests not run. No release script can assert that hardware support was validated solely by a successful cross-architecture build.
 
 ## Branch protection
@@ -59,4 +59,4 @@ The `plan` command requires Git history/tags. Publishing a release requires GitH
 
 ## Remaining open-source release hardening
 
-Before a supported stable release, implement: supply chain and dependency scanning beyond baseline CodeQL/Dependabot; signed/verifiable build provenance; SBOM; reproducible environment; security advisories; supported kernel/toolchain matrix; actual DGX/cluster evidence; and installation/uninstall smoke tests. These remain explicitly incomplete.
+Before a supported stable release, implement: supply chain and dependency scanning beyond baseline CodeQL/Dependabot; independently verified attestation/provenance policy; SBOM; reproducible environment; security advisories; supported kernel/toolchain matrix; actual DGX/cluster evidence; and installation/uninstall smoke tests. These remain explicitly incomplete.

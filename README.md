@@ -52,3 +52,11 @@ Read [AGENTS.md](AGENTS.md), then [.AGENTS/README.md](.AGENTS/README.md). Phase 
 LiDB is licensed under [MIT](LICENSE). Contribution workflow: [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities according to [SECURITY.md](SECURITY.md). Governance is documented in [GOVERNANCE.md](GOVERNANCE.md).
 
 Maintainers have not yet published releases or measured production overhead. Benchmarks require reproducible evidence from labeled hardware.
+
+## CI/CD and release automation
+
+- [Continuous integration and releases](docs/CI_CD.md) — gated Linux x86_64/aarch64 testing, CodeQL, Dependabot and guarded semantic releases.
+- [Main and release-tag protection](docs/BRANCH_PROTECTION.md) — version-controlled rulesets; requires one-time activation by a repository administrator.
+- [Agent CI/CD skill](.AGENTS/skills/ci-cd/SKILL.md) — maintain workflow security, SemVer and handoff conventions.
+
+Current implementation state remains pre-P0 application code. No source/binary release exists yet.

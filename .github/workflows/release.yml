@@ -82,6 +82,10 @@ jobs:
             runner: ubuntu-24.04
           - arch: aarch64
             runner: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,6 +101,10 @@ jobs:
           LIDB_VERSION: ${{ needs.plan.outputs.version }}
           LIDB_ARCH: ${{ matrix.arch }}
         run: bash scripts/release/package.sh
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: lidb-${{ matrix.arch }}
@@ -105,7 +113,7 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish signed-off release
+    name: Publish checksummed release
     needs: [plan, package]
     if: needs.plan.outputs.publish == 'true' && github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-24.04

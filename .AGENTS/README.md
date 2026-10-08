@@ -33,3 +33,7 @@ P0 has not been started and no runtime code has been implemented. Agents must ne
 Suggested roles (not separate permanent personalities): design reviewer, implementation engineer, test engineer, security reviewer, documentation/release reviewer. A single agent may fill multiple roles for simple tasks, but **must not call self-review an independent review**.
 
 Every agent should keep contextual assumptions in its task description, pass explicit next steps during handoff and avoid accumulating unreviewed agent-generated code.
+
+## CI/CD-specific guidance
+
+Read [CI/CD skill](skills/ci-cd/SKILL.md) and [CI/CD policy](../docs/CI_CD.md) when changing release, security scanning, checks, versioning or repository governance. Release and branch protection are separate controls; agents have no implicit authority to modify repository administration settings.

@@ -45,3 +45,13 @@ R18. Optimize measurement overhead, but never hide dropped events, collection ga
 R19. Hardware-specific claims must be confirmed on real hardware, explicitly identified; mock tests are not hardware validation.
 
 R20. When rules conflict or a required approval is missing, stop, document the conflict and ask a maintainer.
+
+## Automation requirements
+
+R21. PR titles follow Conventional Commits. Do not turn a PATCH into MINOR or MAJOR based on the subjective size of the diff; declare feature and compatibility effects truthfully.
+
+R22. CI must execute in minimal-privilege context for PRs; only main-only release publication may request `contents: write`. Never run untrusted PR code with privileged tokens.
+
+R23. Never bypass failed checks, mutate existing release tags, or invent release artifacts. Real release binaries must compile on supported architectures with checksum and provenance checks.
+
+R24. The proposed GitHub rulesets are not active until a maintainer verifies administration-level activation. Do not state or infer enforcement from a committed JSON policy alone.

@@ -28,3 +28,9 @@ Never run privileged kernel/network diagnostics on shared or production systems 
 ## Conduct
 
 Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md); report sensitive conduct issues privately to maintainers.
+
+## Version and CI expectations
+
+PR titles must follow Conventional Commits: `fix(network): handle no-route`, `feat(gpu): add validated adapter`, or `feat(core)!: redesign protocol`. `feat:` triggers a minor release and breaking changes trigger a major release, once implementation and release gates are ready. If necessary, use `Release-Bump: major|minor|patch` in the merge commit body. Prefer squash merging to preserve the PR title as the version source.
+
+Read [CI/CD and release policy](docs/CI_CD.md). The required gate is `CI Gate` **after repository rulesets are activated**. Agent-authored changes should also follow [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) and [.AGENTS/skills/ci-cd/SKILL.md](.AGENTS/skills/ci-cd/SKILL.md). No contributor may claim an unrun GPU or hardware benchmark passed.

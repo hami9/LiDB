@@ -1,3 +1,7 @@
+## Release intent
+
+Conventional Commit PR title: patch (`fix:`, `docs:`, `ci:`) | minor (`feat:`) | major (`feat!:`, BREAKING CHANGE). Document any `Release-Bump:` override. No release will occur before binaries pass CI.
+
 ## User need and roadmap phase
 
 Describe the problem, active phase and bounded scope.

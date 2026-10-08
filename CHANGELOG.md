@@ -10,3 +10,9 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 - Security, governance, feature-capability, test and integration specifications.
 
 > No runnable software has been released yet.
+
+### Build and automation (unreleased)
+
+- Added CI Gate, Linux x86_64/aarch64 checks, CodeQL and dependency-update configuration.
+- Added SemVer release planner, regression tests and gated GitHub Releases with checksummed architecture-specific binaries (pending executable implementation).
+- Added proposed branch/tag rulesets and documented administrator activation procedure; rules are **not yet enforced** by committing them alone.
