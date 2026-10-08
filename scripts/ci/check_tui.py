@@ -5,6 +5,11 @@ import sys
 
 
 def tui_present(root: Path) -> bool:
+    """Return True if standalone TUI exists with manifest and lockfile, False if absent.
+
+    Raises:
+        ValueError: If prototypes/tui directory exists but lacks Cargo.toml or Cargo.lock.
+    """
     workspace = root / "prototypes" / "tui"
     if not workspace.exists():
         return False

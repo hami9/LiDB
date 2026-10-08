@@ -53,10 +53,12 @@ bash scripts/admin/apply_rulesets.sh --dry-run
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked --all-targets
+cargo test --workspace --locked --doc
 # Standalone TUI prototype workspace:
 cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
 cargo clippy --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked -- -D warnings
 cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked
+cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --doc --locked
 cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --headless-test
 cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --smoke-test
 ```

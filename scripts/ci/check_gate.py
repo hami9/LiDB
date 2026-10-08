@@ -7,6 +7,7 @@ REQUIRED = ("DOCS", "RUST", "WORKTREES", "TUI")
 
 
 def failures(results: dict[str, str]) -> list[str]:
+    """Identify any required CI branches that did not finish with success."""
     return [f"{name}={results.get(name, 'missing')}"
             for name in REQUIRED if results.get(name) != "success"]
 
