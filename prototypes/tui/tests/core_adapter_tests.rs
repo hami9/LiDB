@@ -1,9 +1,9 @@
 use lidb_core::{Capability, CapabilityRegistry, CapabilityState};
 use lidb_tui_prototype::{
-    app::App,
+    app::{App, Tab},
     core_adapter::{CapabilityView, GPU_CAPABILITY_ID},
     model::{gpu_ai::GpuViewMode, DataSourceStatus},
-    ui::tabs::gpu_ai,
+    ui::{self, tabs::gpu_ai},
 };
 use ratatui::{backend::TestBackend, Terminal};
 
@@ -150,4 +150,22 @@ fn unavailable_capability_renders_on_narrow_and_unicode_terminals() {
     }
     render_gpu(&app, 40, 10);
     assert!(render_gpu(&app, 120, 40).contains("Provider unavailable: GPU \u{1f5a5}"));
+}
+
+#[test]
+fn complete_dashboard_keeps_capability_and_telemetry_visible_at_80_columns() {
+    let mut app = App::new();
+    app.current_tab = Tab::GpuAi;
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| ui::draw(frame, &app)).unwrap();
+    let output: String = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(output.contains("Core capability: [DISABLED]"));
+    assert!(output.contains("Collector not implemented in P0"));
+    assert!(output.contains("Telemetry: [NOT PROBED]"));
 }
