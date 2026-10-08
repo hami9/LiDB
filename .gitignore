@@ -1,0 +1,37 @@
+# Rust and native build output
+/target/
+/build/
+/dist/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/compile_commands.json
+*.o
+*.so
+*.a
+
+# Local environment, secrets and diagnostics
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pcap
+*.pcapng
+*.core
+*.dmp
+/var/
+/local-data/
+/support-bundles/
+
+# Editor, OS, temporary files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Keep Cargo.lock when the application workspace is introduced.
