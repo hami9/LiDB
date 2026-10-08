@@ -26,7 +26,7 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
-    // Box 1: Unsupported status banner
+    // Box 1: Unprobed status banner
     let status_lines = vec![
         Line::from(vec![
             Span::styled(" Subsystem: ", Style::default().fg(theme.fg_muted)),
@@ -36,10 +36,10 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
             ),
             Span::raw("  "),
             Span::styled(
-                " [HARDWARE NOT DETECTED] ",
+                " [NOT PROBED IN PROTOTYPE] ",
                 Style::default()
-                    .bg(theme.warning)
-                    .fg(theme.bg)
+                    .bg(theme.selected_bg)
+                    .fg(theme.fg_muted)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -47,15 +47,15 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(" Detection Result: ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "No NVML runtime (libnvidia-ml.so) or /dev/nvidia* character devices accessible.",
-                Style::default().fg(theme.error),
+                "Capability detection not yet executed in standalone prototype. (P0 boundary)",
+                Style::default().fg(theme.info),
             ),
         ]),
         Line::from(vec![
             Span::styled(" Execution Host:   ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "PRoot aarch64 Android user namespace. Kernel GPU drivers are not passed through.",
-                Style::default().fg(theme.info),
+                "Standalone unprivileged dashboard. Host capability detection scheduled for P1/P5 integration.",
+                Style::default().fg(theme.fg_muted),
             ),
         ]),
     ];
@@ -71,11 +71,11 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
     let rules_lines = vec![
         Line::from(vec![
             Span::styled(" Rule R01 (Truthfulness): ", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-            Span::styled("LiDB refuses to fabricate live GPU metrics when running on unsupported platforms.", Style::default().fg(theme.fg)),
+            Span::styled("LiDB refuses to fabricate live GPU metrics; unprobed capabilities are explicitly labeled.", Style::default().fg(theme.fg)),
         ]),
         Line::from(vec![
             Span::styled(" Rule R03 (DGX Topology): ", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-            Span::styled("Spark CPU↔GPU NVLink-C2C is intra-node. DGX Spark inter-node uses ConnectX-8 Ethernet/RoCE.", Style::default().fg(theme.fg)),
+            Span::styled("Spark CPU↔GPU NVLink-C2C is intra-node. DGX Spark inter-node uses ConnectX-7 Ethernet/RoCE.", Style::default().fg(theme.fg)),
         ]),
         Line::from(vec![
             Span::styled(" Rule R19 (Validation):   ", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
@@ -107,7 +107,7 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            " to toggle the Simulated Grace Hopper / GB10 Blackwell fixture dashboard.",
+            " to toggle the Simulated DGX Spark (GB10 Grace Blackwell) fixture dashboard.",
             Style::default().fg(theme.fg),
         ),
     ])];
@@ -143,7 +143,10 @@ fn render_simulated_fixture(f: &mut Frame, area: Rect, app: &App) {
         let mem_pct = ((mem_used_gb / mem_total_gb) * 100.0) as u16;
 
         let dev_block = Block::default()
-            .title(format!(" Device #{}: {} ", dev.index, dev.name))
+            .title(format!(
+                " Host: {} | Device #{}: {} ",
+                dev.host_node, dev.index, dev.name
+            ))
             .title_style(theme.title_style())
             .borders(Borders::ALL)
             .border_style(theme.block_border_style(false));
@@ -175,15 +178,20 @@ fn render_simulated_fixture(f: &mut Frame, area: Rect, app: &App) {
             ),
             Span::styled(" │ Power: ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                format!("{}W / {}W", dev.power_watts, dev.power_limit_watts),
+                format!(
+                    "{}W / {}W (SoC TDP)",
+                    dev.power_watts, dev.power_limit_watts
+                ),
                 Style::default().fg(theme.fg),
             ),
         ]);
         f.render_widget(Paragraph::new(line1), card_chunks[0]);
 
         let line2 = Line::from(vec![
-            Span::styled("Interconnect: ", Style::default().fg(theme.fg_muted)),
+            Span::styled("Intra-Node: ", Style::default().fg(theme.fg_muted)),
             Span::styled(&dev.nvlink_status, Style::default().fg(theme.info)),
+            Span::styled(" │ Inter-Node: ", Style::default().fg(theme.fg_muted)),
+            Span::styled(&dev.inter_node_fabric, Style::default().fg(theme.success)),
         ]);
         f.render_widget(Paragraph::new(line2), card_chunks[1]);
 
@@ -191,7 +199,7 @@ fn render_simulated_fixture(f: &mut Frame, area: Rect, app: &App) {
             .gauge_style(Style::default().fg(theme.success).bg(theme.selected_bg))
             .percent(mem_pct)
             .label(format!(
-                "HBM3e: {:.1}GB / {:.1}GB ({}%)",
+                "LPDDR5x UMA: {:.1}GB / {:.1}GB ({}% unified pressure)",
                 mem_used_gb, mem_total_gb, mem_pct
             ));
         f.render_widget(gauge, card_chunks[2]);
@@ -286,7 +294,7 @@ fn render_simulated_fixture(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(" Toggle:      ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "Press 'g' to return to Host Reality (PRoot unprivileged view).",
+                "Press 'g' to return to Host Reality (unprobed host view).",
                 Style::default().fg(theme.fg_muted),
             ),
         ]),

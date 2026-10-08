@@ -14,6 +14,15 @@ use lidb_tui_prototype::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{io, panic, time::Duration};
 
+fn validate_tick_rate(s: &str) -> Result<u64, String> {
+    let val: u64 = s.parse().map_err(|e| format!("{e}"))?;
+    if val == 0 {
+        Err("tick-rate must be greater than 0 ms".to_string())
+    } else {
+        Ok(val)
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "lidb-tui-prototype",
@@ -21,15 +30,15 @@ use std::{io, panic, time::Duration};
     version = "0.1.0"
 )]
 struct Args {
-    /// Refresh interval in milliseconds
-    #[arg(short, long, default_value_t = 500)]
+    /// Refresh interval in milliseconds (must be > 0)
+    #[arg(short, long, default_value_t = 500, value_parser = validate_tick_rate)]
     tick_rate: u64,
 
     /// Initial color theme (dark, light, high-contrast, monochrome)
     #[arg(long, default_value = "dark")]
     theme: String,
 
-    /// GPU mode: 'simulated' (Grace Hopper / GB10) or 'host' (PRoot unsupported state)
+    /// GPU mode: 'simulated' (DGX Spark GB10) or 'host' (unprobed host state)
     #[arg(long, default_value = "host")]
     gpu_mode: String,
 
@@ -40,6 +49,15 @@ struct Args {
     /// Run full headless render test of all tabs using Ratatui TestBackend and exit
     #[arg(long)]
     headless_test: bool,
+}
+
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, Show);
+    }
 }
 
 fn setup_panic_hook() {
@@ -105,9 +123,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, Hide)?;
+    let _guard = TerminalGuard;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
     let mut events = EventHandler::new(args.tick_rate);
 
     while !app.should_quit {
@@ -124,9 +143,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Graceful teardown
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
+    // Explicit graceful teardown (TerminalGuard Drop handles raw mode and alternate screen)
+    drop(_guard);
     terminal.show_cursor()?;
 
     Ok(())

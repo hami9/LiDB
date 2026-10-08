@@ -1,10 +1,12 @@
+[workspace]
+
 [package]
 name = "lidb-tui-prototype"
 version = "0.1.0"
 edition = "2021"
 authors = ["Antigravity Agent <antigravity@lidb.local>", "LiDB Contributors"]
 description = "Modular terminal-native TUI prototype for LiDashBoard (LiDB)"
-license = "Apache-2.0"
+license = "MIT"
 readme = "README.md"
 
 [dependencies]

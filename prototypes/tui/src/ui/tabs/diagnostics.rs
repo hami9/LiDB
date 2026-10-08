@@ -53,6 +53,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                         .fg(theme.bg)
                         .add_modifier(Modifier::BOLD),
                 ),
+                DiagnosticStatus::SimulatedPass => Span::styled(
+                    " SIM-PASS ",
+                    Style::default()
+                        .bg(theme.info)
+                        .fg(theme.bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 DiagnosticStatus::Warn => Span::styled(
                     " WARN ",
                     Style::default()
@@ -69,6 +76,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 ),
                 DiagnosticStatus::Unavailable => Span::styled(
                     " N/A  ",
+                    Style::default()
+                        .bg(theme.selected_bg)
+                        .fg(theme.fg_muted)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                DiagnosticStatus::NotProbed => Span::styled(
+                    " UNPROBED ",
                     Style::default()
                         .bg(theme.selected_bg)
                         .fg(theme.fg_muted)
@@ -100,7 +114,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         [
             Constraint::Length(10),
             Constraint::Length(18),
-            Constraint::Length(10),
+            Constraint::Length(12),
             Constraint::Length(26),
             Constraint::Min(30),
         ],
@@ -113,7 +127,11 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             .borders(Borders::ALL)
             .border_style(theme.block_border_style(false)),
     );
-    f.render_widget(table, chunks[0]);
+    let mut table_state = ratatui::widgets::TableState::default();
+    if !app.diagnostics.checks.is_empty() {
+        table_state.select(Some(app.diagnostics_selected_idx));
+    }
+    f.render_stateful_widget(table, chunks[0], &mut table_state);
 
     // Section 2: Selected Check Detail Card
     let selected = app
@@ -147,6 +165,10 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                             .fg(theme.success)
                             .add_modifier(Modifier::BOLD),
                     ),
+                    DiagnosticStatus::SimulatedPass => Span::styled(
+                        "SIMULATED PASS (Simulated fixture demo - not a verified runtime audit)",
+                        Style::default().fg(theme.info).add_modifier(Modifier::BOLD),
+                    ),
                     DiagnosticStatus::Warn => Span::styled(
                         "WARNING (Degraded or non-optimal configuration)",
                         Style::default()
@@ -161,6 +183,12 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                     ),
                     DiagnosticStatus::Unavailable => Span::styled(
                         "NOT APPLICABLE / UNSUPPORTED ON THIS PLATFORM",
+                        Style::default()
+                            .fg(theme.fg_muted)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    DiagnosticStatus::NotProbed => Span::styled(
+                        "NOT PROBED (Capability discovery not executed in standalone prototype)",
                         Style::default()
                             .fg(theme.fg_muted)
                             .add_modifier(Modifier::BOLD),

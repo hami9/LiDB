@@ -12,11 +12,15 @@ use crate::model::{
 #[derive(Debug, Default)]
 pub struct FixtureManager {
     tick_count: u64,
+    accumulated_subsecond_ms: u64,
 }
 
 impl FixtureManager {
     pub fn new() -> Self {
-        Self { tick_count: 0 }
+        Self {
+            tick_count: 0,
+            accumulated_subsecond_ms: 0,
+        }
     }
 
     /// Advance simulated telemetry values by one tick interval.
@@ -27,12 +31,20 @@ impl FixtureManager {
         net: &mut NetworkTelemetry,
         gpu: &mut GpuAiTelemetry,
         proc: &mut ProcessTelemetry,
+        tick_duration_ms: u64,
     ) {
         self.tick_count = self.tick_count.wrapping_add(1);
         let tick = self.tick_count as f32;
 
-        // 1. Advance System uptime and subtle load average variation
-        system.uptime_seconds = system.uptime_seconds.saturating_add(1);
+        // 1. Advance System uptime by elapsed refresh time (accumulating subsecond ms)
+        self.accumulated_subsecond_ms = self
+            .accumulated_subsecond_ms
+            .saturating_add(tick_duration_ms);
+        let elapsed_seconds = self.accumulated_subsecond_ms / 1000;
+        if elapsed_seconds > 0 {
+            system.uptime_seconds = system.uptime_seconds.saturating_add(elapsed_seconds);
+            self.accumulated_subsecond_ms %= 1000;
+        }
         system.load_average[0] = (1.10 + 0.15 * (tick * 0.1).sin()).max(0.1);
         system.load_average[1] = (0.95 + 0.08 * (tick * 0.05).sin()).max(0.1);
 
@@ -83,14 +95,19 @@ impl FixtureManager {
             }
         }
 
-        // 4. Advance GPU if in SimulatedFixture view mode
+        // 4. Advance GPU if in SimulatedFixture view mode (DGX Spark GB10)
         if gpu.view_mode == GpuViewMode::SimulatedFixture {
             for (i, dev) in gpu.devices.iter_mut().enumerate() {
                 let offset = i as f32 * 1.2;
                 dev.sm_utilization_pct =
                     (75.0 + 15.0 * (tick * 0.15 + offset).sin()).clamp(10.0, 99.0);
-                dev.power_watts = (520.0 + 40.0 * (tick * 0.2 + offset).cos()) as u32;
-                dev.temperature_c = (65.0 + 3.0 * (tick * 0.1).sin()) as u32;
+                // Realistic power profile bounded by 140 W GB10 SoC TDP
+                dev.power_watts = (115.0 + 10.0 * (tick * 0.2 + offset).cos()) as u32;
+                dev.temperature_c = (62.0 + 3.0 * (tick * 0.1).sin()) as u32;
+
+                // Coherent unified system memory variation
+                let mem_gb = 84.0 + (i as f32 * 4.0) + 2.0 * (tick * 0.08 + offset).sin();
+                dev.memory_used_bytes = (mem_gb * 1024.0 * 1024.0 * 1024.0) as u64;
             }
 
             for (j, wl) in gpu.workloads.iter_mut().enumerate() {

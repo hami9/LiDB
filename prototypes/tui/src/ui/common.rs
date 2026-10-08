@@ -47,7 +47,10 @@ pub fn render_header(f: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(theme.info),
         )
     } else {
-        Span::styled("⚙ Baremetal/Host Node", Style::default().fg(theme.success))
+        Span::styled(
+            "⚙ Standalone TUI Prototype [Unprivileged]",
+            Style::default().fg(theme.info),
+        )
     };
     let center_p = Paragraph::new(Line::from(vec![center_msg])).alignment(Alignment::Center);
     f.render_widget(center_p, chunks[1]);

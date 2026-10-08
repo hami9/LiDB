@@ -173,7 +173,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         ),
     ])];
     let psi_block = Block::default()
-        .title(" Kernel Pressure Stall Information (/proc/pressure/*) ")
+        .title(" Pressure Stall Information (PSI - Simulated Fixture) ")
         .title_style(theme.title_style())
         .borders(Borders::ALL)
         .border_style(theme.block_border_style(false));

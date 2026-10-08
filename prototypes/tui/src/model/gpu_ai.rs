@@ -5,14 +5,17 @@ use serde::{Deserialize, Serialize};
 pub struct GpuDevice {
     pub index: usize,
     pub name: String,
+    pub host_node: String,
     pub architecture: String,
     pub sm_utilization_pct: f32,
     pub memory_used_bytes: u64,
     pub memory_total_bytes: u64,
+    pub memory_type: String,
     pub temperature_c: u32,
     pub power_watts: u32,
     pub power_limit_watts: u32,
     pub nvlink_status: String,
+    pub inter_node_fabric: String,
     pub pcie_bandwidth_gb_s: f32,
 }
 
@@ -29,9 +32,9 @@ pub struct AiWorkload {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GpuViewMode {
-    /// Authentic PRoot / unprivileged state showing unsupported hardware and reasons.
+    /// Default host state showing unprobed accelerator status pending capability detection.
     HostReality,
-    /// Simulated Grace Hopper / GB10 superpod layout for UI testing.
+    /// Simulated DGX Spark (GB10 Grace Blackwell) 2-node cluster layout for UI testing.
     SimulatedFixture,
 }
 
@@ -46,15 +49,15 @@ pub struct GpuAiTelemetry {
 
 impl Default for GpuAiTelemetry {
     fn default() -> Self {
-        // By default, we present HostReality (unsupported in PRoot) with an option to toggle to fixture
+        // Truthful unprobed default: do not hardcode PRoot assumptions or fake hardware absence
         Self {
             view_mode: GpuViewMode::HostReality,
             devices: Vec::new(),
             workloads: Vec::new(),
-            status: DataSourceStatus::Unsupported {
-                reason: "PRoot container on Linux aarch64 has no NVML driver, /dev/nvidia*, or CUDA runtime. (Rule R10 & R19 compliant)".to_string(),
+            status: DataSourceStatus::NotProbed {
+                reason: "Accelerator and GPU driver capability detection not yet executed in standalone prototype. (P0 boundary)".to_string(),
             },
-            fabric_topology_note: "Per Rule R03: NVLink-C2C is intra-node only. Inter-node DGX fabric uses ConnectX Ethernet/RoCE.".to_string(),
+            fabric_topology_note: "Per Rule R03: NVLink-C2C is intra-node only. DGX Spark inter-node uses ConnectX-7 Ethernet/RoCE.".to_string(),
         }
     }
 }
@@ -64,28 +67,34 @@ impl GpuAiTelemetry {
         let devices = vec![
             GpuDevice {
                 index: 0,
-                name: "NVIDIA GB10 Blackwell (Simulated Fixture)".to_string(),
-                architecture: "Blackwell-Unified".to_string(),
+                name: "NVIDIA GB10 Grace Blackwell (Simulated Fixture)".to_string(),
+                host_node: "spark-node-01".to_string(),
+                architecture: "Grace Blackwell GB10 (Coherent UMA)".to_string(),
                 sm_utilization_pct: 78.4,
-                memory_used_bytes: 92 * 1024 * 1024 * 1024,
+                memory_used_bytes: 84 * 1024 * 1024 * 1024,
                 memory_total_bytes: 128 * 1024 * 1024 * 1024,
-                temperature_c: 64,
-                power_watts: 520,
-                power_limit_watts: 700,
-                nvlink_status: "Intra-node C2C Active (900 GB/s)".to_string(),
+                memory_type: "128 GB LPDDR5x Unified System Memory (273 GB/s)".to_string(),
+                temperature_c: 62,
+                power_watts: 115,
+                power_limit_watts: 140, // 140 W GB10 SoC TDP (240 W system PSU)
+                nvlink_status: "Intra-node NVLink-C2C Active (900 GB/s)".to_string(),
+                inter_node_fabric: "ConnectX-7 200GbE RoCEv2 (QSFP)".to_string(),
                 pcie_bandwidth_gb_s: 64.0,
             },
             GpuDevice {
                 index: 1,
-                name: "NVIDIA GB10 Blackwell (Simulated Fixture)".to_string(),
-                architecture: "Blackwell-Unified".to_string(),
+                name: "NVIDIA GB10 Grace Blackwell (Simulated Fixture)".to_string(),
+                host_node: "spark-node-02".to_string(),
+                architecture: "Grace Blackwell GB10 (Coherent UMA)".to_string(),
                 sm_utilization_pct: 82.1,
-                memory_used_bytes: 94 * 1024 * 1024 * 1024,
+                memory_used_bytes: 88 * 1024 * 1024 * 1024,
                 memory_total_bytes: 128 * 1024 * 1024 * 1024,
-                temperature_c: 66,
-                power_watts: 545,
-                power_limit_watts: 700,
-                nvlink_status: "Intra-node C2C Active (900 GB/s)".to_string(),
+                memory_type: "128 GB LPDDR5x Unified System Memory (273 GB/s)".to_string(),
+                temperature_c: 64,
+                power_watts: 122,
+                power_limit_watts: 140, // 140 W GB10 SoC TDP (240 W system PSU)
+                nvlink_status: "Intra-node NVLink-C2C Active (900 GB/s)".to_string(),
+                inter_node_fabric: "ConnectX-7 200GbE RoCEv2 (QSFP)".to_string(),
                 pcie_bandwidth_gb_s: 64.0,
             },
         ];
@@ -118,7 +127,7 @@ impl GpuAiTelemetry {
             status: DataSourceStatus::SimulatedFixture {
                 fixture_name: "p0_gb10_workload_fixture".to_string(),
             },
-            fabric_topology_note: "SIMULATED: Blackwell intra-node NVLink C2C. DGX Spark inter-node uses ConnectX-8 Ethernet/RoCE.".to_string(),
+            fabric_topology_note: "SIMULATED 2-NODE CLUSTER: Each DGX Spark node has 1x GB10 with NVLink-C2C intra-node. Inter-node fabric: ConnectX-7 200GbE QSFP (RoCEv2). No external GPU-to-GPU NVLink.".to_string(),
         }
     }
 }

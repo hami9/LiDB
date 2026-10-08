@@ -148,6 +148,7 @@ impl App {
             &mut self.network,
             &mut self.gpu_ai,
             &mut self.processes,
+            self.settings.refresh_rate_ms,
         );
     }
 
@@ -327,14 +328,18 @@ impl App {
         // Sort items in place according to sort_field
         match self.processes.sort_field {
             ProcessSortField::Cpu => {
-                self.processes
-                    .items
-                    .sort_by(|a, b| b.cpu_pct.partial_cmp(&a.cpu_pct).unwrap());
+                self.processes.items.sort_by(|a, b| {
+                    b.cpu_pct
+                        .partial_cmp(&a.cpu_pct)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             }
             ProcessSortField::Mem => {
-                self.processes
-                    .items
-                    .sort_by(|a, b| b.mem_pct.partial_cmp(&a.mem_pct).unwrap());
+                self.processes.items.sort_by(|a, b| {
+                    b.mem_pct
+                        .partial_cmp(&a.mem_pct)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             }
             ProcessSortField::Pid => {
                 self.processes.items.sort_by_key(|a| a.pid);

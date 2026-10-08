@@ -173,5 +173,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             .borders(Borders::ALL)
             .border_style(theme.block_border_style(false)),
     );
-    f.render_widget(table, chunks[1]);
+    let mut table_state = ratatui::widgets::TableState::default();
+    if !app.filtered_processes().is_empty() {
+        table_state.select(Some(app.process_selected_idx));
+    }
+    f.render_stateful_widget(table, chunks[1], &mut table_state);
 }

@@ -161,7 +161,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "Zero assumed CUDA/eBPF/driver access in PRoot. Typed unsupported state fallback.",
+                "Zero assumed CUDA/eBPF/driver access. Truthful unprobed/unsupported state fallback.",
                 Style::default().fg(theme.fg),
             ),
         ]),
@@ -173,7 +173,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "Isolated worktree at .worktrees/antigravity/p0-tui. Root Cargo.toml preserved.",
+                "Isolated worktree at .worktrees/antigravity/p0-tui-laptop. Root Cargo.toml preserved.",
                 Style::default().fg(theme.fg),
             ),
         ]),

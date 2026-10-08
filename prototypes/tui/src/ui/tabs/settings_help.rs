@@ -61,13 +61,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(" GPU View Mode:    ", Style::default().fg(theme.fg_muted)),
             match app.gpu_ai.view_mode {
                 crate::model::gpu_ai::GpuViewMode::HostReality => Span::styled(
-                    "Host Reality (PRoot unsupported)",
+                    "Host Reality (Unprobed on host)",
                     Style::default()
                         .fg(theme.warning)
                         .add_modifier(Modifier::BOLD),
                 ),
                 crate::model::gpu_ai::GpuViewMode::SimulatedFixture => Span::styled(
-                    "Simulated Superpod Fixture (GB10)",
+                    "Simulated DGX Spark Fixture (GB10)",
                     Style::default().fg(theme.info).add_modifier(Modifier::BOLD),
                 ),
             },
@@ -238,7 +238,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(" Core Contract:     ", Style::default().fg(theme.fg_muted)),
             Span::styled("PR #9 (ChatGPT branch agent/chatgpt/p0-core)", Style::default().fg(theme.info)),
-            Span::styled("  │  Worktree: .worktrees/antigravity/p0-tui", Style::default().fg(theme.fg_muted)),
+            Span::styled("  │  Worktree: .worktrees/antigravity/p0-tui-laptop", Style::default().fg(theme.fg_muted)),
         ]),
         Line::from(vec![
             Span::styled(" Design Policy:     ", Style::default().fg(theme.fg_muted)),

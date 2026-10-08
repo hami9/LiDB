@@ -150,3 +150,63 @@ fn test_quit_key() {
     app.handle_key(key(KeyCode::Char('q')));
     assert!(app.should_quit);
 }
+
+#[test]
+fn test_process_sorting_and_nan_safety() {
+    use lidb_tui_prototype::model::processes::{ProcessItem, ProcessSortField};
+
+    let mut app = App::new();
+    app.current_tab = Tab::Processes;
+
+    // Inject processes including NaN floats
+    app.processes.items.push(ProcessItem {
+        pid: 9999,
+        user: "nobody".to_string(),
+        cpu_pct: f32::NAN,
+        mem_pct: f32::NAN,
+        rss_bytes: 1024,
+        state: "S".to_string(),
+        command: "nan-proc".to_string(),
+        threads: 1,
+        io_read_kb_s: 0,
+        io_write_kb_s: 0,
+    });
+
+    // Default sort is CPU
+    assert_eq!(app.processes.sort_field, ProcessSortField::Cpu);
+
+    // Cycle to Mem (should not panic with NaN)
+    app.handle_key(key(KeyCode::Char('s')));
+    assert_eq!(app.processes.sort_field, ProcessSortField::Mem);
+
+    // Cycle to Pid
+    app.handle_key(key(KeyCode::Char('s')));
+    assert_eq!(app.processes.sort_field, ProcessSortField::Pid);
+
+    // Cycle to Command
+    app.handle_key(key(KeyCode::Char('s')));
+    assert_eq!(app.processes.sort_field, ProcessSortField::Command);
+
+    // Cycle back to Cpu (should not panic with NaN)
+    app.handle_key(key(KeyCode::Char('s')));
+    assert_eq!(app.processes.sort_field, ProcessSortField::Cpu);
+}
+
+#[test]
+fn test_process_list_navigation() {
+    let mut app = App::new();
+    app.current_tab = Tab::Processes;
+    assert_eq!(app.process_selected_idx, 0);
+
+    // Navigate down
+    app.handle_key(key(KeyCode::Down));
+    assert_eq!(app.process_selected_idx, 1);
+
+    // Navigate up
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.process_selected_idx, 0);
+
+    // Navigate up at top boundary stays at 0
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.process_selected_idx, 0);
+}

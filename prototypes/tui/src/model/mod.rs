@@ -22,6 +22,8 @@ pub enum DataSourceStatus {
     Unsupported { reason: String },
     /// Subsystem requires root or elevated capability (CAP_NET_ADMIN, CAP_SYS_ADMIN).
     PermissionDenied { capability: String },
+    /// Subsystem capability detection not yet executed on host.
+    NotProbed { reason: String },
     /// Telemetry stream paused by operator.
     Paused,
 }
@@ -33,6 +35,7 @@ impl DataSourceStatus {
             Self::SimulatedFixture { .. } => "[SIMULATED FIXTURE]",
             Self::Unsupported { .. } => "[UNSUPPORTED ON HOST]",
             Self::PermissionDenied { .. } => "[PERMISSION REQUIRED]",
+            Self::NotProbed { .. } => "[NOT PROBED]",
             Self::Paused => "[PAUSED]",
         }
     }

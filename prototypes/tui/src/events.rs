@@ -21,12 +21,19 @@ impl EventHandler {
     }
 
     pub fn next_event(&mut self) -> Result<AppEvent, std::io::Error> {
-        let timeout = self
-            .tick_rate
-            .checked_sub(self.last_tick.elapsed())
-            .unwrap_or(Duration::from_millis(0));
+        let elapsed = self.last_tick.elapsed();
+        if elapsed >= self.tick_rate {
+            self.last_tick = Instant::now();
+            return Ok(AppEvent::Tick);
+        }
+
+        let timeout = self.tick_rate - elapsed;
 
         if event::poll(timeout)? {
+            if self.last_tick.elapsed() >= self.tick_rate {
+                self.last_tick = Instant::now();
+                return Ok(AppEvent::Tick);
+            }
             match event::read()? {
                 CrosstermEvent::Key(key) => Ok(AppEvent::Key(key)),
                 CrosstermEvent::Resize(w, h) => Ok(AppEvent::Resize(w, h)),

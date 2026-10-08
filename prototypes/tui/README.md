@@ -30,7 +30,7 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
    - Overall CPU gauge with dynamic color thresholds and recent activity sparkline.
    - Core topology matrix: Real-time utilization and clock frequency per logical core.
    - Memory breakdown: Physical RAM (Used, Free, Available, Buffers, Cached) and Swap space.
-   - Linux PSI (Pressure Stall Information) metrics from `/proc/pressure/*` (CPU, Memory, I/O).
+   - Linux PSI (Pressure Stall Information) metrics: Simulated fixtures advanced by `FixtureManager` (CPU, Memory, I/O stall averages), marked with `[SIMULATED FIXTURE]` badges.
 
 3. **`3:Network` — Linux Networking:**
    - Linux network interfaces table: Interface name, state (UP/DOWN), IP addresses, MAC, MTU, RX/TX byte and packet rates, drop/error counters.
@@ -38,26 +38,27 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
    - Protocol socket overview (TCP Established, TCP Listen, TCP TimeWait, UDP sockets).
 
 4. **`4:GPU/AI` — Accelerators & Model Serving Workloads:**
-   - **Host Reality Mode (Default):** Truthfully reports unsupported hardware states in PRoot/Termux container environments (no `/dev/nvidia*` or NVML runtime), fulfilling Rules **R01**, **R10**, and **R19**.
-   - **Simulated Superpod Fixture (`g` key):** High-fidelity simulation of dual NVIDIA GB10 Blackwell Grace Hopper accelerators (SM utilization, HBM3e memory bandwidth, NVLink status, temperature, power draw).
-   - AI serving KPIs: vLLM and TensorRT-LLM telemetry (tokens/sec, TTFT, TPOT, KV cache utilization %, batch sizes).
-   - Interconnect topology contract (**Rule R03**): Spark CPU↔GPU NVLink-C2C is strictly modeled as intra-node; inter-node communication uses ConnectX Ethernet/RoCE.
+   - **Host Reality Mode (Default):** Truthfully reports unprobed hardware state (`[NOT PROBED]`) in the standalone prototype pending runtime capability detection, fulfilling Rules **R01**, **R10**, and **R19**.
+   - **Simulated DGX Spark Fixture (`g` key):** High-fidelity simulation of a 2-node NVIDIA DGX Spark cluster with GB10 Grace Blackwell accelerators (SM utilization, 128 GB coherent LPDDR5x unified system memory pressure, NVLink-C2C intra-node interconnect, ConnectX-7 200GbE RoCEv2 inter-node fabric, realistic power draw within 140 W SoC TDP).
+   - AI serving KPIs: Simulated vLLM and TensorRT-LLM telemetry (tokens/sec, TTFT, TPOT, KV cache utilization %, batch sizes).
+   - Interconnect topology contract (**Rule R03**): Spark CPU↔GPU NVLink-C2C is strictly modeled as intra-node; inter-node communication uses ConnectX-7 Ethernet/RoCE (no external GPU-to-GPU NVLink).
 
 5. **`5:Processes` — Interactive Process Table:**
    - Interactive process inspection: PID, User, PR/State (`R`, `S`, `D`, `Z`), CPU %, MEM %, RSS, Threads, I/O rates, Command line.
    - Live search filter: Press `/` to enter search mode (filters by command, user, or PID).
    - Sorting: Press `s` to cycle sorting by CPU %, MEM %, PID, or Command.
    - Row inspection: Press `Enter` to open an in-depth process inspection modal.
+   - Stateful scrolling: Table selection automatically scrolls via `TableState`.
 
 6. **`6:Diagnostics` — Automated Health Checks:**
-   - Environment and security audits (`PASS`, `WARN`, `FAIL`, `N/A`):
-     - `DIAG-01`: procfs Base Telemetry (Read-only `/proc` inspection).
-     - `DIAG-02`: eBPF Subsystem Access (Reports restriction in unprivileged container).
-     - `DIAG-03`: cgroup v2 Controllers (Unified hierarchy delegation status).
-     - `DIAG-04`: Linux Netlink Routing (`NETLINK_ROUTE` socket verification).
-     - `DIAG-05`: NVML Hardware Runtime (Detects presence/absence of GPU drivers).
-     - `DIAG-06`: Security & Privacy Contract (**Rule R07**: Zero payload capture, no TLS snooping).
-     - `DIAG-07`: Unprivileged Execution (**Rule R05**: Non-root baseline).
+   - Truthful environment and demo assessments (`SIM-PASS`, `UNPROBED`, `WARN`, `FAIL`, `N/A`):
+     - `DIAG-01`: procfs Base Telemetry (`UNPROBED` in standalone TUI prototype; scheduled for P1).
+     - `DIAG-02`: eBPF Subsystem Access (`N/A` in unprivileged standalone prototype; fallback active).
+     - `DIAG-03`: cgroup v2 Controllers (`UNPROBED` in standalone prototype).
+     - `DIAG-04`: Linux Netlink Routing (`UNPROBED` in standalone prototype).
+     - `DIAG-05`: NVML Hardware Runtime (`N/A` pending P5 accelerator capability probe).
+     - `DIAG-06`: Security & Privacy Contract (`SIM-PASS` demo check for Rule R07 zero payload policy; runtime audit not claimed).
+     - `DIAG-07`: Unprivileged Execution (`SIM-PASS` demo check for Rule R05 non-root baseline; privileges not audited).
    - Remediation panel: Contextual remediation guidance for every check.
 
 7. **`7:Settings/Help` — Configuration & Shortcuts:**
@@ -80,7 +81,7 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
 | `/` | Activate process text search filter (on Tab 5) |
 | `s` | Cycle process sorting order (CPU% → MEM% → PID → Command) |
 | `Space` | Pause / resume telemetry updates |
-| `g` | Toggle GPU tab between Host Reality (unsupported) and Simulated Fixture |
+| `g` | Toggle GPU tab between Host Reality (unprobed) and Simulated DGX Spark Fixture |
 | `t` | Cycle visual theme (Dark → Light → High-Contrast → Monochrome) |
 | `?` / `F1` | Open interactive Help Modal overlay |
 | `Esc` / `q` | Dismiss open modal or exit the application |
@@ -91,11 +92,11 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
 
 | Rule | Implementation Guarantee |
 | --- | --- |
-| **R01 / R14** | **Truthful Metrics:** All mock telemetry is explicitly stamped with `[SIMULATED FIXTURE]` badges. Live and unsupported states are never conflated. |
-| **R03** | **DGX Spark Topology:** NVLink-C2C is documented and displayed as intra-node only. Inter-node DGX fabric uses ConnectX Ethernet/RoCE. |
+| **R01 / R14** | **Truthful Metrics:** All mock telemetry is explicitly stamped with `[SIMULATED FIXTURE]` badges. Live, unprobed, and unsupported states are never conflated. |
+| **R03** | **DGX Spark Topology:** NVLink-C2C is documented and displayed as intra-node only. Inter-node DGX fabric uses ConnectX-7 Ethernet/RoCE. |
 | **R05 / R06** | **Non-Root Baseline:** Operates completely unprivileged without `CAP_SYS_ADMIN` or `CAP_NET_ADMIN`. |
 | **R07** | **Zero Payload Snooping:** Telemetry models restrict strictly to performance metadata; zero packet payload or secret inspection. |
-| **R10 / R19** | **Container / PRoot Portability:** Gracefully identifies missing hardware capabilities (e.g. absent NVML/eBPF) using typed `Unsupported` enums. |
+| **R10 / R19** | **Container / Host Portability:** Gracefully identifies unprobed or missing capabilities using typed `NotProbed` / `Unsupported` enums. |
 | **R25 / R27** | **Worktree Invariants:** Confined to `agent/antigravity/p0-tui` without modifying central shared agent state. |
 
 ---
@@ -104,33 +105,34 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
 
 ### Running Automated Test Suites
 ```bash
-cargo test
+cargo test --manifest-path prototypes/tui/Cargo.toml --locked --all-targets
 ```
 The test suite validates:
 - Direct and cyclic tab navigation (`tests/app_tests.rs`)
 - Process filtering, sorting, and modal interactions (`tests/app_tests.rs`)
 - Deterministic telemetry simulation and bounds checking (`tests/fixture_tests.rs`)
-- Unsupported hardware state handling (`tests/fixture_tests.rs`)
+- DGX Spark GB10 realistic power and unified memory bounds (`tests/fixture_tests.rs`)
+- Truthful unprobed and simulated diagnostic states (`tests/fixture_tests.rs`)
 - Full headless rendering of all 7 tabs and modals via Ratatui `TestBackend` (`tests/render_tests.rs`)
 - Graceful terminal resize fallback under small dimensions (`tests/render_tests.rs`)
 - Color theme generation across Dark, Light, High-Contrast, and Monochrome modes (`tests/theme_tests.rs`)
 
 ### Running Formatting and Linter
 ```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo fmt --manifest-path prototypes/tui/Cargo.toml -- --check
+cargo clippy --manifest-path prototypes/tui/Cargo.toml --all-targets --locked -- -D warnings
 ```
 
 ### Running Non-Interactive Headless Tests
 ```bash
 # Validates headless rendering across all views:
-cargo run -- --headless-test
+cargo run --manifest-path prototypes/tui/Cargo.toml -- --headless-test
 
 # Runs automated smoke test (5 ticks) without an interactive terminal:
-cargo run -- --smoke-test
+cargo run --manifest-path prototypes/tui/Cargo.toml -- --smoke-test
 ```
 
 ### Interactive Execution
 ```bash
-cargo run -- --tick-rate 500 --theme dark
+cargo run --manifest-path prototypes/tui/Cargo.toml -- --tick-rate 500 --theme dark
 ```

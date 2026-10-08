@@ -27,15 +27,15 @@ impl Default for SystemTelemetry {
             architecture: "aarch64".to_string(),
             uptime_seconds: 142560,
             load_average: [1.14, 0.98, 0.85],
-            proot_detected: true,
+            proot_detected: false,
             total_cpus: 8,
             total_memory_bytes: 16 * 1024 * 1024 * 1024,
             lidb_version: "0.1.0-alpha.1".to_string(),
-            lidb_agent: "antigravity/p0-tui".to_string(),
+            lidb_agent: "antigravity/p0-tui-laptop".to_string(),
             status: DataSourceStatus::SimulatedFixture {
                 fixture_name: "p0_standard_linux".to_string(),
             },
-            status_message: "Telemetry simulated via P0 fixture generator. PRoot containment active; hardware GPU/eBPF probes bypassed.".to_string(),
+            status_message: "Telemetry simulated via P0 fixture generator. Capability detection not yet implemented in standalone prototype.".to_string(),
         }
     }
 }

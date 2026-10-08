@@ -4,18 +4,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiagnosticStatus {
     Pass,
+    SimulatedPass,
     Warn,
     Fail,
     Unavailable,
+    NotProbed,
 }
 
 impl DiagnosticStatus {
     pub fn badge(&self) -> &'static str {
         match self {
             Self::Pass => " PASS ",
+            Self::SimulatedPass => " SIM-PASS ",
             Self::Warn => " WARN ",
             Self::Fail => " FAIL ",
             Self::Unavailable => " N/A  ",
+            Self::NotProbed => " UNPROBED ",
         }
     }
 }
@@ -43,11 +47,11 @@ impl Default for DiagnosticsTelemetry {
                 id: "DIAG-01".to_string(),
                 name: "procfs Base Telemetry".to_string(),
                 category: "Host Kernel".to_string(),
-                status: DiagnosticStatus::Pass,
+                status: DiagnosticStatus::NotProbed,
                 finding:
-                    "/proc/stat, /proc/meminfo, /proc/net/dev are readable without root privileges."
+                    "procfs base telemetry not probed in standalone TUI prototype; integration scheduled for P1."
                         .to_string(),
-                remediation: "None required. Safe read-only metrics collection enabled."
+                remediation: "Read-only procfs collectors will run via lidashd or integrated engine in P1."
                     .to_string(),
             },
             DiagnosticCheck {
@@ -55,7 +59,7 @@ impl Default for DiagnosticsTelemetry {
                 name: "eBPF Subsystem Access".to_string(),
                 category: "Host Kernel".to_string(),
                 status: DiagnosticStatus::Unavailable,
-                finding: "bpf() syscall restricted in PRoot/unprivileged user namespace."
+                finding: "bpf() syscall access not enabled in unprivileged standalone prototype."
                     .to_string(),
                 remediation: "Telemetry engine uses safe procfs/sysfs fallback per Rule R10."
                     .to_string(),
@@ -64,21 +68,21 @@ impl Default for DiagnosticsTelemetry {
                 id: "DIAG-03".to_string(),
                 name: "cgroup v2 Controllers".to_string(),
                 category: "Resource Control".to_string(),
-                status: DiagnosticStatus::Warn,
-                finding: "Unified hierarchy detected but memory/io controllers not delegated."
+                status: DiagnosticStatus::NotProbed,
+                finding: "cgroup v2 controller delegation not probed in standalone prototype."
                     .to_string(),
                 remediation:
-                    "Run in container with systemd cgroup delegation or use host cgroup mount."
+                    "cgroup hierarchy discovery scheduled for P1 host telemetry."
                         .to_string(),
             },
             DiagnosticCheck {
                 id: "DIAG-04".to_string(),
                 name: "Linux Netlink Routing".to_string(),
                 category: "Networking".to_string(),
-                status: DiagnosticStatus::Pass,
-                finding: "NETLINK_ROUTE socket readable for interface discovery and link state."
+                status: DiagnosticStatus::NotProbed,
+                finding: "NETLINK_ROUTE interface/routing discovery not opened in standalone prototype."
                     .to_string(),
-                remediation: "None required. Route lookup functional.".to_string(),
+                remediation: "Netlink routing collector scheduled for P2.".to_string(),
             },
             DiagnosticCheck {
                 id: "DIAG-05".to_string(),
@@ -86,31 +90,31 @@ impl Default for DiagnosticsTelemetry {
                 category: "Accelerators".to_string(),
                 status: DiagnosticStatus::Unavailable,
                 finding:
-                    "libnvidia-ml.so and /dev/nvidia* device nodes absent in current environment."
+                    "NVML driver (/dev/nvidia*) capability probing not yet implemented in prototype."
                         .to_string(),
                 remediation:
-                    "Expected in PRoot container. Use --fixture-mode to simulate GPU dashboards."
+                    "Optional GPU adapter probe scheduled for P5; use 'g' to inspect simulated DGX Spark fixture."
                         .to_string(),
             },
             DiagnosticCheck {
                 id: "DIAG-06".to_string(),
                 name: "Security & Privacy Contract".to_string(),
                 category: "Governance".to_string(),
-                status: DiagnosticStatus::Pass,
+                status: DiagnosticStatus::SimulatedPass,
                 finding:
-                    "Rule R07 verified: zero payload capture, no decrypted TLS or prompt snooping."
+                    "SIMULATED CHECK: Architectural policy prohibits payload, key, and prompt capture (Rule R07). Runtime audit not executed."
                         .to_string(),
-                remediation: "Maintain strict metadata-only collection policy.".to_string(),
+                remediation: "Maintain strict metadata-only collection policy across all collectors.".to_string(),
             },
             DiagnosticCheck {
                 id: "DIAG-07".to_string(),
                 name: "Unprivileged Execution".to_string(),
                 category: "Security".to_string(),
-                status: DiagnosticStatus::Pass,
+                status: DiagnosticStatus::SimulatedPass,
                 finding:
-                    "Dashboard operates safely in user mode without CAP_SYS_ADMIN or CAP_NET_ADMIN."
+                    "SIMULATED CHECK: Process runs unprivileged without CAP_SYS_ADMIN/CAP_NET_ADMIN (Rule R05). Environment privileges not audited."
                         .to_string(),
-                remediation: "None required. Preserves principle of least privilege.".to_string(),
+                remediation: "Preserve principle of least privilege per Rule R05.".to_string(),
             },
         ];
 
