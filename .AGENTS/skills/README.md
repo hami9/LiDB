@@ -13,3 +13,5 @@ Read [../SKILL_POLICY.md](../SKILL_POLICY.md) before choosing a skill, and read 
 - [Terminal UX](terminal-ux/SKILL.md)
 - [Testing and quality](testing-quality/SKILL.md)
 - [Documentation and release](docs-release/SKILL.md)
+
+- [CI/CD, versioning and release safety](ci-cd/SKILL.md)

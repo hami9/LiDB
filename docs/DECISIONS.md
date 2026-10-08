@@ -18,3 +18,10 @@ Decisions are **proposed** unless explicitly accepted by maintainers. Changing o
 | ADR-012 | proposed | Explicit unavailable state, never numeric zero fallback | Preserve correctness |
 
 Decisions to settle during P0: Rust minimum supported version, minimum kernel baseline, supported distributions, deployment/packaging policy, IPC encoding, local storage format, plugin protocol initial version and build-time feature flags. Publish the concrete choices and test data before treating them as settled.
+
+## Automation decisions (2026-10-08)
+
+- **ADR-013, proposed:** Conventional Commits are the single automatic SemVer bump signal; explicit `Release-Bump:` commit footers may override. Non-feature commits default to PATCH.
+- **ADR-014, proposed:** Release only after reusable CI and reproducible architecture-specific builds. Bootstrap docs-only commits must not produce a pretend binary.
+- **ADR-015, proposed:** Protect `main` with a stable aggregated `CI Gate`, PR-only squash/rebase, no deletion/force-push. Ruleset activation is an administrative operation outside coding-agent authority.
+- **ADR-016, proposed:** Public build archives include checksums and GitHub provenance attestations. This does not replace independent artifact verification or SBOM/license review.

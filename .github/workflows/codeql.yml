@@ -1,0 +1,81 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  github-actions:
+    name: CodeQL Actions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: actions
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
+
+  detect-source:
+    name: Detect source code
+    runs-on: ubuntu-24.04
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
+      c: ${{ steps.detect.outputs.c }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect code
+        id: detect
+        shell: bash
+        run: |
+          [[ -f Cargo.toml ]] && echo "rust=true" >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
+          if find . -type f \( -name '*.c' -o -name '*.h' \) -not -path './.git/*' | grep -q .; then
+            echo "c=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "c=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  rust:
+    name: CodeQL Rust
+    needs: [detect-source]
+    if: needs.detect-source.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: rust
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
+
+  c:
+    name: CodeQL C
+    needs: [detect-source]
+    if: needs.detect-source.outputs.c == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: c-cpp
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
