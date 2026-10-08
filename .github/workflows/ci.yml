@@ -28,7 +28,8 @@ jobs:
       - name: Validate Markdown links
         run: python3 scripts/check_docs.py
       - name: Validate GitHub workflow YAML syntax
-        run: ruby -ryaml -e 'Dir.glob(".github/workflows/*.{yml,yaml}").each { |f| YAML.load_file(f); puts "Parsed #{f}" }'
+        run: |
+          ruby -ryaml -e 'Dir.glob(".github/workflows/*.{yml,yaml}").each { |f| YAML.load_file(f); puts f }'
       - name: Test release planner and PR policies
         run: python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
       - name: Validate pull request title
@@ -98,5 +99,9 @@ jobs:
           DOCS: ${{ needs.docs-and-policy.result }}
           RUST: ${{ needs.rust-checks.result }}
         run: |
-          test "$DOCS" = success && test "$RUST" = success
+          set -euo pipefail
+          if [[ "$DOCS" != "success" || "$RUST" != "success" ]]; then
+            echo "::error::CI Gate blocked: docs=$DOCS rust=$RUST"
+            exit 1
+          fi
           echo "CI Gate: PASS"
