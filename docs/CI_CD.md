@@ -6,7 +6,7 @@
 
 | Workflow | Trigger | Responsibilities |
 | --- | --- | --- |
-| [CI](../.github/workflows/ci.yml) | PR, main push, merge queue, manual, reusable call | Docs/link checks; Python policy tests; PR naming; Linux x86_64 and aarch64 Rust format, clippy, tests when code exists; stable `CI Gate` |
+| [CI](../.github/workflows/ci.yml) | PR, main push, merge queue, manual, reusable call | Docs/link checks; Python policy tests; PR naming; Linux x86_64 and aarch64 root and standalone TUI checks; stable `CI Gate` |
 | [Documentation quality](../.github/workflows/docs.yml) | PR, main | Existing standalone docs link check |
 | [CodeQL](../.github/workflows/codeql.yml) | PR, main, weekly | Actions analysis, and Rust/C analysis when sources exist |
 | [Automatic Release](../.github/workflows/release.yml) | main push, manual dry-run | Re-runs gate, plans SemVer, compiles both architectures, packages, validates checksums and publishes GitHub Release |
@@ -53,9 +53,26 @@ bash scripts/admin/apply_rulesets.sh --dry-run
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked --all-targets
+cargo test --workspace --locked --doc
+# Standalone prototype (independent of the root workspace):
+python3 scripts/ci/check_tui.py
+cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
+cargo clippy --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked -- -D warnings
+cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked
+cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --doc --locked
+cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --headless-test
+cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --smoke-test
 ```
 
 The `plan` command requires Git history/tags. Publishing a release requires GitHub Actions, configured permissions and passing CI. Do not copy production tokens into local config or the repository.
+
+## Standalone TUI gate
+
+`TUI (x86_64)` and `TUI (aarch64)` run on native Linux runners. They detect `prototypes/tui` independently of the root `Cargo.toml`. An absent directory is reported explicitly; an existing directory without its manifest or lockfile fails. Formatting, locked Clippy, target tests, documentation tests and both non-interactive CLI checks must pass when the prototype exists. These checks validate fixtures and rendering, not live collectors or hardware.
+
+`CI Gate` always aggregates docs, root Rust, Windows worktree and TUI jobs through `scripts/ci/check_gate.py`. Failed, cancelled, skipped, missing or unknown required results block the gate. A docs-only checkout may pass after both Rust jobs explicitly report absent code. CodeQL Rust also detects the standalone TUI manifest. The required check name and release permissions are unchanged.
+
+Rollback is a normal revert of the CI slice through a reviewed PR. No runtime schema, dependency or release intent changes are required. See [P0 integration review](P0_INTEGRATION_REVIEW.md) for the reviewed branch boundaries and remaining gates.
 
 ## Remaining open-source release hardening
 

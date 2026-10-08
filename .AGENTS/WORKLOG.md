@@ -28,3 +28,10 @@
 - Scope: cross-platform Python CLI, Windows/Linux wrappers, canonical agent worktree coordination policy, native Claude/Antigravity instruction files, CI smoke tests.
 - Verification: GitHub CI results belong to the associated PR; actual agent sessions and cross-device synchronization are **NOT** initiated or validated from this remote workflow.
 - Next: maintainer clones/updates LiDB locally and runs each agent in its own worktree after assigning distinct tasks.
+
+## 2026-10-08 — Standalone TUI CI integration slice
+
+- Actor: Codex, coordinator for CI only; Issue #14, branch `agent/codex/tui-gate` in an isolated script-created worktree.
+- Scope: required TUI matrix, documentation tests, fail-closed aggregate, standalone CodeQL detection and source review of PRs #9/#11/#13. No other agent's runtime files or branch changed.
+- Windows Python policy suite: 24 tests passed, exit 0. Cargo is unavailable locally; native Linux integration validation pending.
+- Full acceptance, evidence and review limits: [Issue 14 worklog](worklogs/issue-14.md). P0 is not complete; no merge or release authorized or performed.
