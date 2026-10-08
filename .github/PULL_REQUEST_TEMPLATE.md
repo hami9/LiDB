@@ -1,0 +1,31 @@
+## User need and roadmap phase
+
+Describe the problem, active phase and bounded scope.
+
+## Implementation
+
+Changed modules, alternatives and compatibility / migration effects.
+
+## Capabilities and safety
+
+Feature flag, fallback, privilege requirement, privacy classification, resource cost and license/dependency changes.
+
+## Tests actually executed
+
+Commands, environments, exit codes and reproducible evidence. Clearly label NOT RUN and simulated vs real GPU/multi-node verification.
+
+## Five-axis review
+
+- Kernel/networking:
+- AI/GPU/fabric:
+- Security/privacy:
+- Performance/reliability:
+- Product/UX/extensibility:
+
+## Documentation and handoff
+
+- [ ] Updated docs/help and relevant ADR
+- [ ] Updated `.AGENTS/WORKLOG.md`
+- [ ] Updated `.AGENTS/STATE.md` to actual verified state
+- [ ] No unsupported claims or secrets in diff
+- [ ] Maintainer approval requested for sensitive changes

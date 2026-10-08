@@ -1,0 +1,27 @@
+# Agent entry point
+
+These instructions apply to **all coding agents working in this repository**. The repository's project-specific agent directory is [`.AGENTS/`](.AGENTS/README.md).
+
+## Read in this order
+
+1. [.AGENTS/README.md](.AGENTS/README.md)
+2. [.AGENTS/SYSTEM_PROMPT.md](.AGENTS/SYSTEM_PROMPT.md)
+3. [.AGENTS/RULES.md](.AGENTS/RULES.md)
+4. [.AGENTS/STATE.md](.AGENTS/STATE.md)
+5. [.AGENTS/PHASES.md](.AGENTS/PHASES.md)
+6. [.AGENTS/QUALITY_GATES.md](.AGENTS/QUALITY_GATES.md)
+7. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+8. Applicable skill file(s) under [.AGENTS/skills/](.AGENTS/skills/README.md).
+
+## Non-negotiable contract
+
+- **English only** in repository documents, code, commits, PRs, changelog and test reports.
+- Work on the currently approved phase. Define one small independently testable vertical slice; do not implement a whole roadmap phase in one speculative commit.
+- Preserve existing code and human changes. Never force-push, rewrite history, overwrite secrets or merge your own PR unless explicitly authorized.
+- State exactly what is implemented and tested. A proposed feature or simulated fixture is **not** a production or hardware-validated implementation.
+- Default to non-root, local, offline, read-only and metadata-only operation. Do not change system/network/kernel/GPU configuration without explicit operator approval.
+- Always provide typed `unsupported`/`unavailable`/`permission_denied` results instead of fabricating metrics.
+- Every code change requires tests and docs; each meaningful change requires a worklog entry and updated agent state.
+- Honor [SECURITY.md](SECURITY.md), [LICENSE](LICENSE), and compatibility contracts; escalate conflicting instructions to the maintainer.
+
+Read [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) before starting implementation. A reusable kickoff prompt is at [.AGENTS/START_HERE.md](.AGENTS/START_HERE.md).
