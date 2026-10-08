@@ -114,8 +114,12 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn args(values: &[&str]) -> impl Iterator<Item = String> + '_ {
-        values.iter().map(|x| (*x).to_owned())
+    fn args(values: &[&str]) -> impl Iterator<Item = String> {
+        values
+            .iter()
+            .map(|x| (*x).to_owned())
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     #[test]
