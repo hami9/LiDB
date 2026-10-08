@@ -26,7 +26,7 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
-    // Box 1: Unprobed status banner
+    // Capability registration and telemetry sampling are separate facts.
     let status_lines = vec![
         Line::from(vec![
             Span::styled(" Subsystem: ", Style::default().fg(theme.fg_muted)),
@@ -34,34 +34,43 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
                 "NVIDIA / CUDA / AI Accelerator Telemetry",
                 Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
             ),
-            Span::raw("  "),
+        ]),
+        Line::from(vec![
+            Span::styled(" Core capability: ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                " [NOT PROBED IN PROTOTYPE] ",
+                app.gpu_capability.badge_label(),
                 Style::default()
                     .bg(theme.selected_bg)
                     .fg(theme.fg_muted)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
-        Line::from(""),
         Line::from(vec![
-            Span::styled(" Detection Result: ", Style::default().fg(theme.fg_muted)),
+            Span::styled(" Reason: ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "Capability detection not yet executed in standalone prototype. (P0 boundary)",
+                app.gpu_capability.reason(),
                 Style::default().fg(theme.info),
             ),
         ]),
         Line::from(vec![
-            Span::styled(" Execution Host:   ", Style::default().fg(theme.fg_muted)),
+            Span::styled(" Source: ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "Standalone unprivileged dashboard. Host capability detection scheduled for P1/P5 integration.",
+                "lidb-core registry (registration snapshot; no host probe)",
                 Style::default().fg(theme.fg_muted),
             ),
+        ]),
+        Line::from(vec![
+            Span::styled(" Telemetry: ", Style::default().fg(theme.fg_muted)),
+            Span::styled(
+                app.gpu_ai.status.badge_label(),
+                Style::default().fg(theme.info),
+            ),
+            Span::raw(" No GPU sample collected."),
         ]),
     ];
 
     let status_block = Block::default()
-        .title(" Host Hardware State (Rule R10 & R19 Compliant) ")
+        .title(" GPU Capability and Telemetry ")
         .title_style(theme.title_style())
         .borders(Borders::ALL)
         .border_style(theme.block_border_style(false));

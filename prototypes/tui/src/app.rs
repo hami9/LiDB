@@ -1,4 +1,5 @@
 use crate::{
+    core_adapter::CapabilityView,
     fixtures::{initial_fixtures, FixtureManager},
     model::{
         cpu_mem::CpuMemoryTelemetry,
@@ -12,6 +13,7 @@ use crate::{
     theme::Theme,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use lidb_core::{capability::bootstrap_registry, CapabilityRegistry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -90,6 +92,7 @@ pub struct App {
     pub cpu_mem: CpuMemoryTelemetry,
     pub network: NetworkTelemetry,
     pub gpu_ai: GpuAiTelemetry,
+    pub gpu_capability: CapabilityView,
     pub processes: ProcessTelemetry,
     pub diagnostics: DiagnosticsTelemetry,
 
@@ -119,6 +122,7 @@ impl Default for App {
             cpu_mem,
             network,
             gpu_ai,
+            gpu_capability: CapabilityView::gpu(&bootstrap_registry()),
             processes,
             diagnostics,
             fixture_manager: FixtureManager::new(),
@@ -135,6 +139,14 @@ impl Default for App {
 impl App {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Use an explicit core registry without probing hardware or fabricating samples.
+    pub fn with_capabilities(registry: &CapabilityRegistry) -> Self {
+        Self {
+            gpu_capability: CapabilityView::gpu(registry),
+            ..Self::default()
+        }
     }
 
     pub fn on_tick(&mut self) {

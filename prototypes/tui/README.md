@@ -6,6 +6,8 @@
 
 A modular, terminal-native Rust dashboard engineered with **Ratatui 0.30** and **Crossterm 0.29**. This prototype delivers the complete visual layout, keyboard navigation, and diagnostic state engine for the LiDashBoard (`LiDB`) P0 milestone.
 
+The Issue [#17](https://github.com/hami9/LiDB/issues/17) adapter adds a local `lidb-core` dependency. The prototype remains a separate Cargo workspace, but building this integration slice requires `crates/lidb-core` and the root workspace alongside it. See the [capability ADR](../../docs/adr/0001-core-capabilities.md).
+
 ---
 
 ## 1. Multi-Agent Coordination & Workspace Isolation
@@ -38,7 +40,8 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
    - Protocol socket overview (TCP Established, TCP Listen, TCP TimeWait, UDP sockets).
 
 4. **`4:GPU/AI` — Accelerators & Model Serving Workloads:**
-   - **Host Reality Mode (Default):** Truthfully reports unprobed hardware state (`[NOT PROBED]`) in the standalone prototype pending runtime capability detection, fulfilling Rules **R01**, **R10**, and **R19**.
+   - **Host Reality Mode (Default):** Displays the core GPU capability state/reason separately from telemetry. The bootstrap registry reports `[DISABLED]` with `Collector not implemented in P0`, while telemetry remains `[NOT PROBED]`. The core registration source is visible; it is not a host probe or a live GPU sample.
+   - The adapter preserves `Available`, `Unsupported`, `Disabled`, `PermissionDenied`, `TemporarilyUnavailable`, `Stale`, and `Error`. Missing registration stays `[NOT PROBED]`; available capability never manufactures numeric telemetry. `App::with_capabilities` accepts an explicit registry snapshot for deterministic integration tests.
    - **Simulated DGX Spark Fixture (`g` key):** High-fidelity simulation of a 2-node NVIDIA DGX Spark cluster with GB10 Grace Blackwell accelerators (SM utilization, 128 GB coherent LPDDR5x unified system memory pressure, NVLink-C2C intra-node interconnect, ConnectX-7 200GbE RoCEv2 inter-node fabric, realistic power draw within 140 W SoC TDP).
    - AI serving KPIs: Simulated vLLM and TensorRT-LLM telemetry (tokens/sec, TTFT, TPOT, KV cache utilization %, batch sizes).
    - Interconnect topology contract (**Rule R03**): Spark CPU↔GPU NVLink-C2C is strictly modeled as intra-node; inter-node communication uses ConnectX-7 Ethernet/RoCE (no external GPU-to-GPU NVLink).
@@ -108,6 +111,7 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
 cargo test --manifest-path prototypes/tui/Cargo.toml --locked --all-targets
 ```
 The test suite validates:
+- Core capability states, reasons, absent registration, snapshot ownership and GPU telemetry separation (`tests/core_adapter_tests.rs`).
 - Direct and cyclic tab navigation (`tests/app_tests.rs`)
 - Process filtering, sorting, and modal interactions (`tests/app_tests.rs`)
 - Deterministic telemetry simulation and bounds checking (`tests/fixture_tests.rs`)
