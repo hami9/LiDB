@@ -1,0 +1,8 @@
+# Maintainer approval for architecture, security and automation
+* @hami9
+/.github/ @hami9
+/.AGENTS/ @hami9
+/AGENTS.md @hami9
+/docs/ARCHITECTURE.md @hami9
+/docs/SECURITY_MODEL.md @hami9
+/scripts/release/ @hami9

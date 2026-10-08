@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docs-and-policy:
+    name: Docs and policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate Markdown links
+        run: python3 scripts/check_docs.py
+      - name: Validate GitHub workflow YAML syntax
+        run: ruby -ryaml -e 'Dir.glob(".github/workflows/*.{yml,yaml}").each { |f| YAML.load_file(f); puts "Parsed #{f}" }'
+      - name: Test release planner and PR policies
+        run: python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+      - name: Validate pull request title
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: python3 scripts/ci/check_pr.py
+      - name: Check generated binary and credentials are not committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)(\.env($|\.)|id_rsa|credentials\.json$|[^/]+\.pcap(ng)?$|target/|build/)' ; then
+            echo "::error::Tracked build artifacts or sensitive files detected"
+            exit 1
+          fi
+
+  rust-checks:
+    name: Rust (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Rust workspace availability
+        id: rust
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Rust workspace not implemented (P0). Skipping Rust tests only."
+          fi
+      - name: Install Rust components
+        if: steps.rust.outputs.present == 'true'
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+      - name: Validate formatting
+        if: steps.rust.outputs.present == 'true'
+        run: cargo fmt --all -- --check
+      - name: Lint
+        if: steps.rust.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Unit and integration tests
+        if: steps.rust.outputs.present == 'true'
+        run: cargo test --workspace --locked --all-targets
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs: [docs-and-policy, rust-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all CI branches to pass
+        env:
+          DOCS: ${{ needs.docs-and-policy.result }}
+          RUST: ${{ needs.rust-checks.result }}
+        run: |
+          test "$DOCS" = success && test "$RUST" = success
+          echo "CI Gate: PASS"

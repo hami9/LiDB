@@ -1,0 +1,155 @@
+name: Automatic Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        description: Plan and validate without publishing a release
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lidb-automatic-release-main
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify before releasing
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  plan:
+    name: Plan semantic release
+    needs: [verify]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      bump: ${{ steps.version.outputs.bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide whether release is allowed
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+          if [[ ! -f Cargo.toml ]]; then
+            echo "No Rust workspace yet; release is deliberately deferred."
+            exit 0
+          fi
+          git fetch --quiet origin main --tags
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]]; then
+            echo "This run is for an older main commit. The newer run owns the release."
+            exit 0
+          fi
+          python3 scripts/release/version.py plan > release-plan.json
+          cat release-plan.json
+          python3 - "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+          p = json.load(open("release-plan.json", encoding="utf-8"))
+          with open(sys.argv[1], "a", encoding="utf-8") as out:
+              for field in ("version", "tag", "bump"):
+                  out.write(f"{field}={p[field]}\n")
+              out.write(f"publish={str(p['publish']).lower()}\n")
+          PY
+
+  package:
+    name: Package ${{ matrix.arch }}
+    needs: [plan]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build actual Linux binaries
+        run: cargo build --release --workspace --locked --bins
+      - name: Create archive and checksum
+        env:
+          LIDB_VERSION: ${{ needs.plan.outputs.version }}
+          LIDB_ARCH: ${{ matrix.arch }}
+        run: bash scripts/release/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lidb-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish signed-off release
+    needs: [plan, package]
+    if: needs.plan.outputs.publish == 'true' && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lidb-*
+          path: dist
+          merge-multiple: true
+      - name: Verify release checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find dist -name '*.tar.gz' | wc -l)" -eq 2
+          (cd dist && for file in *.sha256; do sha256sum -c "$file"; done)
+      - name: Publish immutable-version release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LIDB_TAG: ${{ needs.plan.outputs.tag }}
+          LIDB_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main --tags
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]]; then
+            echo "main advanced during validation; aborting old release"
+            exit 0
+          fi
+          if gh release view "$LIDB_TAG" >/dev/null 2>&1; then
+            echo "Existing release $LIDB_TAG preserved; no tag overwrite"
+            exit 0
+          fi
+          python3 scripts/release/version.py notes --output RELEASE_NOTES.md
+          args=()
+          if [[ "$LIDB_VERSION" == 0.* ]]; then args+=(--prerelease); fi
+          gh release create "$LIDB_TAG" dist/*.tar.gz dist/*.sha256 \
+            --target "$GITHUB_SHA" \
+            --title "LiDashBoard $LIDB_TAG" \
+            --notes-file RELEASE_NOTES.md \
+            "${args[@]}"
