@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "crates/lidb-core",
+    "crates/lidb-protocol",
+    "apps/lidash",
+    "apps/lidashd",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/hami9/LiDB"

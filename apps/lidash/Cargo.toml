@@ -1,0 +1,16 @@
+[package]
+name = "lidash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Terminal-first LiDashBoard CLI (initial P0 scaffold)"
+
+[[bin]]
+name = "lidash"
+path = "src/main.rs"
+
+[dependencies]
+lidb-core = { path = "../../crates/lidb-core" }
+lidb-protocol = { path = "../../crates/lidb-protocol" }
