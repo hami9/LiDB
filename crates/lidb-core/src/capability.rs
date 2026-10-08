@@ -108,7 +108,9 @@ impl fmt::Display for CapabilityError {
         match self {
             Self::InvalidId(value) => write!(f, "invalid capability ID: {value}"),
             Self::MissingReason => f.write_str("unavailable capability requires a reason"),
-            Self::UnexpectedReason => f.write_str("available capability must not have an error reason"),
+            Self::UnexpectedReason => {
+                f.write_str("available capability must not have an error reason")
+            }
             Self::DuplicateId(value) => write!(f, "duplicate capability: {value}"),
         }
     }
@@ -121,9 +123,9 @@ fn valid_id(value: &str) -> bool {
         && value.starts_with("org.lidb.")
         && !value.contains("..")
         && !value.ends_with('.')
-        && value
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-')
+        && value.chars().all(|c| {
+            c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-'
+        })
 }
 
 /// Deterministic, duplicate-safe capability registry.
@@ -202,7 +204,13 @@ mod tests {
 
     #[test]
     fn invalid_ids_and_missing_reasons_are_rejected() {
-        for id in ["", "gpu", "org.lidb..gpu", "org.lidb.AI", "org.lidb.gpu/../../x"] {
+        for id in [
+            "",
+            "gpu",
+            "org.lidb..gpu",
+            "org.lidb.AI",
+            "org.lidb.gpu/../../x",
+        ] {
             assert!(matches!(
                 Capability::new(id, CapabilityState::Available, None),
                 Err(CapabilityError::InvalidId(_))
@@ -213,7 +221,11 @@ mod tests {
             Err(CapabilityError::MissingReason)
         );
         assert_eq!(
-            Capability::new("org.lidb.ai.gpu", CapabilityState::Available, Some("bad".into())),
+            Capability::new(
+                "org.lidb.ai.gpu",
+                CapabilityState::Available,
+                Some("bad".into())
+            ),
             Err(CapabilityError::UnexpectedReason)
         );
     }
@@ -238,6 +250,8 @@ mod tests {
     fn bootstrap_does_not_claim_active_collectors() {
         let registry = bootstrap_registry();
         assert_eq!(registry.len(), 4);
-        assert!(registry.iter().all(|item| item.state() == CapabilityState::Disabled));
+        assert!(registry
+            .iter()
+            .all(|item| item.state() == CapabilityState::Disabled));
     }
 }

@@ -131,7 +131,13 @@ impl<T> MetricObservation<T> {
         if state.reason().is_some_and(|value| value.trim().is_empty()) {
             return Err(TelemetryError::EmptyFailureReason);
         }
-        Ok(Self { name, source, unit, monotonic_ns, state })
+        Ok(Self {
+            name,
+            source,
+            unit,
+            monotonic_ns,
+            state,
+        })
     }
 
     /// Stable metric name.
@@ -194,7 +200,8 @@ mod tests {
 
     #[test]
     fn missing_is_never_zero() {
-        let unavailable: MetricState<u64> = MetricState::PermissionDenied("no sensor access".into());
+        let unavailable: MetricState<u64> =
+            MetricState::PermissionDenied("no sensor access".into());
         assert_eq!(unavailable.available_value(), None);
         assert_eq!(unavailable.name(), "permission_denied");
         assert_eq!(unavailable.reason(), Some("no sensor access"));
@@ -205,22 +212,47 @@ mod tests {
     #[test]
     fn invalid_sample_and_missing_reason_are_rejected() {
         assert_eq!(
-            MetricObservation::<f64>::new("", "linux.psi", Unit::Percent, 123, MetricState::Available(2.0)),
+            MetricObservation::<f64>::new(
+                "",
+                "linux.psi",
+                Unit::Percent,
+                123,
+                MetricState::Available(2.0)
+            ),
             Err(TelemetryError::InvalidName)
         );
         assert_eq!(
-            MetricObservation::<f64>::new("memory.psi", "", Unit::Percent, 123, MetricState::Available(2.0)),
+            MetricObservation::<f64>::new(
+                "memory.psi",
+                "",
+                Unit::Percent,
+                123,
+                MetricState::Available(2.0)
+            ),
             Err(TelemetryError::InvalidSource)
         );
         assert_eq!(
-            MetricObservation::<f64>::new("memory.psi", "linux.psi", Unit::Percent, 123, MetricState::Disabled("".into())),
+            MetricObservation::<f64>::new(
+                "memory.psi",
+                "linux.psi",
+                Unit::Percent,
+                123,
+                MetricState::Disabled("".into())
+            ),
             Err(TelemetryError::EmptyFailureReason)
         );
     }
 
     #[test]
     fn sample_retains_provenance_and_clock() {
-        let obs = MetricObservation::new("cpu.percent", "fixture", Unit::Percent, 999, MetricState::Available(50.0)).unwrap();
+        let obs = MetricObservation::new(
+            "cpu.percent",
+            "fixture",
+            Unit::Percent,
+            999,
+            MetricState::Available(50.0),
+        )
+        .unwrap();
         assert_eq!(obs.name(), "cpu.percent");
         assert_eq!(obs.source(), "fixture");
         assert_eq!(obs.monotonic_ns(), 999);
