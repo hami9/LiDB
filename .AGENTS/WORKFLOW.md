@@ -24,6 +24,8 @@ Use [REVIEW_5_AXES.md](REVIEW_5_AXES.md). Security-sensitive and API-breaking ch
 
 Update [WORKLOG.md](WORKLOG.md) and [STATE.md](STATE.md), docs, tests and changelog. Fill out [HANDOFF_TEMPLATE.md](HANDOFF_TEMPLATE.md); open a PR with targeted scope. Do not merge or trigger release actions unless explicitly authorized.
 
-## Parallel work
+## Parallel work: strict ownership
 
-Allocate non-overlapping modules/branches to separate agents. One integrator owns shared schemas and merges. Agents must not concurrently rewrite the worklog or `STATE.md` without coordination. If collaboration is asynchronous, consolidate logs during handoff with source branch/commit references.
+Read [WORKTREES.md](WORKTREES.md) and the [multi-agent skill](skills/multi-agent/SKILL.md). One GitHub issue and one unique `agent/<agent>/<task>` branch per agent. Work locally in an isolated linked Git worktree created by `scripts/worktrees.py`. Other devices and cloud agents have independent clones and communicate by GitHub PRs, not shared uncommitted files.
+
+Allocate non-overlapping modules. Only the coordinator edits shared schemas, the central `WORKLOG.md` and `STATE.md` during concurrent work. Task agents put test evidence in their PR or uniquely named per-task log. The coordinator consolidates logs **after** merge; workers never race to update shared phase flags.

@@ -33,3 +33,11 @@ Commands, environments, exit codes and reproducible evidence. Clearly label NOT 
 - [ ] Updated `.AGENTS/STATE.md` to actual verified state
 - [ ] No unsupported claims or secrets in diff
 - [ ] Maintainer approval requested for sensitive changes
+
+## Parallel-agent ownership
+
+- Worktree agent / task / branch:
+- GitHub issue:
+- Owned file scope (and files explicitly excluded):
+- Cross-agent dependencies and integration order:
+- Coordinator aware of shared-schema or CI changes: Yes / No

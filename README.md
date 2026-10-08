@@ -60,3 +60,24 @@ Maintainers have not yet published releases or measured production overhead. Ben
 - [Agent CI/CD skill](.AGENTS/skills/ci-cd/SKILL.md) — maintain workflow security, SemVer and handoff conventions.
 
 Current implementation state remains pre-P0 application code. No source/binary release exists yet.
+
+## Parallel development with AI agents
+
+The repository supports **separate local Git worktrees for Antigravity, Claude, ChatGPT and other agents**. Every agent gets an independent branch and checkout, while GitHub Issues, PRs and CI Gate provide cross-device coordination. Worktree folders themselves are **Git-ignored and cannot be created on your own machine by a GitHub commit**.
+
+- [Full multi-agent/worktree guide](.AGENTS/WORKTREES.md)
+- [Cross-platform Python worktree manager](scripts/worktrees.py)
+- [Windows PowerShell wrapper](scripts/worktree.ps1)
+- [Linux / Git Bash wrapper](scripts/worktree.sh)
+- [Claude Code instructions](CLAUDE.md)
+- [Antigravity scoped rules](.agents/rules/multi-agent.md)
+
+Quick start after cloning:
+
+```powershell
+.\scripts\worktree.ps1 create antigravity p0-core
+.\scripts\worktree.ps1 create claude p0-telemetry
+.\scripts\worktree.ps1 list
+```
+
+A coding agent must always work inside its own worktree and submit a focused PR; the coordinator alone updates shared status after integration.

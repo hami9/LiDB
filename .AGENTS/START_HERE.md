@@ -14,3 +14,7 @@ Inspect the existing repository and branch. Propose a minimal P0 vertical slice 
 Implement only that slice after checking for conflicting work. No root TUI, no auto-network changes, no fabricated performance/hardware claims. Show real command outputs and update `.AGENTS/WORKLOG.md` and `.AGENTS/STATE.md`. Open a focused PR or provide a reviewable patch. Review the result across kernel correctness, AI/hardware semantics, security, reliability/performance and product/UX/extensibility. Treat unsupported hardware paths honestly.
 
 Do not say a phase is complete unless all its written exit gates have been checked.
+
+## If multiple agents run at once
+
+Before coding, read [WORKTREES.md](WORKTREES.md), reserve a unique GitHub issue/branch scope and open the corresponding local worktree. Claude and Antigravity must use separate editor windows. GitHub-based agents work in remote feature branches, not on the user's unsynced local changes. Do not rewrite shared task-state files from independent branches.

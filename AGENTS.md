@@ -32,3 +32,11 @@ Read [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) before starting implementation. 
 - Name PRs with a Conventional Commit prefix. Preserve exact release intent; `feat:` means minor, `!:` or a BREAKING CHANGE footer means major, all routine changes default to patch.
 - Never bypass `CI Gate`, publish from a PR, invent a successful hardware test, manually alter a published version tag, or create artifacts without verified binaries.
 - Branch rulesets require administrative activation: placing JSON files in `.github/rulesets/` does not enforce GitHub repository settings.
+
+## Multi-agent worktree contract
+
+- **Before any parallel implementation**, read [.AGENTS/WORKTREES.md](.AGENTS/WORKTREES.md) and the [multi-agent skill](.AGENTS/skills/multi-agent/SKILL.md).
+- Each local agent gets a unique issue, `agent/<agent>/<task>` branch and isolated `.worktrees/<agent>/<task>` checkout. The primary checkout is for coordination, not concurrent code edits.
+- ChatGPT's GitHub integration changes remote branches and PRs. It cannot share the local filesystem used by Antigravity or Claude; other devices must clone and fetch changes.
+- Coordinator alone owns central `.AGENTS/STATE.md`, `.AGENTS/WORKLOG.md`, shared schemas and CI modifications during concurrent development. Task workers record details in their PR/unique task logs.
+- Never manually copy or delete Git worktree admin files; use `scripts/worktrees.py` and Git-approved workflows.
