@@ -15,3 +15,5 @@ Read [../SKILL_POLICY.md](../SKILL_POLICY.md) before choosing a skill, and read 
 - [Documentation and release](docs-release/SKILL.md)
 
 - [CI/CD, versioning and release safety](ci-cd/SKILL.md)
+
+- [Multi-agent worktree isolation and coordination](multi-agent/SKILL.md)

@@ -87,10 +87,28 @@ jobs:
         if: steps.rust.outputs.present == 'true'
         run: cargo test --workspace --locked --all-targets
 
+  worktree-windows:
+    name: Worktree Windows smoke
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run worktree lifecycle tests on Windows
+        shell: pwsh
+        run: python -m unittest discover -s tests/ci -p 'test_worktrees.py' -v
+      - name: Verify PowerShell wrapper
+        shell: pwsh
+        run: .\\scripts\\worktree.ps1 doctor
+
   ci-gate:
     name: CI Gate
     if: always()
-    needs: [docs-and-policy, rust-checks]
+    needs: [docs-and-policy, rust-checks, worktree-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -98,10 +116,11 @@ jobs:
         env:
           DOCS: ${{ needs.docs-and-policy.result }}
           RUST: ${{ needs.rust-checks.result }}
+          WORKTREES: ${{ needs.worktree-windows.result }}
         run: |
           set -euo pipefail
-          if [[ "$DOCS" != "success" || "$RUST" != "success" ]]; then
-            echo "::error::CI Gate blocked: docs=$DOCS rust=$RUST"
+          if [[ "$DOCS" != "success" || "$RUST" != "success" || "$WORKTREES" != "success" ]]; then
+            echo "::error::CI Gate blocked: docs=$DOCS rust=$RUST worktrees=$WORKTREES"
             exit 1
           fi
           echo "CI Gate: PASS"

@@ -55,3 +55,15 @@ R22. CI must execute in minimal-privilege context for PRs; only main-only releas
 R23. Never bypass failed checks, mutate existing release tags, or invent release artifacts. Real release binaries must compile on supported architectures with checksum and provenance checks.
 
 R24. The proposed GitHub rulesets are not active until a maintainer verifies administration-level activation. Do not state or infer enforcement from a committed JSON policy alone.
+
+## Parallel worktree invariants
+
+R25. Every concurrently active coding agent owns one issue, one branch and one local worktree (or its own remote clone). No shared writable directories.
+
+R26. Never push another agent's branch, edit uncommitted work, force-remove a worktree or bypass the protected-PR process.
+
+R27. Central `STATE.md`, central `WORKLOG.md`, shared interface schema and CI files have one designated integrator/owner at a time. Task evidence stays in distinct PRs or scoped logs.
+
+R28. Git worktrees only isolate **local checkouts**; do not claim they synchronize cloud machines or replace issue-level task ownership.
+
+R29. All branch creation/removal scripts must reject traversal, unexpected pre-existing paths and dirty directories. No automatic branch deletion or force push.

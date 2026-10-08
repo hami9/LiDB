@@ -37,3 +37,7 @@ Every agent should keep contextual assumptions in its task description, pass exp
 ## CI/CD-specific guidance
 
 Read [CI/CD skill](skills/ci-cd/SKILL.md) and [CI/CD policy](../docs/CI_CD.md) when changing release, security scanning, checks, versioning or repository governance. Release and branch protection are separate controls; agents have no implicit authority to modify repository administration settings.
+
+## Agent workspace isolation
+
+See [WORKTREES.md](WORKTREES.md) for local checkout creation, branch ownership, safe removal and cross-machine PR coordination. Native Antigravity support lives under the intentionally **lowercase** [../.agents/rules/multi-agent.md](../.agents/rules/multi-agent.md); Claude uses [../CLAUDE.md](../CLAUDE.md). This `.AGENTS/` directory remains the canonical policy home.

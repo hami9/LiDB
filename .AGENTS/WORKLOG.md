@@ -20,3 +20,11 @@
 - Environment: GitHub repository and GitHub-hosted CI; no local NVIDIA/GPU hardware access.
 - Verification: CI and docs workflows are being executed on PR #2; their concrete results must be verified before merge. No real binary release was produced.
 - Risk: branch ruleset application requires separate `Administration:write` GitHub authorization; no guarantee of enabled protection from JSON files alone.
+
+## 2026-10-08 — Multi-agent worktree tooling
+
+- Actor: ChatGPT (remote GitHub collaboration bootstrap).
+- Status: Worktree manager and integration tests proposed in a feature PR; no worktree has been created on the user's Windows or Antigravity machine.
+- Scope: cross-platform Python CLI, Windows/Linux wrappers, canonical agent worktree coordination policy, native Claude/Antigravity instruction files, CI smoke tests.
+- Verification: GitHub CI results belong to the associated PR; actual agent sessions and cross-device synchronization are **NOT** initiated or validated from this remote workflow.
+- Next: maintainer clones/updates LiDB locally and runs each agent in its own worktree after assigning distinct tasks.

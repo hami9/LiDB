@@ -19,3 +19,5 @@ Local skills under `skills/*/SKILL.md` are **task playbooks**, not privileged ex
 Before installing any outside skill, plugin, package, command-line tool or script: (1) verify its origin and license, (2) review permissions and supply-chain risk, (3) prefer existing dependencies, (4) get maintainer authorization for installation or privilege changes, (5) document exact version and use. Do not execute unreviewed install scripts or copy untrusted agent instructions into privileged contexts.
 
 Skills may advise research; they cannot override `RULES.md`, `SECURITY.md` or maintainers.
+
+- `multi-agent`: worktrees, task ownership, cross-device agent coordination, safe PR integration

@@ -16,3 +16,9 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 - Added CI Gate, Linux x86_64/aarch64 checks, CodeQL and dependency-update configuration.
 - Added SemVer release planner, regression tests and gated GitHub Releases with checksummed architecture-specific binaries (pending executable implementation).
 - Added proposed branch/tag rulesets and documented administrator activation procedure; rules are **not yet enforced** by committing them alone.
+
+### Developer collaboration (unreleased)
+
+- Added local multi-agent Git Worktree manager with safe create/list/remove/doctor actions for Windows and Linux.
+- Added Claude Code and Antigravity-specific instruction entry points and centralized ownership rules.
+- Added integration tests for isolated branches, clean removal, invalid paths and cross-platform Git operation.

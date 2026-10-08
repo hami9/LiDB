@@ -35,3 +35,7 @@ Thumbs.db
 *.tmp
 
 # Keep Cargo.lock when the application workspace is introduced.
+
+# Local Git worktrees (NEVER track per-agent checkout data)
+/.worktrees/
+/.worktree/
