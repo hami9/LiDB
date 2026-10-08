@@ -34,5 +34,5 @@ Only mark an item complete with a link to tested commits, environments, reviewer
 ## Pending integration
 
 - PR #9: core workspace; PR #11: framing stacked on #9; PR #13: separate fixture TUI. No owner branches modified by Codex.
-- Issue #14: CI slice under review; local Python tests passed, Linux integration CI pending. See [task worklog](worklogs/issue-14.md) and [integration review](../docs/P0_INTEGRATION_REVIEW.md).
+- Issue #14 / PR #15: CI slice under review; 24 local Python tests and native x86_64/aarch64 TUI-only and combined integration CI passed. Standalone CodeQL Actions/Rust analysis passed. See [task worklog](worklogs/issue-14.md) and [integration review](../docs/P0_INTEGRATION_REVIEW.md).
 - Standalone TUI was not compiled by the old root-only gate. Hardware and real UI/core/daemon integration remain unvalidated.

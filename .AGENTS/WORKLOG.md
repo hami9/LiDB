@@ -35,3 +35,10 @@
 - Scope: required TUI matrix, documentation tests, fail-closed aggregate, standalone CodeQL detection and source review of PRs #9/#11/#13. No other agent's runtime files or branch changed.
 - Windows Python policy suite: 24 tests passed, exit 0. Cargo is unavailable locally; native Linux integration validation pending.
 - Full acceptance, evidence and review limits: [Issue 14 worklog](worklogs/issue-14.md). P0 is not complete; no merge or release authorized or performed.
+
+### Native Linux CI evidence
+
+- TUI-only `0985b30580525ce346b5c1a596896b36f4517089`: [CI](https://github.com/hami9/LiDB/actions/runs/37776716589) passed with full TUI runtime steps on x86_64/aarch64 and no root manifest.
+- Combined #9/#11/#13 plus CI implementation `3210e66`: `76aa72c3adc939edca15204b4656a10b91e4027d`, [CI](https://github.com/hami9/LiDB/actions/runs/37776757450) passed. Per architecture: 14 root and 20 TUI tests passed, format/lint/docs/headless/smoke commands successful; docs suites contain zero cases.
+- Snapshots are on Codex's separate validation branch, built with ordinary local merges. No PR/main merge, release or hardware validation took place. Feature PR #15 contains only Codex's CI/docs slice.
+- Standalone [CodeQL](https://github.com/hami9/LiDB/actions/runs/37776710115) passed at the TUI-only snapshot; Rust analysis actually ran despite the missing root manifest. Actions analysis passed; C correctly skipped absent source.

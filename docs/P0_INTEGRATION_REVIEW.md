@@ -29,7 +29,11 @@ Existing CI reported success on these heads. However, the old Rust jobs skipped 
 
 ## Verification
 
-Local Python policy tests, document links and whitespace checks are recorded in the [task worklog](../.AGENTS/worklogs/issue-14.md). Neither Windows nor the checked Ubuntu WSL environment has Cargo. Linux runtime evidence will come from an isolated integration branch combining the exact reviewed heads with this CI slice; results must identify its commit and run URL. The feature PR itself remains free of other owners' runtime changes.
+Local Python policy tests, document links and whitespace checks are recorded in the [task worklog](../.AGENTS/worklogs/issue-14.md). Neither Windows nor the checked Ubuntu WSL environment has Cargo.
+
+The [TUI-only CI run](https://github.com/hami9/LiDB/actions/runs/37776716589) passed at `0985b30580525ce346b5c1a596896b36f4517089`, proving the standalone checks execute without a root manifest. The [combined CI run](https://github.com/hami9/LiDB/actions/runs/37776757450) passed at `76aa72c3adc939edca15204b4656a10b91e4027d`, combining the three reviewed heads and CI implementation `3210e66`. Both runs executed the full TUI checks on native x86_64/aarch64. The combined run also executed the root Rust checks: 14 root and 20 TUI tests per architecture passed; documentation commands passed with zero cases. These results establish build/test coexistence, not functional UI/core integration. Stable Rust resolved to 1.99.0, not an MSRV test.
+
+The validation snapshots are isolated on `agent/codex/tui-validation`; the feature [PR #15](https://github.com/hami9/LiDB/pull/15) remains free of other owners' runtime changes. The [standalone CodeQL run](https://github.com/hami9/LiDB/actions/runs/37776710115) passed at the TUI-only snapshot: Actions, detection and Rust analysis succeeded; C analysis correctly skipped absent code.
 
 ## Five-axis review
 
