@@ -21,7 +21,10 @@ pub struct Version {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compatibility {
     /// Same major generation. Minor version is the lowest supported minor.
-    Compatible { negotiated: Version },
+    Compatible {
+        /// The agreed protocol version that both peers can understand.
+        negotiated: Version,
+    },
     /// Different major generation. Do not attempt to interpret the stream.
     UnsupportedMajor,
 }
