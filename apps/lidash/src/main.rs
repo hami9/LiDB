@@ -41,14 +41,19 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, String> {
         return Ok(HELP.to_owned());
     }
     if command == "--version" || command == "-V" {
-        return Ok(format!("lidash {} (bootstrap; no collectors)\n", env!("CARGO_PKG_VERSION")));
+        return Ok(format!(
+            "lidash {} (bootstrap; no collectors)\n",
+            env!("CARGO_PKG_VERSION")
+        ));
     }
     if command != "status" && command != "capabilities" {
         return Err(format!("unknown command: {command}\n{HELP}"));
     }
     let fmt = args.next();
     if !matches!(fmt.as_deref(), None | Some("--json")) || args.next().is_some() {
-        return Err(format!("unknown option for {command}: use --json or no option"));
+        return Err(format!(
+            "unknown option for {command}: use --json or no option"
+        ));
     }
     let json = fmt.is_some();
     if command == "status" {
@@ -75,7 +80,9 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, String> {
                 })
                 .collect::<Vec<_>>()
                 .join(",");
-            Ok(format!("{{\"schema_version\":\"0.1\",\"capabilities\":[{items}]}}\n"))
+            Ok(format!(
+                "{{\"schema_version\":\"0.1\",\"capabilities\":[{items}]}}\n"
+            ))
         } else {
             let mut out = String::new();
             for item in registry.iter() {
@@ -120,8 +127,12 @@ mod tests {
 
     #[test]
     fn status_is_truthful_and_immutable() {
-        assert!(run(args(&["status", "--json"])).unwrap().contains("\"collector_running\":false"));
-        assert!(run(args(&["capabilities", "--json"])).unwrap().contains("\"status\":\"disabled\""));
+        assert!(run(args(&["status", "--json"]))
+            .unwrap()
+            .contains("\"collector_running\":false"));
+        assert!(run(args(&["capabilities", "--json"]))
+            .unwrap()
+            .contains("\"status\":\"disabled\""));
         assert!(run(args(&["made-up"])).is_err());
         assert!(run(args(&["status", "--json", "extra"])).is_err());
     }

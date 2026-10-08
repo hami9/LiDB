@@ -35,7 +35,10 @@ pub fn negotiate(local: Version, peer: Version) -> Compatibility {
         Compatibility::UnsupportedMajor
     } else {
         Compatibility::Compatible {
-            negotiated: Version { major: local.major, minor: local.minor.min(peer.minor) },
+            negotiated: Version {
+                major: local.major,
+                minor: local.minor.min(peer.minor),
+            },
         }
     }
 }
@@ -48,7 +51,9 @@ mod tests {
     fn compatible_minor_selects_oldest() {
         assert_eq!(
             negotiate(PROTOCOL_VERSION, Version { major: 0, minor: 0 }),
-            Compatibility::Compatible { negotiated: Version { major: 0, minor: 0 } }
+            Compatibility::Compatible {
+                negotiated: Version { major: 0, minor: 0 }
+            }
         );
     }
 
