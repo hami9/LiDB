@@ -39,3 +39,8 @@ Thumbs.db
 # Local Git worktrees (NEVER track per-agent checkout data)
 /.worktrees/
 /.worktree/
+
+# Python cache
+__pycache__/
+*.py[cod]
+

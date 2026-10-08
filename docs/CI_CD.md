@@ -53,9 +53,15 @@ bash scripts/admin/apply_rulesets.sh --dry-run
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked --all-targets
+# Standalone TUI prototype workspace:
+cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
+cargo clippy --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked -- -D warnings
+cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked
+cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --headless-test
+cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --smoke-test
 ```
 
-The `plan` command requires Git history/tags. Publishing a release requires GitHub Actions, configured permissions and passing CI. Do not copy production tokens into local config or the repository.
+The `plan` command requires Git history/tags. Publishing a release requires GitHub Actions, configured permissions and passing CI. Do not copy production tokens into local config or the repository. The required `CI Gate` aggregates docs, root Rust workspace, Windows worktrees, and standalone TUI matrix checks.
 
 ## Remaining open-source release hardening
 
