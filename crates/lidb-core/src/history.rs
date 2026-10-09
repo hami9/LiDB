@@ -69,7 +69,11 @@ pub enum Freshness {
 /// Exactly the threshold age is considered current; a clock moving backward
 /// is NOT mistaken for a new measurement.
 #[must_use]
-pub fn assess_freshness(sample_monotonic_ns: u64, now_monotonic_ns: u64, max_age_ns: u64) -> Freshness {
+pub fn assess_freshness(
+    sample_monotonic_ns: u64,
+    now_monotonic_ns: u64,
+    max_age_ns: u64,
+) -> Freshness {
     match now_monotonic_ns.checked_sub(sample_monotonic_ns) {
         None => Freshness::ClockMovedBackwards {
             ahead_ns: sample_monotonic_ns - now_monotonic_ns,
@@ -161,9 +165,8 @@ impl<T> TelemetryHistory<T> {
     /// Returns `None` if no samples have been accepted.
     #[must_use]
     pub fn latest_freshness(&self, now_monotonic_ns: u64, max_age_ns: u64) -> Option<Freshness> {
-        self.latest().map(|sample| {
-            assess_freshness(sample.monotonic_ns(), now_monotonic_ns, max_age_ns)
-        })
+        self.latest()
+            .map(|sample| assess_freshness(sample.monotonic_ns(), now_monotonic_ns, max_age_ns))
     }
 
     /// Current number of retained observations.
@@ -205,33 +208,89 @@ mod tests {
 
     #[test]
     fn invalid_capacity_rejected() {
-        assert!(matches!(TelemetryHistory::<u64>::new(0), Err(HistoryError::ZeroCapacity)));
+        assert!(matches!(
+            TelemetryHistory::<u64>::new(0),
+            Err(HistoryError::ZeroCapacity)
+        ));
         assert!(matches!(
             TelemetryHistory::<u64>::new(MAX_HISTORY_SAMPLES + 1),
             Err(HistoryError::CapacityTooLarge)
         ));
-        assert_eq!(TelemetryHistory::<u64>::new(MAX_HISTORY_SAMPLES).unwrap().capacity(), MAX_HISTORY_SAMPLES);
+        assert_eq!(
+            TelemetryHistory::<u64>::new(MAX_HISTORY_SAMPLES)
+                .unwrap()
+                .capacity(),
+            MAX_HISTORY_SAMPLES
+        );
     }
 
     #[test]
     fn evicts_oldest_without_losing_unavailability_state() {
         let mut history = TelemetryHistory::new(2).unwrap();
-        assert_eq!(history.push(obs("memory.bytes", "linux.meminfo", 1, MetricState::Available(0))), Ok(false));
-        assert_eq!(history.push(obs("memory.bytes", "linux.meminfo", 2, MetricState::PermissionDenied("denied".into()))), Ok(false));
-        assert_eq!(history.push(obs("memory.bytes", "linux.meminfo", 3, MetricState::Available(33))), Ok(true));
+        assert_eq!(
+            history.push(obs(
+                "memory.bytes",
+                "linux.meminfo",
+                1,
+                MetricState::Available(0)
+            )),
+            Ok(false)
+        );
+        assert_eq!(
+            history.push(obs(
+                "memory.bytes",
+                "linux.meminfo",
+                2,
+                MetricState::PermissionDenied("denied".into())
+            )),
+            Ok(false)
+        );
+        assert_eq!(
+            history.push(obs(
+                "memory.bytes",
+                "linux.meminfo",
+                3,
+                MetricState::Available(33)
+            )),
+            Ok(true)
+        );
         assert_eq!(history.len(), 2);
         assert_eq!(history.evicted_count(), 1);
-        assert_eq!(history.iter().map(MetricObservation::monotonic_ns).collect::<Vec<_>>(), vec![2, 3]);
-        assert_eq!(history.iter().next().unwrap().state().available_value(), None);
-        assert_eq!(history.latest().unwrap().state().available_value(), Some(&33));
+        assert_eq!(
+            history
+                .iter()
+                .map(MetricObservation::monotonic_ns)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert_eq!(
+            history.iter().next().unwrap().state().available_value(),
+            None
+        );
+        assert_eq!(
+            history.latest().unwrap().state().available_value(),
+            Some(&33)
+        );
     }
 
     #[test]
     fn reject_cross_series_and_clock_regression_without_mutating() {
         let mut history = TelemetryHistory::new(1).unwrap();
-        history.push(obs("cpu.load", "linux.proc", 100, MetricState::Available(7))).unwrap();
+        history
+            .push(obs(
+                "cpu.load",
+                "linux.proc",
+                100,
+                MetricState::Available(7),
+            ))
+            .unwrap();
         assert_eq!(
-            history.push(obs("memory.bytes", "linux.proc", 101, MetricState::Available(9))),
+            history.push(obs(
+                "memory.bytes",
+                "linux.proc",
+                101,
+                MetricState::Available(9)
+            )),
             Err(HistoryError::DifferentMetric)
         );
         assert_eq!(
@@ -243,14 +302,21 @@ mod tests {
             Err(HistoryError::NonMonotonicTimestamp)
         );
         assert_eq!(history.evicted_count(), 0);
-        assert_eq!(history.latest().unwrap().state().available_value(), Some(&7));
+        assert_eq!(
+            history.latest().unwrap().state().available_value(),
+            Some(&7)
+        );
     }
 
     #[test]
     fn equal_timestamps_are_accepted_for_same_series() {
         let mut history = TelemetryHistory::new(2).unwrap();
-        history.push(obs("cpu.load", "fixture", 1, MetricState::Available(1))).unwrap();
-        history.push(obs("cpu.load", "fixture", 1, MetricState::Available(2))).unwrap();
+        history
+            .push(obs("cpu.load", "fixture", 1, MetricState::Available(1)))
+            .unwrap();
+        history
+            .push(obs("cpu.load", "fixture", 1, MetricState::Available(2)))
+            .unwrap();
         assert_eq!(history.len(), 2);
     }
 
@@ -264,17 +330,44 @@ mod tests {
 
     #[test]
     fn threshold_and_time_regression_are_distinct() {
-        assert_eq!(assess_freshness(90, 100, 10), Freshness::Current { age_ns: 10 });
-        assert_eq!(assess_freshness(90, 101, 10), Freshness::Stale { age_ns: 11 });
-        assert_eq!(assess_freshness(110, 100, 10), Freshness::ClockMovedBackwards { ahead_ns: 10 });
-        assert_eq!(assess_freshness(0, u64::MAX, 0), Freshness::Stale { age_ns: u64::MAX });
+        assert_eq!(
+            assess_freshness(90, 100, 10),
+            Freshness::Current { age_ns: 10 }
+        );
+        assert_eq!(
+            assess_freshness(90, 101, 10),
+            Freshness::Stale { age_ns: 11 }
+        );
+        assert_eq!(
+            assess_freshness(110, 100, 10),
+            Freshness::ClockMovedBackwards { ahead_ns: 10 }
+        );
+        assert_eq!(
+            assess_freshness(0, u64::MAX, 0),
+            Freshness::Stale { age_ns: u64::MAX }
+        );
     }
 
     #[test]
     fn freshness_does_not_convert_missing_data_to_available() {
         let mut history = TelemetryHistory::new(1).unwrap();
-        history.push(obs("cpu.load", "fixture", 50, MetricState::Unsupported("no sensor".into()))).unwrap();
-        assert_eq!(history.latest_freshness(51, 10), Some(Freshness::Current { age_ns: 1 }));
-        assert!(history.latest().unwrap().state().available_value().is_none());
+        history
+            .push(obs(
+                "cpu.load",
+                "fixture",
+                50,
+                MetricState::Unsupported("no sensor".into()),
+            ))
+            .unwrap();
+        assert_eq!(
+            history.latest_freshness(51, 10),
+            Some(Freshness::Current { age_ns: 1 })
+        );
+        assert!(history
+            .latest()
+            .unwrap()
+            .state()
+            .available_value()
+            .is_none());
     }
 }
