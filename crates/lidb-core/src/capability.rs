@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// States used by optional Linux, GPU and distributed capabilities.
+/// States used by Linux diagnostic capabilities.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CapabilityState {
     /// An adapter is available and has passed its own checks.
@@ -178,12 +178,7 @@ impl CapabilityRegistry {
 #[must_use]
 pub fn bootstrap_registry() -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
-    for id in [
-        "org.lidb.linux.host",
-        "org.lidb.linux.network",
-        "org.lidb.ai.gpu",
-        "org.lidb.ai.distributed",
-    ] {
+    for id in ["org.lidb.linux.host", "org.lidb.linux.network"] {
         registry
             .register(
                 Capability::new(
@@ -249,7 +244,7 @@ mod tests {
     #[test]
     fn bootstrap_does_not_claim_active_collectors() {
         let registry = bootstrap_registry();
-        assert_eq!(registry.len(), 4);
+        assert_eq!(registry.len(), 2);
         assert!(registry
             .iter()
             .all(|item| item.state() == CapabilityState::Disabled));

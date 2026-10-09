@@ -2,14 +2,18 @@
 members = [
     "crates/lidb-core",
     "crates/lidb-protocol",
+    "crates/lidb-collect",
     "apps/lidash",
-    "apps/lidashd",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/hami9/LiDB"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

@@ -3,10 +3,12 @@
 //! Observations use a monotonic clock domain provided by the collector. A
 //! timestamp from one node is NOT comparable to another node unless explicit
 //! clock synchronization uncertainty is represented by a higher layer.
+use serde::Serialize;
 use std::fmt;
 
 /// Units of telemetry observations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Unit {
     /// Bytes in storage or memory.
     Bytes,
@@ -22,8 +24,8 @@ pub enum Unit {
     Watts,
     /// Thermal temperature in Celsius.
     Celsius,
-    /// Model inference tokens per second, with workload details.
-    TokensPerSecond,
+    /// Elapsed seconds, including fractional uptime.
+    Seconds,
 }
 
 impl Unit {
@@ -38,13 +40,14 @@ impl Unit {
             Self::Nanoseconds => "nanoseconds",
             Self::Watts => "watts",
             Self::Celsius => "celsius",
-            Self::TokensPerSecond => "tokens_per_second",
+            Self::Seconds => "seconds",
         }
     }
 }
 
 /// A sensor value or one explicit reason why no value should be trusted.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "status", content = "value", rename_all = "snake_case")]
 pub enum MetricState<T> {
     /// Value was actually measured by a named source.
     Available(T),
@@ -102,7 +105,7 @@ impl<T> MetricState<T> {
 }
 
 /// One observation, including origin, unit, and source clock timestamp.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct MetricObservation<T> {
     name: String,
     source: String,
@@ -122,14 +125,20 @@ impl<T> MetricObservation<T> {
     ) -> Result<Self, TelemetryError> {
         let name = name.into();
         let source = source.into();
-        if name.trim().is_empty() || name.len() > 128 {
+        if name.trim().is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
             return Err(TelemetryError::InvalidName);
         }
-        if source.trim().is_empty() || source.len() > 128 {
+        if source.trim().is_empty() || source.len() > 128 || source.chars().any(char::is_control) {
             return Err(TelemetryError::InvalidSource);
         }
         if state.reason().is_some_and(|value| value.trim().is_empty()) {
             return Err(TelemetryError::EmptyFailureReason);
+        }
+        if state
+            .reason()
+            .is_some_and(|value| value.len() > 512 || value.chars().any(char::is_control))
+        {
+            return Err(TelemetryError::InvalidFailureReason);
         }
         Ok(Self {
             name,
@@ -180,6 +189,8 @@ pub enum TelemetryError {
     InvalidSource,
     /// Unavailable value carries an empty explanation.
     EmptyFailureReason,
+    /// Failure explanation exceeds its limit or contains terminal controls.
+    InvalidFailureReason,
 }
 
 impl fmt::Display for TelemetryError {
@@ -188,6 +199,7 @@ impl fmt::Display for TelemetryError {
             Self::InvalidName => f.write_str("invalid metric name"),
             Self::InvalidSource => f.write_str("invalid metric source"),
             Self::EmptyFailureReason => f.write_str("unavailable metric requires a reason"),
+            Self::InvalidFailureReason => f.write_str("invalid metric failure reason"),
         }
     }
 }

@@ -10,3 +10,9 @@ description = "Core diagnostic capability and telemetry contracts for LiDashBoar
 [lib]
 name = "lidb_core"
 path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
