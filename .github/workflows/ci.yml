@@ -79,6 +79,8 @@ jobs:
           cargo run -p lidash --locked -- snapshot --json > snapshot.json
           cargo run -p lidash --locked -- doctor --json > doctor.json
           python3 -c 'import json; s=json.load(open("snapshot.json")); assert s["schema_version"] == "0.1"; assert s["mode"] == "live"; assert s["metrics"]; json.load(open("doctor.json"))'
+      - name: Terminal lifecycle smoke
+        run: python3 apps/lidash/tests/pty_smoke.py target/debug/lidash
 
   worktree-windows:
     name: Worktree Windows smoke

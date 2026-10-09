@@ -59,7 +59,7 @@ cargo test --workspace --locked --all-targets
 python3 scripts/check_docs.py
 ```
 
-See [architecture](docs/ARCHITECTURE.md), [product requirements](docs/PRODUCT_REQUIREMENTS.md), [roadmap](ROADMAP.md), [capability model](docs/CAPABILITY_MODEL.md), [telemetry contract](docs/OBSERVABILITY_CONTRACT.md), [test strategy](docs/TEST_STRATEGY.md) and [architecture decisions](docs/DECISIONS.md). The preserved [core contracts](docs/P0_CORE_CONTRACTS.md) and [bounded history](docs/P0_TELEMETRY_HISTORY.md) describe the existing foundation libraries.
+See the [Core data reference](docs/CORE.md), [architecture](docs/ARCHITECTURE.md), [product requirements](docs/PRODUCT_REQUIREMENTS.md), [roadmap](ROADMAP.md), [capability model](docs/CAPABILITY_MODEL.md), [telemetry contract](docs/OBSERVABILITY_CONTRACT.md), [test strategy](docs/TEST_STRATEGY.md) and [architecture decisions](docs/DECISIONS.md). The preserved [core contracts](docs/P0_CORE_CONTRACTS.md) and [bounded history](docs/P0_TELEMETRY_HISTORY.md) describe the existing foundation libraries.
 
 Contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Parallel coding uses [isolated worktrees](.AGENTS/WORKTREES.md). [CI/CD](docs/CI_CD.md) and [branch protection](docs/BRANCH_PROTECTION.md) describe repository automation; committed rulesets require administrative activation.
 
