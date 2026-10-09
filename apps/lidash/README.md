@@ -35,7 +35,8 @@ compared between different runs or hosts.
 The TUI is monochrome by default, accepts `--no-color`, and adapts to narrow
 windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Space` pauses displayed readings;
 `?` or `h` toggles help; Enter opens the full details of the first visible metric.
-Arrows or `j`/`k` scroll metrics, PageUp/PageDown scroll ten,
+Arrows or `j`/`k` scroll metrics, PageUp/PageDown scroll ten metrics or scroll
+wrapped text while help/details are open,
 and Home/End jump to the first/last. Windows below 35x10 show a resize prompt.
 Sampling continues while paused; the age
 indicator shows the displayed snapshot getting older. A bounded slot retains
@@ -50,8 +51,9 @@ Doctor reports source capabilities from actual observation states. A source with
 both successful and unavailable observations is `degraded`. It performs no
 connectivity test or privilege escalation. Exit codes are 0 when at least one
 metric is available (including degraded operation), 1 when no metric is available,
-and 2 for invalid arguments or runtime failure. The JSON `health` and per-source
-failures distinguish usable partial collection from fully healthy collection.
+and 2 for invalid arguments or runtime failure. The JSON `collection_status`
+(`available`, `degraded`, `unavailable`) and per-source failures describe source
+collection availability; they do not diagnose host or subsystem health.
 Snapshot exits 0 even when some/all source readings are unavailable: callers
 must inspect its metric states. A closed output pipe is handled quietly.
 

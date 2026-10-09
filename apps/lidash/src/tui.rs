@@ -11,7 +11,7 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Paragraph, Row, Table, Wrap},
@@ -33,6 +33,7 @@ pub struct View {
     pub help: bool,
     pub detail: bool,
     pub scroll: usize,
+    pub text_scroll: u16,
     pub fixture: bool,
 }
 
@@ -42,10 +43,24 @@ impl View {
             update.snapshot.metrics().len().saturating_sub(1)
         });
         self.scroll = self.scroll.saturating_add_signed(count).min(max);
+        self.text_scroll = 0;
     }
 }
 
-pub fn draw(frame: &mut Frame<'_>, view: &View) {
+fn draw_text(frame: &mut Frame<'_>, text: &str, title: &str, scroll: &mut u16, area: Rect) {
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+    let lines = paragraph.line_count(area.width.saturating_sub(2));
+    let max_scroll = lines.saturating_sub(area.height.saturating_sub(2) as usize);
+    *scroll = usize::from(*scroll).min(max_scroll) as u16;
+    frame.render_widget(
+        paragraph
+            .scroll((*scroll, 0))
+            .block(Block::default().title(title).borders(Borders::ALL)),
+        area,
+    );
+}
+
+pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let area = frame.area();
     let mode = if view.fixture {
         "fixture"
@@ -84,14 +99,16 @@ pub fn draw(frame: &mut Frame<'_>, view: &View) {
             .borders(Borders::ALL),
     );
     frame.render_widget(header, layout[0]);
-    frame.render_widget(
-        Paragraph::new("q quit | Space pause | ? help | Enter detail | arrows scroll"),
-        layout[2],
-    );
+    let shortcuts = if view.help || view.detail {
+        "q quit | PgUp/PgDn scroll text"
+    } else {
+        "q quit | Space pause | ? help | Enter detail | arrows scroll"
+    };
+    frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
-        frame.render_widget(Paragraph::new(
-            "q, Esc, Ctrl-C: quit\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: scroll metrics\nPageUp/PageDown: scroll ten metrics\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements."
-        ).wrap(Wrap { trim: false }).block(Block::default().title(" Help ").borders(Borders::ALL)), layout[1]);
+        draw_text(frame,
+            "q, Esc, Ctrl-C: quit\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: select metrics (scroll text in help)\nPageUp/PageDown: scroll ten metrics or detail/help text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            " Help ", &mut view.text_scroll, layout[1]);
         return;
     }
     let Some(update) = &view.update else {
@@ -117,12 +134,11 @@ pub fn draw(frame: &mut Frame<'_>, view: &View) {
                 )
             },
         );
-        frame.render_widget(
-            Paragraph::new(text).wrap(Wrap { trim: false }).block(
-                Block::default()
-                    .title(" Metric detail | Enter returns ")
-                    .borders(Borders::ALL),
-            ),
+        draw_text(
+            frame,
+            &text,
+            " Metric detail | Enter returns ",
+            &mut view.text_scroll,
             layout[1],
         );
         return;
@@ -265,7 +281,7 @@ pub fn run(config: Config) -> io::Result<()> {
             worker.shutdown()?;
             return Err(io::Error::other("collector stopped unexpectedly"));
         }
-        terminal.draw(|frame| draw(frame, &view))?;
+        terminal.draw(|frame| draw(frame, &mut view))?;
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Release {
@@ -277,13 +293,34 @@ pub fn run(config: Config) -> io::Result<()> {
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char(' ') => view.paused = !view.paused,
-                    KeyCode::Char('?') | KeyCode::Char('h') => view.help = !view.help,
-                    KeyCode::Enter => view.detail = !view.detail,
+                    KeyCode::Char('?') | KeyCode::Char('h') => {
+                        view.help = !view.help;
+                        view.text_scroll = 0;
+                    }
+                    KeyCode::Enter => {
+                        view.detail = !view.detail;
+                        view.text_scroll = 0;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') if view.help => {
+                        view.text_scroll = view.text_scroll.saturating_add(1)
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if view.help => {
+                        view.text_scroll = view.text_scroll.saturating_sub(1)
+                    }
                     KeyCode::Down | KeyCode::Char('j') => view.scroll_by(1),
                     KeyCode::Up | KeyCode::Char('k') => view.scroll_by(-1),
+                    KeyCode::PageDown if view.help || view.detail => {
+                        view.text_scroll = view.text_scroll.saturating_add(10)
+                    }
+                    KeyCode::PageUp if view.help || view.detail => {
+                        view.text_scroll = view.text_scroll.saturating_sub(10)
+                    }
                     KeyCode::PageDown => view.scroll_by(10),
                     KeyCode::PageUp => view.scroll_by(-10),
-                    KeyCode::Home => view.scroll = 0,
+                    KeyCode::Home => {
+                        view.scroll = 0;
+                        view.text_scroll = 0;
+                    }
                     KeyCode::End => view.scroll_by(isize::MAX),
                     _ => {}
                 }
@@ -338,7 +375,7 @@ mod tests {
         }
     }
 
-    fn render(width: u16, height: u16, view: &View) -> String {
+    fn render(width: u16, height: u16, view: &mut View) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| draw(frame, view)).unwrap();
         terminal
@@ -352,9 +389,9 @@ mod tests {
 
     #[test]
     fn wide_and_narrow_views_retain_source_state_and_fixture_label() {
-        let view = fixture();
+        let mut view = fixture();
         for width in [120, 70, 40] {
-            let output = render(width, 30, &view);
+            let output = render(width, 30, &mut view);
             assert!(output.contains("fixture"));
             assert!(output.contains("memory.total.bytes"));
             assert!(output.contains("procfs/meminfo"));
@@ -368,26 +405,46 @@ mod tests {
     fn tiny_resize_pause_help_and_extreme_scroll_are_safe() {
         let mut view = fixture();
         view.paused = true;
-        assert!(render(120, 30, &view).contains("PAUSED"));
+        assert!(render(120, 30, &mut view).contains("PAUSED"));
         view.help = true;
-        assert!(render(70, 30, &view).contains("sampling continues"));
+        assert!(render(70, 30, &mut view).contains("sampling continues"));
         for (width, height) in [(0, 0), (1, 1), (20, 4), (35, 7), (120, 30)] {
-            let _ = render(width, height, &view);
+            let _ = render(width, height, &mut view);
         }
         view.scroll_by(isize::MAX);
         assert_eq!(view.scroll, 1);
         view.scroll_by(isize::MIN);
         assert_eq!(view.scroll, 0);
-        assert!(render(25, 4, &view).contains("fixture"));
-        assert!(render(35, 7, &view).contains("Terminal too small"));
+        assert!(render(25, 4, &mut view).contains("fixture"));
+        assert!(render(35, 7, &mut view).contains("Terminal too small"));
         view.help = false;
-        let minimum = render(40, 10, &view);
+        let minimum = render(40, 10, &mut view);
         assert!(minimum.contains("procfs/meminfo"));
         assert!(minimum.contains("bytes"));
         view.detail = true;
         view.scroll = 1;
-        let detail = render(90, 20, &view);
+        let detail = render(90, 20, &mut view);
         assert!(detail.contains("unsupported: not exposed — unavailable"));
         assert!(detail.contains("procfs/pressure/cpu"));
+    }
+
+    #[test]
+    fn minimum_size_details_and_help_scroll_to_all_evidence() {
+        let mut view = fixture();
+        view.detail = true;
+        view.scroll = 1;
+        view.text_scroll = u16::MAX;
+        let bottom = render(35, 10, &mut view);
+        assert!(bottom.contains("source: procfs/pressure/cpu"));
+        assert!(bottom.contains("observation:"));
+        assert!(view.text_scroll > 0 && view.text_scroll < u16::MAX);
+        view.scroll_by(-1);
+        assert_eq!(view.text_scroll, 0);
+        view.help = true;
+        view.text_scroll = u16::MAX;
+        assert!(render(35, 10, &mut view).contains("measurements."));
+        assert!(view.text_scroll < u16::MAX);
+        view.text_scroll = 0;
+        assert!(render(35, 10, &mut view).contains("Ctrl-C: quit"));
     }
 }

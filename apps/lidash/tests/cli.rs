@@ -144,7 +144,7 @@ fn doctor_derives_capabilities_from_reads_and_marks_complete_source_failure() {
     let output = fixture.run(&["capabilities", "--json"]);
     assert_eq!(output.status.code(), Some(1));
     let unavailable: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(unavailable["health"], "unavailable");
+    assert_eq!(unavailable["collection_status"], "unavailable");
     assert_eq!(unavailable["usable"], false);
     assert!(unavailable["capabilities"]
         .as_array()

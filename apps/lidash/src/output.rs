@@ -63,7 +63,7 @@ pub struct SourceCapability<'a> {
 pub struct DoctorReport<'a> {
     schema_version: &'static str,
     mode: &'static str,
-    health: &'static str,
+    collection_status: &'static str,
     usable: bool,
     monotonic_ns: u64,
     collection_duration_ns: u64,
@@ -117,12 +117,12 @@ impl<'a> DoctorReport<'a> {
         Self {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             mode: mode_name(snapshot.mode()),
-            health: if available == 0 {
+            collection_status: if available == 0 {
                 "unavailable"
             } else if missing > 0 || snapshot.dropped_metrics() > 0 {
                 "degraded"
             } else {
-                "healthy"
+                "available"
             },
             usable: available > 0,
             monotonic_ns: snapshot.monotonic_ns(),
@@ -138,8 +138,8 @@ impl<'a> DoctorReport<'a> {
 
     pub fn text(&self) -> String {
         let mut out = format!(
-            "LiDB {} doctor: {} (read-only; no active probes)\ncollection={}ns | dropped_metrics={}\n",
-            self.mode, self.health, self.collection_duration_ns, self.dropped_metrics
+            "LiDB {} doctor: {} (source collection only; read-only; no active probes)\ncollection={}ns | dropped_metrics={}\n",
+            self.mode, self.collection_status, self.collection_duration_ns, self.dropped_metrics
         );
         for source in &self.capabilities {
             let _ = writeln!(
@@ -193,7 +193,7 @@ mod tests {
             .unwrap();
         let report = DoctorReport::from_snapshot(&snapshot);
         assert_eq!(report.exit_code(), 0);
-        assert_eq!(report.health, "degraded");
+        assert_eq!(report.collection_status, "degraded");
         assert_eq!(report.capabilities[0].status, "degraded");
         assert!(report.text().contains("need two samples"));
         assert!(snapshot_text(&snapshot).contains("zero = 0 count"));

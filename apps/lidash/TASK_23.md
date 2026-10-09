@@ -32,8 +32,17 @@ words with cursor escapes; readiness now checks the actual rendered keywords.
 Independent read-only review by `/root/cli/cli_review` confirmed termination and
 cleanup with its own PTY experiment. It identified wide-cell truncation and too
 small initial terminal minimum; fixed with an Enter detail view and 35x10 minimum.
-Remaining follow-up: allow scrolling long details in a short terminal. No actual
-specialized hardware or aarch64 validation was performed by this worker.
+Follow-up completed: help and details scroll vertically with PageUp/PageDown,
+with offsets clamped to the actual wrapped content. A 35x10 regression test
+reaches source, timestamp, and the last help line. The pinned Ratatui version's
+rendered-line-info feature supplies its own Unicode-aware wrap line count.
+Doctor uses `collection_status` (`available`, `degraded`, `unavailable`) and
+explicitly reports source collection availability, without diagnosing host health.
+
+Follow-up verification: `cargo fmt -p lidash`, `cargo test -p lidash` (seven unit
+and four integration tests), `cargo clippy -p lidash --all-targets -- -D warnings`,
+and the PTY smoke command above all exited 0. No actual specialized hardware or
+aarch64 validation was performed by this worker.
 
 Five review axes: security/privacy (local read-only file sources; no payloads or
 network access); correctness (typed states, precise integer export, actual doctor
