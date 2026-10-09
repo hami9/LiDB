@@ -31,7 +31,7 @@ The core and collector forbid project-owned unsafe Rust. Build dependencies are 
 | `disk.<device>.{read,write}.bytes_per_second` | bytes per second | Counter deltas over the collector-local monotonic interval |
 | `pressure.{cpu,memory,io}.some.avg10.percent` | percent | `/proc/pressure/*` kernel PSI average; absent PSI degrades independently |
 
-Disk entries include partitions. Do not sum a parent block device and its partitions into one host total. Network interfaces can represent stacked/virtual paths, so summing them can also double-count traffic. Device-name encoding, where needed, is described in the collector's reference.
+Disk entries include partitions. Do not sum a parent block device and its partitions into one host total. Network interfaces can represent stacked/virtual paths, so summing them can also double-count traffic. Device names preserve common ASCII characters and percent-encode other UTF-8 bytes, including `%`; for example `vpn+prod` becomes `vpn%2Bprod`. Encoding is reversible and collision-free, with a 100-byte encoded-name limit. See the [collector reference](../crates/lidb-collect/README.md).
 
 The visible procfs view determines coverage in containers and namespaces. These metrics do not promise host-wide visibility, cgroup limits, filesystem free space, process attribution or a diagnosis of root cause.
 
