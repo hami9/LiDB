@@ -102,6 +102,35 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
+    fn paused_view_retains_pending_snapshot_for_immediate_resume() {
+        let worker = Worker {
+            latest: Arc::new(Mutex::new(Latest {
+                update: Some(Update {
+                    snapshot: Snapshot::new(42, 0, SnapshotMode::Fixture),
+                    collected_at: Instant::now(),
+                    skipped_updates: 2,
+                }),
+                skipped_updates: 2,
+            })),
+            cancel: None,
+            thread: None,
+        };
+        let mut view = crate::tui::View {
+            paused: true,
+            ..Default::default()
+        };
+        crate::tui::update_from_worker(&mut view, &worker).unwrap();
+        assert!(view.update.is_none());
+        assert!(worker.latest.lock().unwrap().update.is_some());
+        view.paused = false;
+        crate::tui::update_from_worker(&mut view, &worker).unwrap();
+        let update = view.update.unwrap();
+        assert_eq!(update.snapshot.monotonic_ns(), 42);
+        assert_eq!(update.skipped_updates, 2);
+        assert!(worker.latest.lock().unwrap().update.is_none());
+    }
+
+    #[test]
     fn newest_snapshot_replaces_pending_and_shutdown_wakes_long_wait() {
         let (observed, ticks) = mpsc::channel();
         let counter = Arc::new(AtomicU64::new(0));

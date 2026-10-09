@@ -34,7 +34,7 @@ pub struct View {
     pub detail: bool,
     pub scroll: usize,
     pub text_scroll: u16,
-    text_page_size: u16,
+    pub(crate) text_page_size: u16,
     pub fixture: bool,
 }
 
@@ -234,6 +234,17 @@ fn restore_terminal() {
     let _ = execute!(io::stdout(), LeaveAlternateScreen, Show);
 }
 
+pub(crate) fn update_from_worker(view: &mut View, worker: &Worker) -> io::Result<()> {
+    // Leave the bounded mailbox untouched while paused so resume shows its latest
+    // snapshot immediately, even when the next sample is a minute away.
+    if !view.paused {
+        if let Some(update) = worker.take_latest()? {
+            view.update = Some(update);
+        }
+    }
+    Ok(())
+}
+
 struct SignalGuard {
     stop: Arc<AtomicBool>,
     ids: Vec<signal_hook::SigId>,
@@ -283,11 +294,7 @@ pub fn run(config: Config) -> io::Result<()> {
         if signals.stop.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(update) = worker.take_latest()? {
-            if !view.paused {
-                view.update = Some(update);
-            }
-        }
+        update_from_worker(&mut view, &worker)?;
         if worker.is_finished() {
             worker.shutdown()?;
             return Err(io::Error::other("collector stopped unexpectedly"));

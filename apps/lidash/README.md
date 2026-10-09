@@ -38,7 +38,8 @@ windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Space` pauses displayed reading
 Arrows or `j`/`k` scroll metrics, PageUp/PageDown scroll ten metrics or scroll
 wrapped text while help/details are open,
 and Home/End jump to the first/last. Windows below 35x10 show a resize prompt.
-Sampling continues while paused; the age
+Sampling continues while paused; resume immediately displays the latest retained
+snapshot. The age
 indicator shows the displayed snapshot getting older. A bounded slot retains
 only the latest collection; `skipped` counts replaced, unconsumed snapshots,
 while `dropped` counts omitted metrics. Collection runs outside the rendering
