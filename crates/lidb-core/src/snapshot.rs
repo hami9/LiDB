@@ -85,7 +85,7 @@ impl Snapshot {
         if let Some(value) = metric.state().available_value() {
             let numeric = value.as_f64();
             if !numeric.is_finite()
-                || numeric < 0.0
+                || (numeric < 0.0 && metric.unit() != Unit::Celsius)
                 || (metric.unit() == Unit::Percent && numeric > 100.0)
             {
                 return Err(SnapshotError::InvalidValue);
@@ -139,7 +139,7 @@ pub enum SnapshotError {
     Capacity,
     /// A second observation used an existing metric name.
     DuplicateMetric,
-    /// Negative, non-finite or out-of-range percentage.
+    /// Non-finite, out-of-range percentage or invalid negative quantity.
     InvalidValue,
     /// Observation is newer than its enclosing batch.
     FutureObservation,
@@ -223,6 +223,28 @@ mod tests {
         );
         assert_eq!(json["metrics"][1]["state"]["status"], "unsupported");
         assert_eq!(json["metrics"][1]["state"]["value"], "not exposed");
+    }
+
+    #[test]
+    fn permits_signed_temperature_without_permitting_negative_counters() {
+        let mut snapshot = Snapshot::new(0, 0, SnapshotMode::Fixture);
+        snapshot
+            .push(observation(
+                "temperature",
+                0,
+                MetricValue::Number(-20.0),
+                Unit::Celsius,
+            ))
+            .unwrap();
+        assert_eq!(
+            snapshot.push(observation(
+                "bytes",
+                0,
+                MetricValue::Number(-20.0),
+                Unit::Bytes
+            )),
+            Err(SnapshotError::InvalidValue)
+        );
     }
     #[test]
     fn enforces_batch_limit_and_counts_omissions() {

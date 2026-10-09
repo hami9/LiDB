@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-LiDashBoard is currently in **pre-release specification stage**, with no supported binary release or security patch schedule. When releases exist, this document will list supported versions and coordinated update policy.
+LiDashBoard currently has a **pre-release Linux Core implementation**, with no published supported binary release or security patch schedule. When releases exist, this document will list supported versions and coordinated update policy.
 
 ## Reporting a vulnerability
 
@@ -12,6 +12,6 @@ Useful report details: impacted commit/version, Linux/kernel/hardware environmen
 
 ## Areas of special concern
 
-Privilege separation; eBPF attach/loader behavior; local Unix socket authentication; plugin/process isolation; untrusted kernel/provider data; parsing/fuzzing; secrets in support bundles; remote telemetry/cluster authentication (once introduced); supply-chain and packaged binaries.
+Bounded procfs parsing, input validation, availability and counter integrity, terminal control handling, local privacy, supply-chain dependencies and packaged binaries. The current Core is a local read-only process; it installs no daemon, opens no network listener and collects no packet contents or process arguments. Future privileged collectors, persistence or external integrations need a separate design and review before implementation.
 
 Public fixes should credit reporters with consent, include regression tests, and disclose affected versions when relevant.

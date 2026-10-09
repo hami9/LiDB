@@ -68,6 +68,12 @@ impl Capability {
             }
             _ => {}
         }
+        if reason
+            .as_ref()
+            .is_some_and(|value| value.len() > 512 || value.chars().any(char::is_control))
+        {
+            return Err(CapabilityError::InvalidReason);
+        }
         Ok(Self { id, state, reason })
     }
 
@@ -99,6 +105,8 @@ pub enum CapabilityError {
     MissingReason,
     /// An available capability provided an impossible unavailability reason.
     UnexpectedReason,
+    /// Failure reason contains terminal controls or exceeds 512 bytes.
+    InvalidReason,
     /// A duplicate ID was registered.
     DuplicateId(String),
 }
@@ -111,6 +119,7 @@ impl fmt::Display for CapabilityError {
             Self::UnexpectedReason => {
                 f.write_str("available capability must not have an error reason")
             }
+            Self::InvalidReason => f.write_str("invalid capability reason"),
             Self::DuplicateId(value) => write!(f, "duplicate capability: {value}"),
         }
     }
@@ -248,5 +257,15 @@ mod tests {
         assert!(registry
             .iter()
             .all(|item| item.state() == CapabilityState::Disabled));
+    }
+
+    #[test]
+    fn bounds_explanations_and_rejects_terminal_controls() {
+        for reason in ["x".repeat(513), "denied\u{1b}[2J".into()] {
+            assert_eq!(
+                Capability::new("org.lidb.linux.cpu", CapabilityState::Error, Some(reason)),
+                Err(CapabilityError::InvalidReason)
+            );
+        }
     }
 }
