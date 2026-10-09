@@ -39,10 +39,15 @@ rendered-line-info feature supplies its own Unicode-aware wrap line count.
 Doctor uses `collection_status` (`available`, `degraded`, `unavailable`) and
 explicitly reports source collection availability, without diagnosing host health.
 
-Follow-up verification: `cargo fmt -p lidash`, `cargo test -p lidash` (seven unit
+Follow-up verification: `cargo fmt -p lidash`, `cargo test -p lidash` (eight unit
 and four integration tests), `cargo clippy -p lidash --all-targets -- -D warnings`,
 and the PTY smoke command above all exited 0. No actual specialized hardware or
 aarch64 validation was performed by this worker.
+
+Review additionally caught a ten-line page step exceeding the four-line viewport
+at 35x10, which could skip the middle of a failure reason. Text pagination now
+uses the actual visible page height. A realistic wrapped network rate failure
+test verifies every page can reach the middle reason, units, source and timestamp.
 
 Five review axes: security/privacy (local read-only file sources; no payloads or
 network access); correctness (typed states, precise integer export, actual doctor

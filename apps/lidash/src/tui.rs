@@ -34,6 +34,7 @@ pub struct View {
     pub detail: bool,
     pub scroll: usize,
     pub text_scroll: u16,
+    text_page_size: u16,
     pub fixture: bool,
 }
 
@@ -44,6 +45,15 @@ impl View {
         });
         self.scroll = self.scroll.saturating_add_signed(count).min(max);
         self.text_scroll = 0;
+    }
+
+    fn scroll_text_page(&mut self, down: bool) {
+        let page = self.text_page_size.max(1);
+        self.text_scroll = if down {
+            self.text_scroll.saturating_add(page)
+        } else {
+            self.text_scroll.saturating_sub(page)
+        };
     }
 }
 
@@ -80,6 +90,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         Constraint::Length(1),
     ])
     .split(area);
+    view.text_page_size = layout[1].height.saturating_sub(2).max(1);
     let state = if view.paused { "PAUSED" } else { "running" };
     let freshness = view.update.as_ref().map_or_else(
         || "awaiting first sample".into(),
@@ -107,7 +118,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
         draw_text(frame,
-            "q, Esc, Ctrl-C: quit\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: select metrics (scroll text in help)\nPageUp/PageDown: scroll ten metrics or detail/help text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            "q, Esc, Ctrl-C: quit\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: select metrics (scroll text in help)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
             " Help ", &mut view.text_scroll, layout[1]);
         return;
     }
@@ -309,12 +320,8 @@ pub fn run(config: Config) -> io::Result<()> {
                     }
                     KeyCode::Down | KeyCode::Char('j') => view.scroll_by(1),
                     KeyCode::Up | KeyCode::Char('k') => view.scroll_by(-1),
-                    KeyCode::PageDown if view.help || view.detail => {
-                        view.text_scroll = view.text_scroll.saturating_add(10)
-                    }
-                    KeyCode::PageUp if view.help || view.detail => {
-                        view.text_scroll = view.text_scroll.saturating_sub(10)
-                    }
+                    KeyCode::PageDown if view.help || view.detail => view.scroll_text_page(true),
+                    KeyCode::PageUp if view.help || view.detail => view.scroll_text_page(false),
                     KeyCode::PageDown => view.scroll_by(10),
                     KeyCode::PageUp => view.scroll_by(-10),
                     KeyCode::Home => {
@@ -446,5 +453,50 @@ mod tests {
         assert!(view.text_scroll < u16::MAX);
         view.text_scroll = 0;
         assert!(render(35, 10, &mut view).contains("Ctrl-C: quit"));
+    }
+
+    #[test]
+    fn narrow_detail_pages_do_not_skip_middle_failure_lines() {
+        let mut snapshot = Snapshot::new(0, 0, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.docker0.rx.bytes_per_second",
+                    "proc.net.dev",
+                    Unit::BytesPerSecond,
+                    0,
+                    MetricState::TemporarilyUnavailable(
+                        "rate requires a second successful observation".into(),
+                    ),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let mut view = View {
+            update: Some(Update {
+                snapshot,
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            detail: true,
+            fixture: true,
+            ..View::default()
+        };
+        let mut pages = render(35, 10, &mut view);
+        assert_eq!(view.text_page_size, 4);
+        loop {
+            let previous = view.text_scroll;
+            view.scroll_text_page(true);
+            pages.push_str(&render(35, 10, &mut view));
+            if view.text_scroll == previous {
+                break;
+            }
+        }
+        assert!(pages.contains("successful"));
+        assert!(pages.contains("bytes_per_second"));
+        assert!(pages.contains("source: proc.net.dev"));
+        assert!(pages.contains("observation:"));
+        view.scroll_text_page(false);
+        assert!(view.text_scroll <= view.text_page_size);
     }
 }
