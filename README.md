@@ -4,7 +4,7 @@
 
 LiDB provides a runnable foundation for developers, VPS owners and system operators inspecting a Linux host over SSH. The core collects CPU, memory, load, uptime, disk, network-interface and pressure observations without a cloud account, a daemon or elevated privileges. Missing data is reported with a reason instead of a fabricated zero.
 
-The project is in core development. There is no published binary release or production performance claim. Linux x86_64 is the local development platform; aarch64 validation is tracked separately and must pass before support is advertised.
+The project is in core development. There is no published binary release or production performance claim. Native Linux x86_64 and aarch64 passed the baseline CI checks; see the [compatibility matrix](docs/INTEGRATION_MATRIX.md) for exact evidence and limits.
 
 ## Build and install
 
