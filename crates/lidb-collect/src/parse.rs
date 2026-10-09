@@ -54,14 +54,13 @@ pub(crate) fn memory(text: &str) -> BTreeMap<&'static str, State> {
     let mut values = BTreeMap::new();
     for line in text.lines() {
         let Some((name, tail)) = line.split_once(':') else {
+            if let Some(name) = line.split_whitespace().next().and_then(memory_key) {
+                values.insert(name, error("memory field is missing its colon"));
+            }
             continue;
         };
-        let name = match name {
-            "MemTotal" => "MemTotal",
-            "MemAvailable" => "MemAvailable",
-            "SwapTotal" => "SwapTotal",
-            "SwapFree" => "SwapFree",
-            _ => continue,
+        let Some(name) = memory_key(name) else {
+            continue;
         };
         let result = || {
             let mut words = tail.split_whitespace();
@@ -84,7 +83,22 @@ pub(crate) fn memory(text: &str) -> BTreeMap<&'static str, State> {
         };
         values.insert(name, state);
     }
+    if values.is_empty() {
+        for name in ["MemTotal", "MemAvailable", "SwapTotal", "SwapFree"] {
+            values.insert(name, error("memory source has no recognized fields"));
+        }
+    }
     values
+}
+
+fn memory_key(name: &str) -> Option<&'static str> {
+    match name {
+        "MemTotal" => Some("MemTotal"),
+        "MemAvailable" => Some("MemAvailable"),
+        "SwapTotal" => Some("SwapTotal"),
+        "SwapFree" => Some("SwapFree"),
+        _ => None,
+    }
 }
 
 pub(crate) fn load(text: &str) -> Result<[f64; 3], State> {
@@ -209,7 +223,7 @@ pub(crate) fn network(text: &str) -> Result<BTreeMap<String, TransferCounters>, 
             .collect::<Result<_, _>>()?;
         insert(
             &mut devices,
-            name,
+            &name,
             TransferCounters([counters[0], counters[8]]),
         )?;
     }
@@ -237,7 +251,7 @@ pub(crate) fn disks(text: &str) -> Result<BTreeMap<String, TransferCounters>, St
             .ok_or_else(|| error("disk write byte counter overflows"))?;
         insert(
             &mut devices,
-            name,
+            &name,
             TransferCounters([read_bytes, write_bytes]),
         )?;
     }
@@ -258,16 +272,30 @@ fn insert(
     Ok(())
 }
 
-fn safe_name(value: &str) -> Result<&str, State> {
+fn safe_name(value: &str) -> Result<String, State> {
     if value.is_empty()
-        || value.len() > 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        || value.len() > 100
+        || value.chars().any(|character| {
+            character.is_control() || character.is_whitespace() || matches!(character, '/' | ':')
+        })
     {
         return Err(error("source contains an unsafe device name"));
     }
-    Ok(value)
+    // Keep common Linux names readable and encode all other UTF-8 bytes.
+    // Escaping '%' itself makes the encoding reversible and collision-free.
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.') {
+            encoded.push(char::from(byte));
+        } else {
+            use std::fmt::Write;
+            write!(&mut encoded, "%{byte:02X}").expect("writing to String cannot fail");
+        }
+    }
+    if encoded.len() > 100 {
+        return Err(error("encoded device name exceeds the length limit"));
+    }
+    Ok(encoded)
 }
 
 fn unsigned(value: &str) -> Result<u64, State> {

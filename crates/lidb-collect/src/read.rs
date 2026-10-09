@@ -1,16 +1,27 @@
-use crate::{error, unsupported, State, MAX_SOURCE_BYTES};
-use lidb_core::{MetricState, SnapshotMode};
+#[cfg(target_os = "linux")]
+use crate::{error, MAX_SOURCE_BYTES};
+use crate::{unsupported, State};
+#[cfg(target_os = "linux")]
+use lidb_core::MetricState;
+use lidb_core::SnapshotMode;
 use std::path::Path;
 
 pub(crate) fn source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<String, State> {
     #[cfg(target_os = "linux")]
     {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+            return Err(unsupported(
+                "host collection requires Linux x86_64 or aarch64",
+            ));
+        }
         linux_source(root, relative, mode)
     }
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (root, relative, mode);
-        Err(unsupported("host collection requires Linux"))
+        Err(unsupported(
+            "host collection requires Linux x86_64 or aarch64",
+        ))
     }
 }
 
@@ -73,6 +84,7 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
     Ok(text)
 }
 
+#[cfg(target_os = "linux")]
 fn io_state(error_value: std::io::Error) -> State {
     match error_value.kind() {
         std::io::ErrorKind::NotFound => unsupported("source is not present"),
@@ -86,7 +98,7 @@ fn io_state(error_value: std::io::Error) -> State {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

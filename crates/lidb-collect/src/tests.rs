@@ -1,11 +1,31 @@
 use super::*;
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 use std::fs;
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 struct Fixture(PathBuf);
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 impl Fixture {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
@@ -42,6 +62,10 @@ impl Fixture {
     }
 }
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 impl Drop for Fixture {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.0).unwrap();
@@ -54,10 +78,18 @@ fn network_line(name: &str, rx: u64, tx: u64) -> String {
     )
 }
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn state<'a>(snapshot: &'a Snapshot, name: &str) -> &'a State {
     snapshot.get(name).unwrap().state()
 }
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn exact(snapshot: &Snapshot, name: &str) -> u64 {
     match state(snapshot, name) {
         MetricState::Available(MetricValue::Integer(value)) => *value,
@@ -65,12 +97,19 @@ fn exact(snapshot: &Snapshot, name: &str) -> u64 {
     }
 }
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn fractional(snapshot: &Snapshot, name: &str) -> f64 {
     state(snapshot, name).available_value().unwrap().as_f64()
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn fixture_sources_have_exact_values_and_common_timestamps() {
     let fixture = Fixture::new();
     fixture.baseline();
@@ -105,7 +144,10 @@ fn fixture_sources_have_exact_values_and_common_timestamps() {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn cpu_and_transfer_deltas_exclude_guest_double_counting_and_iowait() {
     let fixture = Fixture::new();
     fixture.baseline();
@@ -137,7 +179,10 @@ fn cpu_and_transfer_deltas_exclude_guest_double_counting_and_iowait() {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn counter_resets_and_gaps_clear_rates_without_fabricating_zero() {
     let fixture = Fixture::new();
     fixture.baseline();
@@ -179,7 +224,10 @@ fn counter_resets_and_gaps_clear_rates_without_fabricating_zero() {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn missing_memavailable_has_no_free_memory_substitution() {
     let fixture = Fixture::new();
     fixture.write(
@@ -233,6 +281,7 @@ fn negative_malformed_nonfinite_and_overflow_inputs_are_rejected() {
         "MemTotal: 18446744073709551615 kB",
         "MemTotal: 1 MB",
         "MemTotal: 1 kB\nMemTotal: 2 kB",
+        "MemTotal 1 kB",
     ] {
         assert_eq!(parse::memory(text)["MemTotal"].name(), "error");
     }
@@ -265,6 +314,66 @@ fn device_counts_duplicates_and_names_are_bounded() {
     assert_eq!(parse::disks(&disks).unwrap().len(), MAX_DEVICES);
     disks.push_str("8 99 overflow 1 0 1 0 1 0 1 0 0 0 0\n");
     assert!(parse::disks(&disks).is_err());
+
+    let punctuation = network_line("eth+0", 1, 2);
+    assert!(parse::network(&punctuation)
+        .unwrap()
+        .contains_key("eth%2B0"));
+    let percent = network_line("eth%2B0", 1, 2);
+    assert!(parse::network(&percent).unwrap().contains_key("eth%252B0"));
+    let disk = "8 0 cciss!c0d0 1 0 1 0 1 0 1 0 0 0 0";
+    assert!(parse::disks(disk).unwrap().contains_key("cciss%21c0d0"));
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn kernel_valid_punctuation_preserves_other_device_observations() {
+    let fixture = Fixture::new();
+    fixture.baseline();
+    let mut network = network_line("eth0", 1, 2);
+    network.push_str("vpn+prod: 3 0 0 0 0 0 0 0 4 0 0 0 0 0 0 0\n");
+    network.push_str("vpn%2Bprod: 5 0 0 0 0 0 0 0 6 0 0 0 0 0 0 0\n");
+    network.push_str("vpn@prod: 7 0 0 0 0 0 0 0 8 0 0 0 0 0 0 0\n");
+    fixture.write("net/dev", &network);
+    fixture.write(
+        "diskstats",
+        "8 0 sda 1 0 10 0 1 0 20 0 0 0 0\n8 1 cciss!c0d0 1 0 30 0 1 0 40 0 0 0 0\n",
+    );
+    let snapshot = LinuxCollector::new(&fixture.0).sample();
+    assert_eq!(exact(&snapshot, "network.state"), 4);
+    assert_eq!(exact(&snapshot, "network.eth0.rx.bytes"), 1);
+    assert_eq!(exact(&snapshot, "network.vpn%2Bprod.rx.bytes"), 3);
+    assert_eq!(exact(&snapshot, "network.vpn%252Bprod.rx.bytes"), 5);
+    assert_eq!(exact(&snapshot, "network.vpn%40prod.rx.bytes"), 7);
+    assert_eq!(exact(&snapshot, "disk.state"), 2);
+    assert_eq!(exact(&snapshot, "disk.sda.read.bytes"), 10 * 512);
+    assert_eq!(exact(&snapshot, "disk.cciss%21c0d0.read.bytes"), 30 * 512);
+
+    let mut network = network_line(&"n".repeat(100), 1, 2);
+    network.push_str("\u{03BB}: 3 0 0 0 0 0 0 0 4 0 0 0 0 0 0 0\n");
+    fixture.write("net/dev", &network);
+    fixture.write(
+        "diskstats",
+        &format!("8 0 {} 1 0 10 0 1 0 20 0 0 0 0\n", "d".repeat(100)),
+    );
+    let snapshot = LinuxCollector::new(&fixture.0).sample();
+    assert_eq!(exact(&snapshot, "network.state"), 2);
+    assert_eq!(exact(&snapshot, "disk.state"), 1);
+    assert_eq!(
+        snapshot
+            .metrics()
+            .iter()
+            .map(|metric| metric.name().len())
+            .max(),
+        Some(128)
+    );
+    assert!(snapshot
+        .metrics()
+        .iter()
+        .all(|metric| metric.name().is_ascii()));
 }
 
 #[test]
@@ -282,10 +391,46 @@ fn older_cpu_fields_and_zero_intervals_remain_explicit() {
         transfer_rates(&previous, 1, "eth0", &counters)[0].name(),
         "temporarily_unavailable"
     );
+
+    let previous = parse::cpu("cpu 0 0 0 0 0 0 0 0 0 0").unwrap();
+    let current = parse::cpu("cpu 12563368808249168529 0 0 0 0 0 0 0 0 0").unwrap();
+    assert_eq!(cpu_busy(Some(&previous), &current), number(100.0));
+
+    for key in ["avg10", "avg60", "avg300", "total"] {
+        let duplicate = format!("some avg10=1 avg60=2 avg300=3 total=4 {key}=5");
+        assert!(parse::pressure(&duplicate).is_err());
+        let incomplete = format!("some {key}=1");
+        assert!(parse::pressure(&incomplete).is_err());
+    }
+    assert_eq!(parse::memory("")["MemTotal"].name(), "error");
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn nonadvancing_batch_clocks_do_not_publish_rates() {
+    let fixture = Fixture::new();
+    fixture.baseline();
+    let mut collector = LinuxCollector::new(&fixture.0);
+    collector.sample_at(2_000_000_000);
+    fixture.write("stat", "cpu 120 30 40 420 70 15 15 15 80 30\n");
+    fixture.write("net/dev", &network_line("eth0", 160, 280));
+    for timestamp in [2_000_000_000, 1_000_000_000] {
+        let snapshot = collector.sample_at(timestamp);
+        for name in ["cpu.busy.percent", "network.eth0.rx.bytes_per_second"] {
+            assert_eq!(state(&snapshot, name).name(), "temporarily_unavailable");
+        }
+        assert_eq!(exact(&snapshot, "cpu.user.ticks"), 120);
+    }
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn reads_reject_oversized_terminal_and_symlink_inputs() {
     use std::os::unix::fs::symlink;
     let fixture = Fixture::new();
@@ -307,7 +452,10 @@ fn reads_reject_oversized_terminal_and_symlink_inputs() {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn fifo_sources_are_rejected_without_waiting_for_a_writer() {
     let fixture = Fixture::new();
     let status = std::process::Command::new("mkfifo")
@@ -320,7 +468,39 @@ fn fifo_sources_are_rejected_without_waiting_for_a_writer() {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn denied_file_does_not_prevent_other_sources_from_being_collected() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    fixture.baseline();
+    let path = fixture.0.join("stat");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read(&path).is_ok() {
+        // A root/capability-enabled test runner can bypass the fixture denial.
+        // The deterministic permission mapping test still covers that branch.
+        eprintln!(
+            "permission fixture bypassed by the test runner; filesystem denial not exercised"
+        );
+        return;
+    }
+    let snapshot = LinuxCollector::new(&fixture.0).sample();
+    assert_eq!(
+        state(&snapshot, "cpu.user.ticks").name(),
+        "permission_denied"
+    );
+    assert_eq!(state(&snapshot, "cpu.busy.percent").available_value(), None);
+    assert_eq!(exact(&snapshot, "memory.total.bytes"), 1024 * 1024);
+    assert_eq!(exact(&snapshot, "network.eth0.rx.bytes"), 100);
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn live_linux_smoke_reads_real_proc_and_batches_share_a_clock() {
     let mut collector = LinuxCollector::new("/proc");
     let first = collector.sample();
@@ -347,7 +527,10 @@ fn live_linux_smoke_reads_real_proc_and_batches_share_a_clock() {
 }
 
 #[test]
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 fn other_platforms_report_unsupported_without_reading_fixtures() {
     let snapshot = LinuxCollector::new("/proc").sample();
     assert!(snapshot

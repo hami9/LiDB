@@ -26,13 +26,13 @@ pub const MAX_DEVICES: usize = 64;
 /// Stateful, read-only aggregate Linux telemetry collector.
 ///
 /// The exact `/proc` path selects live mode. Any other root selects fixture
-/// mode, including paths that resolve to `/proc`. On other operating systems,
-/// sources report `unsupported` and no filesystem reads are attempted.
+/// mode, including paths that resolve to `/proc`. Host reads are supported on
+/// Linux x86_64 and aarch64. Other targets report `unsupported` without reads.
 pub struct LinuxCollector {
     proc_root: PathBuf,
     mode: SnapshotMode,
     started: Instant,
-    previous_cpu: Option<CpuCounters>,
+    previous_cpu: Option<(u64, CpuCounters)>,
     previous_network: PreviousTransfers,
     previous_disk: PreviousTransfers,
 }
@@ -142,7 +142,12 @@ impl LinuxCollector {
                         ),
                     );
                 }
-                let state = cpu_busy(self.previous_cpu.as_ref(), &current);
+                let state = match self.previous_cpu.as_ref() {
+                    Some((last_time, _)) if snapshot.monotonic_ns() <= *last_time => {
+                        temporarily_unavailable("monotonic interval has not advanced")
+                    }
+                    previous => cpu_busy(previous.map(|(_, counters)| counters), &current),
+                };
                 add(
                     snapshot,
                     "cpu.busy.percent",
@@ -150,7 +155,7 @@ impl LinuxCollector {
                     Unit::Percent,
                     state,
                 );
-                self.previous_cpu = Some(current);
+                self.previous_cpu = Some((snapshot.monotonic_ns(), current));
             }
             Err(state) => {
                 for field in fields {
