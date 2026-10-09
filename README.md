@@ -1,83 +1,66 @@
 # LiDashBoard (LiDB)
 
-**An open-source, terminal-first Linux and AI infrastructure diagnostic platform.**
+**A local, read-only Linux diagnostic tool for the terminal.**
 
-LiDashBoard is designed to correlate Linux networking, system resources, GPU telemetry, AI inference workloads, and multi-node communication in one CLI/TUI. The aim is not to display more graphs: it is to show an operator **what changed, what evidence exists, where a bottleneck may be, and which safe diagnostic to run next**.
+LiDB provides a runnable foundation for developers, VPS owners and system operators inspecting a Linux host over SSH. The core collects CPU, memory, load, uptime, disk, network-interface and pressure observations without a cloud account, a daemon or elevated privileges. Missing data is reported with a reason instead of a fabricated zero.
 
-> **Status: design and agent-workflow bootstrap.** This repository does not yet contain a working collector or TUI. All product capabilities below are *planned*, not delivered.
+The project is in core development. There is no published binary release or production performance claim. Linux x86_64 is the local development platform; aarch64 validation is tracked separately and must pass before support is advertised.
 
-## What makes it different?
+## Build and install
 
-- An **AI-aware troubleshooting workflow** combining network, CPU, memory, GPU, model-serving, and distributed-communication signals.
-- First-class planned support for **NVIDIA DGX Spark (GB10)**, with correct accounting for unified memory and ConnectX-based inter-node connectivity.
-- Optional, capability-detected instrumentation for **NCCL, RoCE, NVLink/NVSwitch (supported systems)** and model serving runtimes. Metrics are never invented when an integration is unavailable.
-- **One binary experience in a terminal** for SSH workflows; modular local collectors and an optional privileged helper.
-- **Open-source by design**, minimal privileges, opt-in diagnostics, stable contracts, versioned APIs and honest unsupported-feature reporting.
+Requirements: Linux, Git and Rust **1.85 or newer**, including Cargo. The live baseline reads the current process's procfs view; restricted containers and hosts may expose fewer metrics.
 
-## Architectural foundation
-
-| Area | Planned approach |
-| --- | --- |
-| Host and TUI | Rust, Ratatui, Crossterm; Linux x86_64 and aarch64 |
-| Kernel networking | Netlink, procfs/sysfs, rtnetlink; optional C/libbpf CO-RE/eBPF |
-| Protocol observation | Socket/flow metadata and opt-in bounded diagnostics; no packet payload collection by default |
-| GPU and AI | NVIDIA adapters when installed; workload instrumentation via explicit read-only integrations |
-| Distributed systems | Topology graph, rank mapping, link health, per-rank timing and straggler correlations |
-| Trust boundary | Non-root operator UI; narrowly scoped local collector/helper; read-only baseline |
-| Extension model | Versioned capability registry, out-of-process third-party adapters, strict isolation |
-| Data model | Typed events with provenance, confidence, freshness, units, availability and time source |
-
-**Hardware distinction:** NVLink-C2C links CPU and GPU *within* DGX Spark. Multiple DGX Spark nodes communicate using ConnectX networking; real GPU-to-GPU NVLink/NVSwitch is a different adapter on supported hardware.
-
-## Documentation
-
-- [Architecture and references](docs/ARCHITECTURE.md)
-- [Product requirements and personas](docs/PRODUCT_REQUIREMENTS.md)
-- [Feature and capability model](docs/CAPABILITY_MODEL.md)
-- [Research-driven ideas](docs/TECHNICAL_IDEAS.md)
-- [Technology and dependency policy](docs/TECH_STACK.md)
-- [Integrations and platform matrix](docs/INTEGRATION_MATRIX.md)
-- [Telemetry and evidence contract](docs/OBSERVABILITY_CONTRACT.md)
-- [Security and threat model](docs/SECURITY_MODEL.md)
-- [Test and quality strategy](docs/TEST_STRATEGY.md)
-- [Architecture decision records](docs/DECISIONS.md)
-- [Phased implementation roadmap](ROADMAP.md)
-
-## Autonomous agent collaboration
-
-Read [AGENTS.md](AGENTS.md), then [.AGENTS/README.md](.AGENTS/README.md). Phase state and [worklog](.AGENTS/WORKLOG.md) must be updated after every completed vertical slice. **Agents cannot silently promote proposed features to implemented status.**
-
-## Community
-
-LiDB is licensed under [MIT](LICENSE). Contribution workflow: [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities according to [SECURITY.md](SECURITY.md). Governance is documented in [GOVERNANCE.md](GOVERNANCE.md).
-
-Maintainers have not yet published releases or measured production overhead. Benchmarks require reproducible evidence from labeled hardware.
-
-## CI/CD and release automation
-
-- [Continuous integration and releases](docs/CI_CD.md) — gated Linux x86_64/aarch64 testing, CodeQL, Dependabot and guarded semantic releases.
-- [Main and release-tag protection](docs/BRANCH_PROTECTION.md) — version-controlled rulesets; requires one-time activation by a repository administrator.
-- [Agent CI/CD skill](.AGENTS/skills/ci-cd/SKILL.md) — maintain workflow security, SemVer and handoff conventions.
-
-Current implementation state remains pre-P0 application code. No source/binary release exists yet.
-
-## Parallel development with AI agents
-
-The repository supports **separate local Git worktrees for Antigravity, Claude, ChatGPT and other agents**. Every agent gets an independent branch and checkout, while GitHub Issues, PRs and CI Gate provide cross-device coordination. Worktree folders themselves are **Git-ignored and cannot be created on your own machine by a GitHub commit**.
-
-- [Full multi-agent/worktree guide](.AGENTS/WORKTREES.md)
-- [Cross-platform Python worktree manager](scripts/worktrees.py)
-- [Windows PowerShell wrapper](scripts/worktree.ps1)
-- [Linux / Git Bash wrapper](scripts/worktree.sh)
-- [Claude Code instructions](CLAUDE.md)
-- [Antigravity scoped rules](.agents/rules/multi-agent.md)
-
-Quick start after cloning:
-
-```powershell
-.\scripts\worktree.ps1 create antigravity p0-core
-.\scripts\worktree.ps1 create claude p0-telemetry
-.\scripts\worktree.ps1 list
+```bash
+git clone https://github.com/hami9/LiDB.git
+cd LiDB
+cargo build --workspace --locked
+cargo install --path apps/lidash --locked
 ```
 
-A coding agent must always work inside its own worktree and submit a focused PR; the coordinator alone updates shared status after integration.
+Cargo downloads the locked build dependencies when they are not already cached. The installed application makes no outbound network requests. Remove it with `cargo uninstall lidash`; installation does not enable a service or modify host configuration.
+
+## Use
+
+```bash
+lidash                         # dashboard when input/output are TTYs; text otherwise
+lidash snapshot                # one text snapshot
+lidash snapshot --json         # machine-readable observations
+lidash doctor                  # collector capabilities and failure reasons
+lidash doctor --json
+lidash tui                     # explicitly request an interactive dashboard
+lidash --help
+lidash --version
+```
+
+Use `--interval-ms` to choose a sampling interval from **250 to 60000 ms**: the default is 1000 ms for the dashboard and 250 ms for snapshot/doctor. One-shot commands collect two samples separated by that interval. The dashboard is monochrome; `--no-color` is accepted explicitly. A custom `--proc-root PATH` selects a procfs directory and labels output `fixture`; its data does not establish real-host validation. The CLI help documents where options are accepted.
+
+The scaffold commands `status` and `capabilities` remain aliases for `snapshot` and `doctor`. Doctor exits 0 when at least one host value is available, 1 when none are available, and 2 for an input/runtime error. A partially unavailable host is still inspectable; check individual reasons.
+
+In the dashboard, `q`, `Esc` or `Ctrl-C` quits; `Space` pauses displayed data while collection continues; `?`/`h` shows help. Arrow keys or `j`/`k`, PageUp/PageDown and Home/End scroll the observations.
+
+CPU utilization requires consecutive samples. Disk and interface counters are cumulative observations; the UI must label any derived rates and counter-reset gaps. Memory availability uses the kernel's `MemAvailable` field when exposed. PSI observations can be unsupported on kernels or mounts that do not expose them. `doctor` reads metadata and collector sources; it does not run connectivity probes or request privileges.
+
+## Scope and safety
+
+- Local host diagnostics, CLI/text/JSON output and a keyboard-operated TUI.
+- Typed availability, provenance, units, collector-local monotonic timestamps and bounded collection.
+- Read-only operation with no automatic remediation, packet capture, remote listener or telemetry service.
+- No collection of packet bodies, credentials, process environments or command-line arguments.
+- Optional deeper Linux networking and eBPF work belongs to later, separately reviewed slices.
+
+Vendor-specific hardware, model-serving integrations and multi-node orchestration are outside the public product scope. The retained `lidb-protocol` library contains pure version-negotiation contracts; it does not provide IPC or a running service.
+
+## Development
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked --all-targets
+python3 scripts/check_docs.py
+```
+
+See [architecture](docs/ARCHITECTURE.md), [product requirements](docs/PRODUCT_REQUIREMENTS.md), [roadmap](ROADMAP.md), [capability model](docs/CAPABILITY_MODEL.md), [telemetry contract](docs/OBSERVABILITY_CONTRACT.md), [test strategy](docs/TEST_STRATEGY.md) and [architecture decisions](docs/DECISIONS.md). The preserved [core contracts](docs/P0_CORE_CONTRACTS.md) and [bounded history](docs/P0_TELEMETRY_HISTORY.md) describe the existing foundation libraries.
+
+Contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Parallel coding uses [isolated worktrees](.AGENTS/WORKTREES.md). [CI/CD](docs/CI_CD.md) and [branch protection](docs/BRANCH_PROTECTION.md) describe repository automation; committed rulesets require administrative activation.
+
+LiDB is [MIT licensed](LICENSE). See [SECURITY.md](SECURITY.md) for vulnerability reporting, [GOVERNANCE.md](GOVERNANCE.md) for maintainership and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community conduct.

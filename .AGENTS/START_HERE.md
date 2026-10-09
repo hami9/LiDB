@@ -1,20 +1,13 @@
 # Copy-ready implementation kickoff
 
-The repository is LiDashBoard (LiDB): a terminal-native, open-source Linux and AI infrastructure diagnostics platform implemented primarily in Rust with narrowly scoped C/eBPF instrumentation.
+LiDashBoard (LiDB) is a terminal-native, open-source, local Linux diagnostic product. It uses Rust for userspace; optional C/eBPF belongs to future scoped instrumentation.
 
-**Your first task is P0, not the entire roadmap.** Start by reading `AGENTS.md`, `.AGENTS/SYSTEM_PROMPT.md`, `.AGENTS/RULES.md`, `.AGENTS/STATE.md`, `.AGENTS/PHASES.md`, `.AGENTS/QUALITY_GATES.md`, `docs/ARCHITECTURE.md`, `docs/PRODUCT_REQUIREMENTS.md`, and relevant `.AGENTS/skills/*/SKILL.md`.
+Read `AGENTS.md`, `.AGENTS/SYSTEM_PROMPT.md`, `.AGENTS/RULES.md`, `.AGENTS/STATE.md`, `.AGENTS/PHASES.md`, `.AGENTS/QUALITY_GATES.md`, `docs/ARCHITECTURE.md`, `docs/PRODUCT_REQUIREMENTS.md` and relevant local skills. Inspect the actual code, branch and existing changes; preserve the implemented core rather than replacing it with speculative scaffolds.
 
-Inspect the existing repository and branch. Propose a minimal P0 vertical slice with:
-- files to touch and why;
-- public APIs and feature/dependency boundaries;
-- permissions, privacy and degraded behavior;
-- exact tests and acceptance criteria;
-- compatibility requirements for Linux x86_64/aarch64.
+Choose one bounded active-phase slice and declare files, public contracts, source/permission/privacy boundaries, resource limits, meaningful tests and compatibility. Implement it, verify actual results and update operator docs. No root TUI, mandatory daemon, hidden listener, automatic network changes or invented metric/benchmark claims.
 
-Implement only that slice after checking for conflicting work. No root TUI, no auto-network changes, no fabricated performance/hardware claims. Show real command outputs and update `.AGENTS/WORKLOG.md` and `.AGENTS/STATE.md`. Open a focused PR or provide a reviewable patch. Review the result across kernel correctness, AI/hardware semantics, security, reliability/performance and product/UX/extensibility. Treat unsupported hardware paths honestly.
+Review Linux source correctness, telemetry integrity, security/privacy, reliability/performance and operator UX. Record unavailable platform tests honestly. Do not call a phase accepted until its gates and independent review have evidence.
 
-Do not say a phase is complete unless all its written exit gates have been checked.
+## Parallel work
 
-## If multiple agents run at once
-
-Before coding, read [WORKTREES.md](WORKTREES.md), reserve a unique GitHub issue/branch scope and open the corresponding local worktree. Claude and Antigravity must use separate editor windows. GitHub-based agents work in remote feature branches, not on the user's unsynced local changes. Do not rewrite shared task-state files from independent branches.
+Read [WORKTREES.md](WORKTREES.md) and reserve a unique issue/branch/file scope. Each implementation worker uses an isolated worktree. The coordinator alone integrates shared schemas, CI and central state/worklog. Workers put evidence in scoped task logs and hand off a focused commit/PR as instructed.
