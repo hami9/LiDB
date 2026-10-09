@@ -17,7 +17,7 @@ class VersionTests(unittest.TestCase):
         self.assertEqual(version.commit_bump("Merge pull request #7"), "patch")
 
     def test_minor_feature(self):
-        self.assertEqual(version.commit_bump("feat(ai): add GPU panel"), "minor")
+        self.assertEqual(version.commit_bump("feat(core): add CPU panel"), "minor")
         self.assertEqual(version.increment((0, 0, 9), "minor"), (0, 1, 0))
 
     def test_major_breaking(self):

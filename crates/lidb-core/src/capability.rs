@@ -210,10 +210,10 @@ mod tests {
     fn invalid_ids_and_missing_reasons_are_rejected() {
         for id in [
             "",
-            "gpu",
-            "org.lidb..gpu",
-            "org.lidb.AI",
-            "org.lidb.gpu/../../x",
+            "cpu",
+            "org.lidb..cpu",
+            "org.lidb.Linux",
+            "org.lidb.cpu/../../x",
         ] {
             assert!(matches!(
                 Capability::new(id, CapabilityState::Available, None),
@@ -221,12 +221,12 @@ mod tests {
             ));
         }
         assert_eq!(
-            Capability::new("org.lidb.ai.gpu", CapabilityState::Disabled, None),
+            Capability::new("org.lidb.linux.cpu", CapabilityState::Disabled, None),
             Err(CapabilityError::MissingReason)
         );
         assert_eq!(
             Capability::new(
-                "org.lidb.ai.gpu",
+                "org.lidb.linux.cpu",
                 CapabilityState::Available,
                 Some("bad".into())
             ),

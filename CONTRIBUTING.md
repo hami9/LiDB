@@ -16,7 +16,8 @@ Use Rust 1.85 or newer and the committed Cargo lockfile. Run the format, lint, t
 - Describe the operator problem, resulting behavior, compatibility, privacy/permissions and fallback.
 - Update meaningful tests and operator documentation; record exact commands and real results.
 - Use English in source, documentation, reviews and commits.
-- Use Conventional Commit titles, for example `feat(core): add pressure observations` or `fix(cli): handle redirected output`.
+- Use Conventional Commit PR titles, for example `feat(core): add pressure observations` or `fix(cli): handle redirected output`.
+- Write concise imperative commit subjects, such as `Add Pressure Observations` or `Handle Redirected Output`. Squash merging preserves the PR's release intent; use an explicit `Release-Bump:` footer when individual commits are rebased onto main.
 - Do not claim unrun platform, kernel, terminal or benchmark evidence.
 - Retain copyright notices under the MIT license; no CLA is currently required.
 

@@ -13,7 +13,7 @@ The public product connects these contracts to an in-process Linux collector and
 
 ## Contract limits
 
-Core observations do not automatically authenticate sources, bind timestamps to a boot identifier or make different clock domains comparable. The retained protocol crate supplies no serialization, peer credentials, remote access, daemon handshake or service lifecycle. The workspace's internal `0.0.0` version is not a published release.
+Core observations do not automatically authenticate sources, bind timestamps to a boot identifier or make different clock domains comparable. The retained protocol crate supplies no serialization, peer credentials, remote access, daemon handshake or service lifecycle. The workspace's internal `0.1.0` version is not a published release.
 
 ## Integration gates
 

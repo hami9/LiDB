@@ -1,6 +1,6 @@
 //! Pure, platform-agnostic LiDB domain contracts.
 //!
-//! This crate has no privileged operations, kernel hooks, GPU driver
+//! This crate has no privileged operations, kernel hooks, vendor driver
 //! dependencies, filesystem access or network side effects.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
