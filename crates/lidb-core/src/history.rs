@@ -4,7 +4,7 @@
 //! caller-guaranteed clock domain. It never collects data or invents values.
 //! Counts constrain the *number* of samples; producers must also bound payload
 //! sizes and redact sensitive information at their own trust boundary.
-use crate::telemetry::MetricObservation;
+use crate::telemetry::{MetricObservation, Unit};
 use std::collections::VecDeque;
 use std::fmt;
 
@@ -22,6 +22,8 @@ pub enum HistoryError {
     DifferentMetric,
     /// Incoming sample source differs from the first accepted sample.
     DifferentSource,
+    /// Incoming sample changes the measurement unit of the series.
+    DifferentUnit,
     /// Incoming timestamp precedes the most recently accepted sample.
     NonMonotonicTimestamp,
 }
@@ -33,6 +35,7 @@ impl fmt::Display for HistoryError {
             Self::CapacityTooLarge => "history capacity exceeds the supported limit",
             Self::DifferentMetric => "observation belongs to a different metric",
             Self::DifferentSource => "observation belongs to a different source",
+            Self::DifferentUnit => "observation changes the measurement unit",
             Self::NonMonotonicTimestamp => "observation timestamp moved backwards",
         };
         f.write_str(detail)
@@ -96,7 +99,7 @@ pub fn assess_freshness(
 pub struct TelemetryHistory<T> {
     capacity: usize,
     samples: VecDeque<MetricObservation<T>>,
-    series: Option<(String, String)>,
+    series: Option<(String, String, Unit)>,
     evicted: u64,
 }
 
@@ -122,12 +125,15 @@ impl<T> TelemetryHistory<T> {
     /// Failure leaves the history and eviction counter unchanged. An
     /// unavailable observation remains unavailable and is never rewritten.
     pub fn push(&mut self, observation: MetricObservation<T>) -> Result<bool, HistoryError> {
-        if let Some((name, source)) = &self.series {
+        if let Some((name, source, unit)) = &self.series {
             if observation.name() != name {
                 return Err(HistoryError::DifferentMetric);
             }
             if observation.source() != source {
                 return Err(HistoryError::DifferentSource);
+            }
+            if observation.unit() != *unit {
+                return Err(HistoryError::DifferentUnit);
             }
             if let Some(last) = self.samples.back() {
                 if observation.monotonic_ns() < last.monotonic_ns() {
@@ -138,6 +144,7 @@ impl<T> TelemetryHistory<T> {
             self.series = Some((
                 observation.name().to_owned(),
                 observation.source().to_owned(),
+                observation.unit(),
             ));
         }
         let evicted = self.samples.len() == self.capacity;
@@ -326,6 +333,25 @@ mod tests {
         assert!(history.is_empty());
         assert!(history.latest().is_none());
         assert!(history.latest_freshness(100, 10).is_none());
+    }
+
+    #[test]
+    fn rejects_unit_changes_without_evicting_existing_sample() {
+        let mut history = TelemetryHistory::new(1).unwrap();
+        history
+            .push(obs("network.rx", "fixture", 1, MetricState::Available(10)))
+            .unwrap();
+        let changed = MetricObservation::new(
+            "network.rx",
+            "fixture",
+            Unit::BytesPerSecond,
+            2,
+            MetricState::Available(20),
+        )
+        .unwrap();
+        assert_eq!(history.push(changed), Err(HistoryError::DifferentUnit));
+        assert_eq!(history.evicted_count(), 0);
+        assert_eq!(history.latest().unwrap().unit(), Unit::Bytes);
     }
 
     #[test]

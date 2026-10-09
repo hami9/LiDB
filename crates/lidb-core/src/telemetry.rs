@@ -270,4 +270,30 @@ mod tests {
         assert_eq!(obs.monotonic_ns(), 999);
         assert_eq!(obs.unit().as_str(), "percent");
     }
+
+    #[test]
+    fn rejects_oversized_explanations_and_terminal_controls() {
+        assert_eq!(
+            MetricObservation::<u64>::new(
+                "cpu\u{1b}[2J",
+                "fixture",
+                Unit::Count,
+                0,
+                MetricState::Available(0)
+            ),
+            Err(TelemetryError::InvalidName)
+        );
+        for reason in ["denied\nwith controls".to_owned(), "x".repeat(513)] {
+            assert_eq!(
+                MetricObservation::<u64>::new(
+                    "cpu",
+                    "fixture",
+                    Unit::Count,
+                    0,
+                    MetricState::Error(reason)
+                ),
+                Err(TelemetryError::InvalidFailureReason)
+            );
+        }
+    }
 }
