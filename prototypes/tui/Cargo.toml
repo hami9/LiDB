@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "lidb-tui-prototype"
+version = "0.1.0"
+edition = "2021"
+authors = ["Antigravity Agent <antigravity@lidb.local>", "LiDB Contributors"]
+description = "Modular terminal-native TUI prototype for LiDashBoard (LiDB)"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }
+crossterm = { version = "0.29.0", features = ["events"] }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }
