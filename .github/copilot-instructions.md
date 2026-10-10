@@ -1,5 +1,7 @@
 # Copilot / automated assistant repository instructions
 
-Follow [../AGENTS.md](../AGENTS.md) and [.AGENTS/SYSTEM_PROMPT.md](../.AGENTS/SYSTEM_PROMPT.md) before producing code. Build the next approved P0 slice, not all planned features at once.
+Read [AGENTS.md](../AGENTS.md), [.AGENTS/SYSTEM_PROMPT.md](../.AGENTS/SYSTEM_PROMPT.md) and the actual phase ledger before changing code.
 
-This is an English-only, open-source, terminal-first Rust + C/eBPF Linux and AI observability platform. Prioritize minimal permissions, typed missing data, evidence-backed diagnoses, correct DGX Spark/ConnectX topology, feature flags, testable code and precise handoff logs. Never claim proposed/hardware-simulated features are implemented or validated. Never silently change production networking or use root.
+LiDB is an English-only, open-source, local Linux terminal diagnostic product. Preserve existing Rust core contracts and implement one small, testable slice. Prioritize read-only unprivileged collection, bounded source input, typed missing data, honest units/time/source semantics, keyboard/text/JSON access and accurate test evidence. The running baseline needs no daemon, helper, IPC or cloud service. Optional deeper networking/eBPF is future work, separately reviewed. Vendor runtimes, distributed workloads and automatic remediation are outside product scope.
+
+Never silently change host configuration, invent hardware/performance results, overwrite another contributor's work or auto-merge. Parallel writers use separate worktrees and scoped ownership; central state/schema/CI belongs to the integrator.

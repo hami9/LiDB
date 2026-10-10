@@ -128,7 +128,7 @@ def render_notes(messages: list[str], plan: dict) -> str:
         "## Compatibility",
         "",
         "Check the changelog and documentation for actual supported features and hardware.",
-        "The presence of a release does not imply DGX Spark, NCCL or multi-node hardware validation.",
+        "The presence of a release does not imply validation on every Linux kernel, container or architecture.",
         "",
     ])
     return "\n".join(chunks)

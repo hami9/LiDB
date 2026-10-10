@@ -1,33 +1,25 @@
-# Security architecture and threat model
+# Core security architecture and threat model
 
-## Security posture
+## Posture and boundaries
 
-LiDB is an open-source diagnostic product running on sensitive hosts. Treat both **kernel event streams and runtime adapters as untrusted input**. The threat model covers: privilege misuse, kernel/verifier instability, malicious or faulty plugins, secret leakage, excessive sampling, socket impersonation, supply-chain compromise and unsafe operator automation.
+LiDB runs locally with the operator's existing identity. The baseline reads Linux procfs and presents text, JSON or a terminal view through in-process libraries. It opens no daemon socket, remote listener or external endpoint, requests no privileges and changes no host settings.
 
-## Required trust boundaries
+Trust boundaries are the source text entering the collector, parsed observations entering core contracts, and text entering terminal/JSON output. Kernel-derived files and custom fixture roots may be incomplete, malformed, large or intentionally hostile. Capability state represents usable evidence, not trust in arbitrary contents.
 
-1. `lidash` TUI runs unprivileged.
-2. `lidashd` gathers baseline metrics with minimal permissions over a local Unix socket. Validate peer credentials and restrict socket filesystem mode; never expose an unauthenticated TCP listener.
-3. `lidash-helper` is opt-in for restricted kernel/eBPF operations. Linux capabilities depend on kernel and operation (e.g. CAP_BPF, CAP_PERFMON, CAP_NET_ADMIN or other specific requirements); never claim one fixed set universally.
-4. Third-party adapters run as supervised non-root processes with explicit capability allowlists, deadlines, data size and resource bounds.
-5. Inter-node trust and authentication are **not** part of P0. Future remote telemetry requires mutual authentication, authorization, encrypted transport, key rotation, replay protection, and a threat-model review before enabling.
+## Risks and controls
 
-## Privacy and data handling
+- Bound file reads, source/device counts, retained samples and polling frequency. A denied, absent or malformed source degrades its own observations visibly.
+- Reject invalid numeric fields, non-finite values and unsafe counter arithmetic. Preserve reset and first-sample gaps rather than inventing rates.
+- Sanitize terminal control characters in untrusted identifiers; JSON output must escape strings correctly.
+- Collect no process environments, command-line arguments, packet bodies, memory contents or credentials. Host counters can still describe activity; operators control whether to share output.
+- Do not persist history, upload telemetry, inspect secrets, run shell probes or enable services as part of ordinary startup.
+- Restore terminal state on quit and handled errors. Collection failures must not trigger uncontrolled retries or privilege prompts.
+- Review locked dependencies and build tooling; never run an unreviewed install script.
 
-No packet body, TLS secret, HTTP header, DNS query, model prompt/completion, GPU memory content, SSH token or environment-variable secret collection by default. Filter command-line and process metadata before display/export. Make advanced capture exceptional, scoped, expiring and visibly active. No automatic outbound telemetry, update checker or cloud account.
+## Future features
 
-## Unsafe actions that agents must not perform
-
-Never execute arbitrary commands as root, disable a firewall, reconfigure NICs/routes, unload in-use kernel modules, alter NCCL/runtime parameters on production hosts, or send a workload without an operator-approved plan. Unauthenticated local network probes are not assumed harmless; scope and rate-limit any active diagnostics.
-
-## Engineering controls
-
-- Memory-safe Rust for parsing and state handling; C limited to documented kernel boundaries with targeted sanitizers/tests.
-- Fuzz untrusted parsers, bounds-check event records and strings, and reject unknown protocol versions safely.
-- No secrets in logs, CI output, snapshots or test fixtures. Include SAST, dependency vulnerability checks, license review, reproducible release builds and SBOM.
-- Fail closed for privileged operations; fail visibly and degrade for missing optional metric sources.
-- Introduce security review for new privilege, network listener, plugin, export, or cross-node feature.
+Network probes, eBPF, stored/exported history, IPC, helpers and listeners each require a separate scoped threat-model update and concrete operator need. Passive baseline operation must remain useful without them. No arbitrary command executor or automatic remediation belongs to this product.
 
 ## Incident handling
 
-Security disclosures follow [../SECURITY.md](../SECURITY.md). Fixes should include regression tests, affected-version analysis, release notes and minimized public disclosure while coordinating a patch.
+Use [SECURITY.md](../SECURITY.md) for vulnerability reporting. Public issues should include minimal, redacted reproduction data. Review [test strategy](TEST_STRATEGY.md) for hostile-input, permission and resource tests; don't claim controls are verified until the applicable tests have run.

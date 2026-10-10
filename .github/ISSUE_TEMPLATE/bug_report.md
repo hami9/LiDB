@@ -6,10 +6,10 @@ labels: bug
 ---
 
 ## Environment
-Linux distro/version, kernel, CPU architecture, LiDB version/commit. Include GPU/runtime/driver only if relevant.
+Linux distro/version, kernel, CPU architecture, LiDB version/commit. Include terminal type, procfs restrictions and fixture-root selection when relevant.
 
 ## Expected vs observed
-Explain behavior and timestamps; label simulated vs real hardware.
+Explain behavior and timestamps; label fixture vs live-host observations.
 
 ## Reproduction
 Small safe steps on a host you are authorized to test. Do not attach sensitive payloads or credentials.

@@ -12,4 +12,4 @@ description: Linux sockets, netlink, namespaces, routes, nftables and safe diagn
 - Reconcile sockets/process attribution races, ephemeral interfaces, IPv4/IPv6 and dual-stack behavior.
 - Explain kernel feature/permission gating; no automatic firewall, route, tunnel or NIC configuration.
 - Validate in disposable namespace/veth fixtures only with approved privileges; capture exact commands and cleanup.
-- Source reference: [kernel model](../../../docs/ARCHITECTURE.md); external vendor/kernel docs should be checked before implementation.
+- Source reference: [kernel model](../../../docs/ARCHITECTURE.md); external kernel/API docs should be checked before implementation.

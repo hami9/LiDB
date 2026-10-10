@@ -11,7 +11,7 @@ errors = []
 count = 0
 
 for md in sorted(ROOT.rglob("*.md")):
-    if any(part in {"target", "build", ".git"} for part in md.relative_to(ROOT).parts):
+    if any(part in {"target", "build", ".git", ".worktrees", ".worktree"} for part in md.relative_to(ROOT).parts):
         continue
     text = md.read_text(encoding="utf-8")
     for raw in LINK.findall(text):

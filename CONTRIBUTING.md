@@ -1,36 +1,34 @@
 # Contributing to LiDashBoard
 
-Thanks for helping build an open-source infrastructure tool. This project is in the architecture/bootstrap phase.
+LiDB is an open-source, local Linux terminal diagnostic product in core development.
 
 ## Before contributing
 
-Read [README.md](README.md), [AGENTS.md](AGENTS.md), [ROADMAP.md](ROADMAP.md), [SECURITY.md](SECURITY.md), and [docs/CAPABILITY_MODEL.md](docs/CAPABILITY_MODEL.md). Discuss substantial feature or architecture changes in an issue before implementation.
+Read [README.md](README.md), [AGENTS.md](AGENTS.md), [ROADMAP.md](ROADMAP.md), [SECURITY.md](SECURITY.md) and [capability model](docs/CAPABILITY_MODEL.md). Discuss substantial scope or architecture changes in an issue first. Keep contributions useful to ordinary Linux operators and preserve the read-only unprivileged baseline.
+
+## Development
+
+Use Rust 1.85 or newer and the committed Cargo lockfile. Run the format, lint, test and link checks shown in the README. Test actual Linux sources separately from deterministic fixtures and record the architecture. See [test strategy](docs/TEST_STRATEGY.md).
 
 ## Pull requests
 
-- Keep PRs small, focused and scoped to an existing roadmap phase.
-- Explain user problem, implementation, alternatives, security/privilege changes and fallback behavior.
-- Update documentation, tests, changelog when externally visible and [.AGENTS/WORKLOG.md](.AGENTS/WORKLOG.md) for agent-generated work.
-- Include exact test commands and environment; distinguish simulated and real hardware.
-- Do not claim GPU/NCCL/NVLink behavior tested on hardware without test evidence.
-- Use English across code, docs, reviews and commit messages.
-- Preferred commits: `docs(scope): description`, `feat(scope): description`, `fix(scope): description`, `test(scope): description`.
-- External contributors retain their copyright under the project's MIT license; no CLA currently required.
+- Keep one independently testable issue and focused file scope per PR.
+- Describe the operator problem, resulting behavior, compatibility, privacy/permissions and fallback.
+- Update meaningful tests and operator documentation; record exact commands and real results.
+- Use English in source, documentation, reviews and commits.
+- Use Conventional Commit PR titles, for example `feat(core): add pressure observations` or `fix(cli): handle redirected output`.
+- Write concise imperative commit subjects, such as `Add Pressure Observations` or `Handle Redirected Output`. Squash merging preserves the PR's release intent; use an explicit `Release-Bump:` footer when individual commits are rebased onto main.
+- Do not claim unrun platform, kernel, terminal or benchmark evidence.
+- Retain copyright notices under the MIT license; no CLA is currently required.
 
-## Review expectations
+Agent work follows [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md). Parallel authors use separate [worktrees](.AGENTS/WORKTREES.md); the coordinator owns shared state/worklog/schema/CI integration. No force-push, unrelated overwrite or unauthorized self-merge.
 
-Reviews consider kernel correctness, AI/hardware semantics, security/privacy, performance/reliability and product UX/compatibility. Sensitive changes require a separate security review. Maintainers may reject premature features or out-of-scope changes.
+## Reviews and safety
 
-## Development expectations
+Review Linux correctness, telemetry semantics, security/privacy, performance/reliability and operator UX. Sensitive changes require independent review. Use disposable environments for optional privileged kernel/network testing and obtain actual operator authorization before changing any system configuration. Core collection itself must remain read-only.
 
-Never run privileged kernel/network diagnostics on shared or production systems without express authorization. Use reproducible fixtures and designated disposable test environments. See [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md).
+## Version and automation
 
-## Conduct
+PR titles determine automatic SemVer intent once release gates are enabled: `feat:` means minor, breaking changes mean major, and routine fixes/docs/CI default to patch. A documented `Release-Bump: major|minor|patch` merge-commit footer can override the default. See [CI/CD policy](docs/CI_CD.md) and [CI/CD skill](.AGENTS/skills/ci-cd/SKILL.md). The required `CI Gate` is enforced only after repository rulesets are administratively activated. No public release is implied by a successful local build.
 
-Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md); report sensitive conduct issues privately to maintainers.
-
-## Version and CI expectations
-
-PR titles must follow Conventional Commits: `fix(network): handle no-route`, `feat(gpu): add validated adapter`, or `feat(core)!: redesign protocol`. `feat:` triggers a minor release and breaking changes trigger a major release, once implementation and release gates are ready. If necessary, use `Release-Bump: major|minor|patch` in the merge commit body. Prefer squash merging to preserve the PR title as the version source.
-
-Read [CI/CD and release policy](docs/CI_CD.md). The required gate is `CI Gate` **after repository rulesets are activated**. Agent-authored changes should also follow [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) and [.AGENTS/skills/ci-cd/SKILL.md](.AGENTS/skills/ci-cd/SKILL.md). No contributor may claim an unrun GPU or hardware benchmark passed.
+Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report vulnerabilities via [SECURITY.md](SECURITY.md), rather than posting sensitive reproduction data in a public issue.

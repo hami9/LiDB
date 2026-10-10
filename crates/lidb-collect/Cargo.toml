@@ -1,0 +1,11 @@
+[package]
+name = "lidb-collect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded read-only local Linux host telemetry"
+
+[dependencies]
+lidb-core = { path = "../lidb-core" }

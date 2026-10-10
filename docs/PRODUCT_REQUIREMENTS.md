@@ -1,49 +1,34 @@
-# Product requirements (PRD)
+# Public product requirements
 
-Status: proposed | Owner: maintainers | Audience: contributors, coding agents, operators
+## Audience and problem
 
-## Problem and audience
+LiDB serves Linux users, developers, VPS owners and system operators who need useful host evidence in a terminal or SSH session. They should be able to inspect resource pressure and interface activity without installing an agent service, supplying cloud credentials or granting root.
 
-LiDashBoard serves (1) Linux/VPS operators debugging connectivity, (2) engineers operating Docker/network namespaces, (3) AI inference developers tracking latency and throughput, (4) DGX Spark workstation and cluster operators, and (5) users working exclusively over SSH or small terminals.
+## Operator jobs
 
-## Jobs to be done
+1. Inspect CPU activity, memory availability, load, uptime, disk/interface counters and pressure in one place.
+2. Tell observed values from missing, denied, unsupported or malformed data.
+3. Copy a reproducible machine-readable snapshot into a local investigation.
+4. Use the same baseline interactively and in redirected scripts.
+5. Understand collection sources, limitations and permissions before requesting deeper diagnostics.
 
-1. **Explain a failing service connection:** identify process, socket, namespace, route, DNS and applicable firewall signals without pretending every packet follows one fixed pipeline.
-2. **Explain slow inference:** correlate TTFT/TPOT, request queue, CPU, unified-memory pressure, GPU and network signals in a shared time window.
-3. **Explain uneven GPU/cluster throughput:** show per-node and per-rank observations, collective timings and fabric health when instrumentation exists.
-4. **Safely investigate:** default to read-only; preview requested changes and clearly disclose risk, privileges and rollback.
-5. **Work offline and under SSH:** no cloud account or remote telemetry requirement for a useful local baseline.
+## Core requirements
 
-## Functional product requirements
+- One `lidash` CLI with terminal dashboard, finite text/JSON snapshot and capability doctor.
+- Rust core contracts for units, source, monotonic time, availability and bounded histories/snapshots.
+- Read-only Linux collection with per-source failure reporting and bounded file reads.
+- Configurable refresh interval with a bounded allowed range; custom procfs roots for fixtures.
+- Clean terminal restoration, keyboard navigation and usable non-interactive output.
+- Build/install/removal instructions, honest platform labels and reproducible tests.
 
-- CLI and navigable, keyboard-first TUI; deterministic machine-readable export.
-- Capability discovery, platform/permission matrix and honest unavailable state.
-- Read-only process, socket, interface, route, system-pressure and GPU observations.
-- Correlation and RCA with evidence links, alternatives and uncertainty.
-- Optional local timelines with configurable retention and resource budgets.
-- Pluggable AI-runtime adapters; avoid model output, input and token/prompt payload collection.
-- Cluster visibility without claiming to be a scheduler. Recommendations require evidence.
-- Stable schemas and evolution policy; safe plugin lifecycle and supervised adapters.
-- Documentation, security reporting, packaging, reproducible validation.
+## Nonfunctional requirements
 
-## Product-level nonfunctional targets
+No root, mandatory daemon, database, cloud account, external service or outbound application traffic. No host mutation, packet capture, process-environment/command-line collection or hidden persistence. Input and resource usage are bounded. Missing metrics remain missing; untested platforms and unmeasured performance remain labeled accordingly.
 
-- Never require root for the terminal UI. Privileged functionality uses a small explicitly enabled component.
-- Work with missing eBPF, GPU, NVIDIA libraries, containers and network access.
-- Never silently drop security-relevant errors or silently invent missing metrics.
-- Configurable refresh/sample rates and retention. Support `--no-color`, narrow terminals and screen readers as feasible.
-- Provide installation and removal procedures with no unexpected daemon enablement.
-- No outbound network traffic without an explicit feature that requires it.
-- Honor privacy choices and redact secrets from logs, crash reports and support bundles.
+## Product boundaries
 
-## Non-goals for initial public releases
+Vendor-specific compute telemetry, model-serving adapters, multi-node fabrics, schedulers, remote fleet management, browser dashboards and automatic remediation are outside scope. Deeper Linux networking and eBPF can follow only when they solve a concrete general Linux operator problem and retain a useful unprivileged fallback.
 
-LiDB is not a packet interception platform, firewall replacement, GPU training orchestrator, model scheduler, remote execution service, enterprise fleet controller or browser dashboard. Automatic remediation and cross-host credential management are deferred pending a dedicated threat model.
+## Acceptance and launch
 
-## Success metrics (proposed, to validate)
-
-Measure: time-to-diagnosis in reproducible scenarios; fraction of claims with provenance; collector CPU/RSS overhead and dropped events; graceful fallback rate; test coverage by platform and permissions; usability on SSH; false positive rate for RCA hypotheses. Do not claim target performance is achieved before hardware measurements.
-
-## Launch criteria
-
-A feature requires user documentation, discoverable limitations, CLI/TUI visibility, versioned contract, tests, security review and compatibility labeling (`stable`, `experimental`, `unsupported`, `disabled`). Public beta must have installation guides, license, vulnerability contact, signed artifacts, changelog and operational support policy.
+Core acceptance requires a real Linux smoke run, meaningful source/error tests, CLI help and JSON behavior, terminal lifecycle verification and current documentation. Public release additionally requires validated platform claims, measured resource use, packaging/removal checks, dependency/license review and release evidence. See [test strategy](TEST_STRATEGY.md) and [roadmap](../ROADMAP.md). No release is claimed by this document.
