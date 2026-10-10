@@ -17,11 +17,24 @@ Use Rust 1.85 or newer and the committed Cargo lockfile. Run the format, lint, t
 - Update meaningful tests and operator documentation; record exact commands and real results.
 - Use English in source, documentation, reviews and commits.
 - Use Conventional Commit PR titles, for example `feat(core): add pressure observations` or `fix(cli): handle redirected output`.
-- Write concise imperative commit subjects, such as `Add Pressure Observations` or `Handle Redirected Output`. Squash merging preserves the PR's release intent; use an explicit `Release-Bump:` footer when individual commits are rebased onto main.
+- Follow the [naming rules](#naming) for commits, branches and files. Squash merging preserves the PR's release intent; use an explicit `Release-Bump:` footer when individual commits are rebased onto main.
 - Do not claim unrun platform, kernel, terminal or benchmark evidence.
 - Retain copyright notices under the MIT license; no CLA is currently required.
 
 Agent work follows [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md). Parallel authors use separate [worktrees](.AGENTS/WORKTREES.md); the coordinator owns shared state/worklog/schema/CI integration. No force-push, unrelated overwrite or unauthorized self-merge.
+
+## Naming
+
+Keep names short and plain. A name says what something is in 1 to 3 words.
+
+- **Commits on your branch:** one lowercase line that starts with a plain verb: `add disk limit`, `fix arm64 open flags`, `update ci docs`. No `feat:` prefix and no Title Case. The squash commit on `main` uses the PR title instead, so it keeps the prefix. Add a body only when the change needs it. Trailers such as `Co-Authored-By:` and `Release-Bump:` are fine.
+- **PR titles:** keep the Conventional Commit prefix, because CI and release versioning read it. Keep the rest short and lowercase: `fix(collect): arm64 open flags`. With squash merging the title becomes the commit on `main`, so do not drop the prefix when merging.
+- **Branches:** agents use the branch the worktree tool creates, `agent/<agent>/<task>`. Keep `<task>` to 1 to 3 words joined by hyphens: lowercase letters, digits and `-`, starting with a letter, at most 40 characters. For example `agent/codex/disk-limit`, not `disk limit`. Human branches use no prefix: `fix-disk-limit`.
+- **Files and folders:** new names are lowercase with hyphens: `telemetry-history.md`, not `P0_TELEMETRY_HISTORY.md`. Keep fixed names such as `README.md`, `Cargo.toml` and `LICENSE`. Do not rename existing files in an unrelated PR.
+- **Task notes:** put them in `.AGENTS/worklogs/`, not inside app or crate folders.
+- **Issues, labels and tags:** short and plain, for example `disk limit` or `arm64`.
+
+Write docs, PR bodies and issue text in short sentences with common words. Skip hype words such as "powerful", "seamless" or "robust".
 
 ## Reviews and safety
 
