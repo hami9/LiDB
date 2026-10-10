@@ -6,7 +6,12 @@ use lidb_core::MetricState;
 use lidb_core::SnapshotMode;
 use std::path::Path;
 
-#[cfg(target_os = "linux")]
+// Linux open flags differ by architecture. O_NONBLOCK is 0x800 on both
+// supported targets. O_NOFOLLOW is 0x20000 on x86_64 but 0x8000 on aarch64,
+// where 0x20000 means O_LARGEFILE. Other targets are refused before any open.
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const OPEN_FLAGS: i32 = 0x800 | 0x8000;
+#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
 const OPEN_FLAGS: i32 = 0x800 | 0x20000;
 
 pub(crate) fn source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<String, State> {
@@ -59,9 +64,9 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
     if !metadata.file_type().is_file() {
         return Err(error("source is not a regular file"));
     }
-    // Stable Linux ABI flags: O_NONBLOCK=0x800, O_NOFOLLOW=0x20000. These
-    // protect against opening a substituted FIFO or final-component symlink
-    // between metadata inspection and open, without privileged/unsafe code.
+    // O_NONBLOCK and O_NOFOLLOW protect against opening a substituted FIFO or
+    // final-component symlink between metadata inspection and open, without
+    // privileged/unsafe code.
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(OPEN_FLAGS)
