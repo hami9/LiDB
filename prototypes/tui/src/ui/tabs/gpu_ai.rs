@@ -36,7 +36,7 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
             ),
             Span::raw("  "),
             Span::styled(
-                " [NOT PROBED IN PROTOTYPE] ",
+                " [PLANNED] ",
                 Style::default()
                     .bg(theme.selected_bg)
                     .fg(theme.fg_muted)
@@ -47,14 +47,14 @@ fn render_host_reality(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(" Detection Result: ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "Capability detection not yet executed in standalone prototype. (P0 boundary)",
+                "GPU support is planned after the general Linux core. Nothing is probed.",
                 Style::default().fg(theme.info),
             ),
         ]),
         Line::from(vec![
             Span::styled(" Execution Host:   ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                "Standalone unprivileged dashboard. Host capability detection scheduled for P1/P5 integration.",
+                "Not in the current release scope. The 'g' fixture is layout data only.",
                 Style::default().fg(theme.fg_muted),
             ),
         ]),
@@ -199,8 +199,7 @@ fn render_simulated_fixture(f: &mut Frame, area: Rect, app: &App) {
             .gauge_style(Style::default().fg(theme.success).bg(theme.selected_bg))
             .percent(mem_pct)
             .label(format!(
-                "LPDDR5x UMA: {:.1}GB / {:.1}GB ({}% unified pressure)",
-                mem_used_gb, mem_total_gb, mem_pct
+                "LPDDR5x UMA: {mem_used_gb:.1}GB / {mem_total_gb:.1}GB ({mem_pct}% unified pressure)"
             ));
         f.render_widget(gauge, card_chunks[2]);
     }

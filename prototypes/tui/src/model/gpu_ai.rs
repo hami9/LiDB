@@ -55,7 +55,7 @@ impl Default for GpuAiTelemetry {
             devices: Vec::new(),
             workloads: Vec::new(),
             status: DataSourceStatus::NotProbed {
-                reason: "Accelerator and GPU driver capability detection not yet executed in standalone prototype. (P0 boundary)".to_string(),
+                reason: "GPU support is planned after the general Linux core; nothing is probed.".to_string(),
             },
             fabric_topology_note: "Per Rule R03: NVLink-C2C is intra-node only. DGX Spark inter-node uses ConnectX-7 Ethernet/RoCE.".to_string(),
         }

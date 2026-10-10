@@ -38,7 +38,7 @@ The dashboard provides a keyboard-driven interface structured into 7 dedicated t
    - Protocol socket overview (TCP Established, TCP Listen, TCP TimeWait, UDP sockets).
 
 4. **`4:GPU/AI` — Accelerators & Model Serving Workloads:**
-   - **Host Reality Mode (Default):** Truthfully reports unprobed hardware state (`[NOT PROBED]`) in the standalone prototype pending runtime capability detection, fulfilling Rules **R01**, **R10**, and **R19**.
+   - **Host Reality Mode (Default):** Shows `[PLANNED]`: GPU support comes after the general Linux core, and nothing is probed, fulfilling Rules **R01**, **R10**, and **R19**.
    - **Simulated DGX Spark Fixture (`g` key):** High-fidelity simulation of a 2-node NVIDIA DGX Spark cluster with GB10 Grace Blackwell accelerators (SM utilization, 128 GB coherent LPDDR5x unified system memory pressure, NVLink-C2C intra-node interconnect, ConnectX-7 200GbE RoCEv2 inter-node fabric, realistic power draw within 140 W SoC TDP).
    - AI serving KPIs: Simulated vLLM and TensorRT-LLM telemetry (tokens/sec, TTFT, TPOT, KV cache utilization %, batch sizes).
    - Interconnect topology contract (**Rule R03**): Spark CPU↔GPU NVLink-C2C is strictly modeled as intra-node; inter-node communication uses ConnectX-7 Ethernet/RoCE (no external GPU-to-GPU NVLink).

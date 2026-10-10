@@ -49,7 +49,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(" Uptime:   ", Style::default().fg(theme.fg_muted)),
             Span::styled(
-                format!("{}h {}m {}s", uptime_hrs, uptime_mins, uptime_secs),
+                format!("{uptime_hrs}h {uptime_mins}m {uptime_secs}s"),
                 Style::default().fg(theme.fg),
             ),
             Span::styled("   Load: ", Style::default().fg(theme.fg_muted)),

@@ -112,8 +112,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         .gauge_style(Style::default().fg(theme.success).bg(theme.selected_bg))
         .percent(mem_pct)
         .label(format!(
-            "{:.1} GB / {:.1} GB ({}%)",
-            mem_used_gb, mem_total_gb, mem_pct
+            "{mem_used_gb:.1} GB / {mem_total_gb:.1} GB ({mem_pct}%)"
         ));
     f.render_widget(mem_gauge, mem_cols[0]);
 
@@ -136,8 +135,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         .gauge_style(Style::default().fg(theme.warning).bg(theme.selected_bg))
         .percent(swap_pct)
         .label(format!(
-            "{:.1} GB / {:.1} GB ({}%)",
-            swap_used_gb, swap_total_gb, swap_pct
+            "{swap_used_gb:.1} GB / {swap_total_gb:.1} GB ({swap_pct}%)"
         ));
     f.render_widget(swap_gauge, mem_cols[1]);
 
