@@ -26,6 +26,13 @@ pub(crate) fn source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<
 }
 
 #[cfg(target_os = "linux")]
+const O_NONBLOCK: i32 = 0x800;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const O_NOFOLLOW: i32 = 0x20000;
+#[cfg(all(target_os = "linux", not(target_arch = "x86_64")))]
+const O_NOFOLLOW: i32 = 0x8000;
+
+#[cfg(target_os = "linux")]
 fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<String, State> {
     use std::fs::{self, OpenOptions};
     use std::io::Read;
@@ -56,12 +63,13 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
     if !metadata.file_type().is_file() {
         return Err(error("source is not a regular file"));
     }
-    // Stable Linux ABI flags: O_NONBLOCK=0x800, O_NOFOLLOW=0x20000. These
-    // protect against opening a substituted FIFO or final-component symlink
+    // Stable Linux ABI flags: O_NONBLOCK=0x800.
+    // O_NOFOLLOW is 0x20000 on x86_64 and 0x8000 on aarch64 (asm-generic).
+    // These protect against opening a substituted FIFO or final-component symlink
     // between metadata inspection and open, without privileged/unsafe code.
     let file = OpenOptions::new()
         .read(true)
-        .custom_flags(0x800 | 0x20000)
+        .custom_flags(O_NONBLOCK | O_NOFOLLOW)
         .open(path)
         .map_err(io_state)?;
     if !file.metadata().map_err(io_state)?.is_file() {
