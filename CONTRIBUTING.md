@@ -29,7 +29,7 @@ Keep names short and plain. A name says what something is in 1 to 3 words.
 
 - **Commits:** one lowercase line that starts with a plain verb: `add disk limit`, `fix arm64 open flags`, `update ci docs`. No `feat:` prefix and no Title Case. Add a body only when the change needs it. Trailers such as `Co-Authored-By:` and `Release-Bump:` are fine.
 - **PR titles:** keep the Conventional Commit prefix, because CI and release versioning read it. Keep the rest short and lowercase: `fix(collect): arm64 open flags`. With squash merging the title becomes the commit on `main`, so do not drop the prefix when merging.
-- **Branches:** agents use the branch the worktree tool creates, `agent/<agent>/<task>`. Keep `<task>` to 1 to 3 words: `agent/codex/disk-limit`. Human branches use no prefix: `fix-disk-limit`.
+- **Branches:** agents use the branch the worktree tool creates, `agent/<agent>/<task>`. Keep `<task>` to 1 to 3 words joined by hyphens: lowercase letters, digits and `-`, starting with a letter, at most 40 characters. For example `agent/codex/disk-limit`, not `disk limit`. Human branches use no prefix: `fix-disk-limit`.
 - **Files and folders:** new names are lowercase with hyphens: `telemetry-history.md`, not `P0_TELEMETRY_HISTORY.md`. Keep fixed names such as `README.md`, `Cargo.toml` and `LICENSE`. Do not rename existing files in an unrelated PR.
 - **Task notes:** put them in `.AGENTS/worklogs/`, not inside app or crate folders.
 - **Issues, labels and tags:** short and plain, for example `disk limit` or `arm64`.
