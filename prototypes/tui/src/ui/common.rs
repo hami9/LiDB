@@ -87,7 +87,7 @@ pub fn render_tabs_bar(f: &mut Frame, area: Rect, app: &App) {
 
         if is_selected {
             tab_spans.push(Span::styled(
-                format!(" [{}] ", title),
+                format!(" [{title}] "),
                 Style::default()
                     .bg(theme.selected_bg)
                     .fg(theme.selected_fg)
@@ -95,7 +95,7 @@ pub fn render_tabs_bar(f: &mut Frame, area: Rect, app: &App) {
             ));
         } else {
             tab_spans.push(Span::styled(
-                format!("  {}  ", title),
+                format!("  {title}  "),
                 Style::default().fg(theme.fg_muted),
             ));
         }

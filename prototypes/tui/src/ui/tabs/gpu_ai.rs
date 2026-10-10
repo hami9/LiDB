@@ -199,8 +199,7 @@ fn render_simulated_fixture(f: &mut Frame, area: Rect, app: &App) {
             .gauge_style(Style::default().fg(theme.success).bg(theme.selected_bg))
             .percent(mem_pct)
             .label(format!(
-                "LPDDR5x UMA: {:.1}GB / {:.1}GB ({}% unified pressure)",
-                mem_used_gb, mem_total_gb, mem_pct
+                "LPDDR5x UMA: {mem_used_gb:.1}GB / {mem_total_gb:.1}GB ({mem_pct}% unified pressure)"
             ));
         f.render_widget(gauge, card_chunks[2]);
     }
