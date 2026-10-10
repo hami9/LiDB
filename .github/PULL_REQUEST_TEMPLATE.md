@@ -16,12 +16,12 @@ Feature flag, fallback, privilege requirement, privacy classification, resource 
 
 ## Tests actually executed
 
-Commands, environments, exit codes and reproducible evidence. Clearly label NOT RUN and simulated vs real GPU/multi-node verification.
+Commands, environments, exit codes and reproducible evidence. Clearly label NOT RUN and fixture vs live Linux/native architecture verification.
 
 ## Five-axis review
 
 - Kernel/networking:
-- AI/GPU/fabric:
+- Telemetry/contracts:
 - Security/privacy:
 - Performance/reliability:
 - Product/UX/extensibility:

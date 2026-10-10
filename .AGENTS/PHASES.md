@@ -1,51 +1,31 @@
-# Phase execution and acceptance plan
+# Public core execution and acceptance plan
 
-See [../ROADMAP.md](../ROADMAP.md) for product-level phase gates. Each phase below has a technical delivery boundary and cannot be skipped without a recorded dependency decision.
+[../ROADMAP.md](../ROADMAP.md) owns phase names. Work from the actual implementation ledger in [STATE.md](STATE.md); a runnable foundation is not an accepted public release.
 
-## P0 — workspace foundation
+## P0 — core foundations
 
-Build a Rust workspace with `lidash`, `lidashd`, shared core/protocol modules and a no-root TUI shell; minimum Linux/kernel/toolchain decision; capability and typed availability enums; fixtures; CI for formatting, lint, unit and docs tests. No mandatory GPU SDK or eBPF. **Exit:** workspace builds/tests on chosen Linux baselines, CLI `--help` and headless output work; no invented live metrics; graceful daemon-absent state.
+Retain the existing `lidb-core` observation/capability/history contracts and pure `lidb-protocol` negotiation. Add bounded snapshots and CLI/TUI presentation through `apps/lidash`. No daemon/helper/IPC is needed. **Exit:** minimum Rust 1.85 verified, formatting/lint/tests pass, contract/error tests, help/version and terminal/headless lifecycle evidence.
 
-## P1 — Linux host telemetry
+## P1 — useful Linux baseline
 
-Implement safe procfs/sysfs/cgroup v2/PSI collectors with source timestamps, permissions and typed errors. **Exit:** per-field missing-data cases and Linux integration tests on actual supported hosts; performance baseline documented.
+Implement bounded, unprivileged procfs collection for CPU, memory, load, uptime, interface/disk counters and optional PSI. Snapshot and doctor commands expose typed source failures. **Exit:** real local Linux smoke run, fixture/malformed/missing/denied inputs, counter reset/timing tests and truthful source labels. Record native x86_64/aarch64 evidence separately.
 
-## P2 — networking state
+## P2 — networking diagnostics
 
-Netlink interfaces/routes, socket and namespace attribution, container-aware views and safe DNS/connectivity probes. **Exit:** reproducible namespaces/veth route fixture and error cases; no automatic nftables/routing mutations.
+Read-only routes, sockets, interface metadata and best-effort namespace identity. **Exit:** disposable namespace fixtures, permission/partial-data cases, process privacy and no automatic configuration changes. Active probes need separately scoped opt-in review.
 
-## P3 — eBPF collector
+## P3 — terminal and evidence usability
 
-C CO-RE programs, optional BPF loader/helper, fallback, attach/detach lifecycle and lost-event counter. **Exit:** verifier, kernel compatibility, privilege and overhead evidence; TUI remains unprivileged.
+Navigation, narrow-terminal access, bounded history, rate displays and offline evidence exports. **Exit:** keyboard/restore tests, deterministic replay, payload/retention bounds, export privacy and documented limits.
 
-## P4 — correlation + TUI maturity
+## P4 — optional deeper instrumentation
 
-Bounded event streaming, local timelines, searchable diagnosis history, redacted export and accessible terminal views. **Exit:** determinism, time semantics, retention, overload/drop tests, narrow-terminal snapshots.
+Add a specific Linux eBPF collector only for a demonstrated operator need. **Exit:** verifier/kernel evidence, explicit activation, bounded maps/events, clean detach, measured overhead and a working unprivileged fallback.
 
-## P5 — GPU + GB10 awareness
+## P5 — public release hardening
 
-Optional NVML/DCGM adapters, non-fake unsupported fields, GPU device mapping and unified-memory model. **Exit:** validated platform matrix including actual DGX Spark before claiming support.
+Packaging/removal, compatibility/support policy, dependencies, provenance and measured resource use. **Exit:** native platform reports, installed binary smoke tests, supply-chain/license review, accurate docs and independently reviewed artifacts.
 
-## P6 — model-serving adapters
+## Per-slice requirements
 
-Opt-in documented read-only adapters for serving KPIs: tokens/s, queue size, TTFT/TPOT, batching and cache where exposed. **Exit:** auth handling, rate limiting, schema contracts, no sensitive payloads.
-
-## P7 — multi-node topology
-
-Securely authenticated node observations, ConnectX link health, RDMA/RoCE capability, rank and NIC mapping, clock quality. **Exit:** tested 2+ nodes, transport/type evidence, no claim that Spark inter-node traffic is NVLink.
-
-## P8 — NCCL and distributed RCA
-
-Opt-in communication instrumentation, collectives/rank timing, straggler analysis, contradictory evidence, placement recommendations. **Exit:** controlled, repeatable incidents and quantified false-positive risk.
-
-## P9 — plugin/release hardening
-
-Versioned adapter protocol, resource isolation, packaging, audited supply chain, release signatures, SBOM, compatibility migration. **Exit:** plugin crash/version mismatch tests; maintainer security review.
-
-## P10 — public beta
-
-Operator documentation, installation/uninstallation, structured support and benchmark report, end-to-end testing on claimed hardware and five-angle approval. **Exit:** publish an accurately scoped beta release; no unsupported marketing claims.
-
-## Per-phase mandatory deliverables
-
-Scope statement, module manifest, tests (positive/negative), permission and privacy assessment, actual performance findings, fallback UX, documented support states, worklog and reviewer approval.
+State operator need, ownership, source, permissions, privacy, resource bounds, fallbacks and meaningful acceptance tests. Report commands and observed results; fixtures are not hardware validation. Phase exit requires independent review and recorded evidence. Vendor/runtime, distributed orchestration and automatic-remediation work is outside this roadmap.

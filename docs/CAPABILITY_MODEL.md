@@ -1,48 +1,31 @@
-# Feature architecture, capability negotiation and extension policy
+# Capability and availability model
 
-## Principle
+## Implemented foundation
 
-Every feature is a **separately testable module**. It declares prerequisites, permissions, data semantics, operational cost and compatible API versions. Local baseline must continue working if an optional module fails or cannot load.
+`lidb-core` provides `Capability`, `CapabilityRegistry` and `CapabilityState`. Identifiers use bounded lowercase `org.lidb.*` names. Registration is duplicate-safe, and iteration is deterministic. Every unavailable capability requires an explanatory reason; available capabilities must not carry an unavailability reason.
 
-## Capability manifest (conceptual schema)
+The library describes capability state. Only a real collector can establish that its source is available. File existence alone does not prove readability, valid content or support for every metric.
 
-```yaml
-id: org.lidb.gpu.nvidia
-api_version: "1.0"
-implementation: builtin               # builtin | supervised-adapter
-status: experimental                   # stable | experimental | disabled
-supported_arches: [x86_64, aarch64]
-requires:
-  os: linux
-  libraries: [libnvidia-ml.so]         # detected at runtime, optional
-  privileges: []                      # explicit separate helper permissions if any
-provides: [gpu.utilization, gpu.power, gpu.memory.model]
-cost_profile: low                      # low | moderate | high
-privacy_class: host-metadata
-fallback: unavailable-with-reason
-default_enabled: false
-```
+## States
 
-The manifest format is illustrative and will be formalized with validated schemas in P0. Do **not** assume library presence implies metrics are supported: probe individual capabilities.
+| State | Meaning |
+| --- | --- |
+| `available` | Source or value passed the collector's applicable checks |
+| `unsupported` | Platform or source does not expose the feature |
+| `disabled` | Intentionally inactive or not implemented |
+| `permission_denied` | Current identity cannot read the source |
+| `temporarily_unavailable` | Source or sample is not usable now |
+| `stale` | Prior observation is too old to present as current |
+| `error` | Parsing, validation or unexpected collection failure |
 
-## Data availability is explicit
+`MetricState<T>` distinguishes these states from a measured value, including a valid zero. Never label missing data as healthy. `doctor` presents source/capability status and actionable reasons without attempting privilege escalation or active probes.
 
-A telemetry field must carry one of: `available`, `unsupported`, `disabled`, `permission_denied`, `temporarily_unavailable`, `stale` or `error`. Unavailable values must not be substituted with 0. Missing data is not evidence that a subsystem is healthy.
+## Public core domains
 
-## Extension boundary
+Host CPU, memory, load/uptime, network-interface counters, disk counters and PSI are independently inspectable. The absence of one source must not disable unrelated observations. Refresh and fixture-root configuration apply to the in-process collector, not to a service protocol.
 
-- **First-party core:** Rust crates, compile-time features, well-reviewed code and strict domain APIs.
-- **External community integrations (future):** separate supervised processes using a versioned local protocol. No untrusted native `dlopen` into the privileged daemon.
-- Keep third-party adapters non-root by default, with opt-in explicit permissions and read-only interfaces.
-- Reject unsupported protocol major versions. Negotiate supported minor capabilities; document deprecations.
-- Declare OS and architecture support; third-party adapters must specify resource limits, timeouts, privacy policy and reproducibility.
-- No plugin manager should silently download and execute arbitrary code. Operator consents to installation, source, privileges and updates.
-- Disable one failing plugin without terminating all collectors; bound queues and memory allocations.
+## Future feature lifecycle
 
-## Feature flag lifecycle
+`planned → implemented → experimental → validated → stable → deprecated → removed`. Documentation does not promote a feature automatically. Optional network or eBPF features declare data sources, permissions, resource bounds, privacy, fallback and platform evidence before activation.
 
-`planned → implemented behind flag → experimental → validated → stable → deprecated → removed`. There is no automatic promotion between states. Removal requires documented migration and a SemVer-compliant release.
-
-## Definition of done for a module
-
-Manifest + safety assessment + tests including failed dependencies + resource cost bound + CLI/TUI fallback + operator docs + changelog + compatible schema + human review. The agent must not merge feature code if any requirement is unaddressed.
+There is no current plugin manager, dynamic loader, vendor adapter or remote capability service. The pure `lidb-protocol` negotiation library is retained; it establishes no runtime transport or authorization. Any later extension boundary needs its own reviewed versioned contract.

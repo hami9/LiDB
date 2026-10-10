@@ -1,16 +1,16 @@
 ---
 name: lidb-rust-core
-description: Rust architecture, async orchestration, typed telemetry and IPC.
+description: Rust domain contracts, bounded snapshots, typed telemetry and in-process collection.
 ---
 # Rust core skill
 
-**Use when:** creating Rust crates, binary entrypoints, domain models, config, local IPC or async collectors.
+**Use when:** Rust crates, entrypoints, telemetry/config contracts or collection change.
 
-- Separate domain DTO/schema, collector traits, scheduler, storage and presentation; keep devices optional.
-- Require explicit units, time bases, missing-data enum, provenance and typed errors.
-- Use bounded channels, cancellation, backpressure and deterministic shutdown; never block UI on a collector.
-- Avoid `unsafe` unless justified, isolated, documented and reviewed. Validate all C/FFI boundaries.
-- Keep schema evolution additive where possible; tests for unknown fields/version mismatch.
-- CLI and JSON headless outputs must work without a running GPU or helper.
-- Verify with `cargo fmt`, `cargo clippy`, `cargo test` once a workspace exists; report actual execution.
-- For native compilation decisions, record distro/toolchain/kernel versions in an ADR.
+- Preserve existing core observation/capability/history and pure protocol-negotiation APIs.
+- Separate domain contracts, source collection, sampling and presentation. No service/IPC layer is required for the baseline.
+- Require explicit units, local time domain, availability, provenance and typed errors.
+- Bound files, metric counts, payloads and history; report gaps and resets. Collection must not block terminal input indefinitely.
+- Avoid unsafe code unless justified, isolated, documented and reviewed.
+- Keep output schema evolution explicit and compatible where possible; pure protocol compatibility is independent from snapshot schema.
+- Text/JSON and terminal modes work without privileges or external services.
+- Run formatting, Clippy and meaningful tests with the lockfile; verify Rust 1.85 minimum independently of latest stable.

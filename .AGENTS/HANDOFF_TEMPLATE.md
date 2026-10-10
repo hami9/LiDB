@@ -24,7 +24,7 @@ List unavailable hardware, incomplete tests, stale data limitations, open risks 
 
 ## Reviews
 
-Kernel/networking; AI/hardware; security/privacy; performance/reliability; UX/extensibility with reviewer and evidence.
+Linux/source correctness; telemetry integrity; security/privacy; performance/reliability; UX/extensibility with reviewer and evidence.
 
 ## Next task
 

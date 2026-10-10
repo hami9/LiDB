@@ -19,7 +19,7 @@ git clone https://github.com/hami9/LiDB.git
 cd LiDB
 .\scripts\worktree.ps1 create antigravity p0-core
 .\scripts\worktree.ps1 create claude p0-telemetry
-.\scripts\worktree.ps1 create chatgpt p0-ipc
+.\scripts\worktree.ps1 create chatgpt p0-fixtures
 .\scripts\worktree.ps1 list
 # Open each .worktrees/<agent>/<task> folder in its own editor/agent session.
 ```
@@ -31,7 +31,7 @@ git clone https://github.com/hami9/LiDB.git
 cd LiDB
 bash scripts/worktree.sh create antigravity p0-core
 bash scripts/worktree.sh create claude p0-telemetry
-bash scripts/worktree.sh create chatgpt p0-ipc
+bash scripts/worktree.sh create chatgpt p0-fixtures
 bash scripts/worktree.sh list
 ```
 
@@ -55,9 +55,9 @@ The manager fetches `origin/main` for each fresh branch, rejects branch collisio
 | Cargo workspace manifests, core telemetry schema | Single integration owner | **No**; land first |
 | CLI/TUI shell once API frozen | Antigravity | Yes, if limited to dedicated crates |
 | Diagnostic fixtures / tests | Claude | Yes, if not editing the same files |
-| IPC design review + contracts | ChatGPT | Yes as docs/PR; schema edits need coordinator lock |
+| Procfs fixtures / contract review | ChatGPT | Yes in owned tests/docs; schema edits need coordinator lock |
 | `.AGENTS/STATE.md`, central `WORKLOG.md`, CI workflows | Integrator | **No**; serialize edits |
-| eBPF/GPU/cluster future phases | Assigned module owner | Only after P0 API acceptance |
+| Optional networking/eBPF future phases | Assigned module owner | Only after P0 API acceptance |
 
 Examples are suggested allocations, **not claims of active assignments or launched agents**.
 

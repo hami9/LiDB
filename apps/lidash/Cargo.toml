@@ -1,0 +1,24 @@
+[package]
+name = "lidash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Read-only Linux host monitor with terminal and JSON output"
+
+[[bin]]
+name = "lidash"
+path = "src/main.rs"
+
+[dependencies]
+lidb-core = { path = "../../crates/lidb-core" }
+lidb-collect = { path = "../../crates/lidb-collect" }
+serde.workspace = true
+serde_json.workspace = true
+ratatui = { version = "=0.29.0", default-features = false, features = ["crossterm", "unstable-rendered-line-info"] }
+crossterm = "=0.28.1"
+signal-hook = "=0.3.18"
+# Ratatui's broad transitive ranges otherwise select versions above Rust 1.85.
+unicode-segmentation = "=1.12.0"
+instability = "=0.3.1"

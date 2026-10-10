@@ -2,11 +2,11 @@
 
 ## Correctness
 
-R01. Never invent metric values, benchmark outcomes, GPU capabilities, NCCL results or completed tasks.
+R01. Never invent metric values, benchmark outcomes, platform evidence or completed tasks.
 
 R02. Do not model conntrack, nftables, route lookup and namespaces as a single unconditional packet-processing sequence; distinguish ingress, egress, forwarding, hooks and priorities.
 
-R03. Treat Spark's CPU↔GPU NVLink-C2C as intra-node; DGX Spark inter-node traffic uses ConnectX Ethernet/RoCE. Separate real NVLink/NVSwitch fabrics on applicable hardware.
+R03. Preserve general Linux scope. Treat CPU activity, load, memory availability, cumulative counters and PSI according to their distinct source semantics; do not add vendor-runtime or distributed-workload commitments.
 
 R04. Separate source data, derived data, hypotheses and verified diagnosis with provenance and uncertainty. A missing counter does not mean zero.
 
@@ -14,15 +14,15 @@ R04. Separate source data, derived data, hypotheses and verified diagnosis with 
 
 R05. Non-root CLI/TUI and read-only baseline. Use a privileged helper only for an explicitly authorized and narrowly audited operation.
 
-R06. Do not execute arbitrary remote code, run invasive diagnostics, change firewall/routes/network parameters, install kernel modules or alter AI jobs without explicit operator permission.
+R06. Do not execute arbitrary remote code, run invasive diagnostics, change firewall/routes/network parameters, install kernel modules or alter running workloads without explicit operator permission.
 
-R07. Never capture packet payloads, decrypted TLS, prompts, completions, model weights or secrets by default. Scrub support bundles and logging.
+R07. Never capture packet payloads, decrypted TLS, process environments, command-line arguments or secrets by default. Scrub support bundles and logging.
 
 R08. Validate untrusted kernel events, RPC messages and plugin input. Bound memory, queues, timeouts and execution overhead.
 
 R09. Do not add a remote network listener, telemetry export, update agent or dynamic native plugin loader without threat-model and approval.
 
-R10. Local discovery cannot assume NVIDIA/CUDA, eBPF, container runtimes, permissions or a cluster.
+R10. Local discovery cannot assume eBPF, container runtimes, broad procfs access, privileges or external services.
 
 ## Product and collaboration
 

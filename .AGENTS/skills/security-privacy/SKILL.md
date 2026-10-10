@@ -1,15 +1,15 @@
 ---
 name: lidb-security-privacy
-description: Least privilege, local authentication, sensitive telemetry and adapter isolation.
+description: Read-only collection, hostile input, privacy and explicit future trust boundaries.
 ---
 # Security and privacy skill
 
-**Use when:** any collector reads sensitive data, adds IPC, invokes helpers, starts active probes, loads plugins or exports diagnostics.
+**Use when:** source parsing, diagnostics/output, dependencies, persistence, privilege or network access changes.
 
-- Maintain trust boundary between non-root TUI, local daemon, constrained helper and supervised external adapters.
-- Review socket credentials, filesystem modes, timeouts, input validation and malicious/local user scenarios.
-- Default to metadata-only with bounded retention; redact credentials, headers, environment data, command lines and model prompts.
-- No self-authorized privilege escalation, system mutations, network services or remote telemetry.
-- Document threats, attack preconditions, logging and rollback. Fail closed on privilege errors; optional signals degrade visibly.
-- Test malformed events, oversized frames, denial of service, race conditions and plugin crashes.
-- Require maintainer review for new privileged or network-exposed surfaces.
+- Preserve the non-root, local, read-only baseline; collection and presentation are in-process.
+- Bound source reads, identifiers, metric counts, polling and retained samples. Validate malformed/non-finite values and terminal-control text.
+- Collect no credentials, packet bodies, process environments or command-line arguments. Requested outputs can contain activity metadata; minimize and document them.
+- No self-authorized privilege escalation, host mutation, listener, active probe or outbound telemetry.
+- Adding IPC/helpers, persistence or optional eBPF requires its own threat-model update, need, explicit scope and safe fallback.
+- Test denial, missing sources, malicious identifiers, oversized files, resource limits and output escaping.
+- Require independent review for new privilege or network-exposed boundaries; report actual evidence and unresolved limits.

@@ -1,44 +1,29 @@
-# Telemetry, evidence and diagnosis contract
+# Telemetry and evidence contract
 
-## Telemetry identity
+## Implemented observation identity
 
-A normalized sample should include: `schema_version`, `event_id`, `timestamp_monotonic_ns`, optional `timestamp_wall`, `clock_source`, `node_id`, `source`, `capability_id`, `metric_name`, `value`, `unit`, `status`, `sample_interval`, `collection_cost`, and optional tags.
+`MetricObservation<T>` carries a bounded metric name and source, a typed `Unit`, collector-local `monotonic_ns` and `MetricState<T>`. Available zero is a valid measurement. Unsupported, disabled, denied, temporary, stale and error states carry reasons and do not expose a fabricated value.
 
-Identifiers are opaque, bounded and privacy-filtered. Avoid high-cardinality labels by default. Treat timestamps from different hosts as not directly comparable without documented clock sync and uncertainty.
+Snapshot schema `0.1` carries `clock_source: "collector_monotonic"`, batch `monotonic_ns`, `collection_duration_ns`, `mode: "live" | "fixture"`, `metrics` and `dropped_metrics`. Each metric carries `name`, `source`, `unit`, `monotonic_ns` and `state`. Snapshot output preserves source, units and availability. JSON is a pre-stable, documented machine interface; contract changes need explicit compatibility notes. In JSON, `state` is `{ "status": "available", "value": <number> }` for an observed value. For an unavailable state, `value` is its reason string; consumers must inspect `status` before interpreting it. Exact integer counters serialize as unsigned integers; derived values are finite numbers. There is no public deserializer accepting unchecked snapshots. Identifiers are bounded and contain no command lines, credentials or private payloads. Monotonic timestamps share a domain only within the same collector/boot context; they are not Unix wall-clock time.
 
-```json
-{
-  "schema_version": "0.1",
-  "node_id": "node-local",
-  "source": "linux.psi",
-  "capability_id": "org.lidb.linux.pressure",
-  "metric_name": "memory.pressure.some.avg10",
-  "value": 1.4,
-  "unit": "percent",
-  "status": "available",
-  "clock_source": "monotonic",
-  "timestamp_monotonic_ns": 123456789
-}
-```
+## Derived values
 
-This is an **illustrative contract**, not real measured telemetry.
+CPU utilization and device rates use two compatible observations and elapsed monotonic time. First samples, time regression, zero elapsed time, reset counters and missing input create visible gaps. Cumulative interface/disk counts remain labeled cumulative. PSI averages and load averages have their own kernel semantics; neither is automatically a CPU-utilization percentage.
 
-## RCA proof hierarchy
+A capability being available means its source passed the applicable checks. It does not imply the subsystem is healthy. A stale observation's freshness and its original availability are independent dimensions.
 
-- **Observed:** directly read counter, event or supported API value, with unit and timestamp.
-- **Correlated:** multiple signals move together in a bounded time window.
-- **Hypothesis:** likely fault domain with supporting and contradicting evidence.
+## Evidence hierarchy
+
+- **Observed:** a supported source value with units, timestamp and provenance.
+- **Derived:** a documented calculation from compatible observed values.
+- **Correlated:** signals moving together in a stated local time window.
+- **Hypothesis:** a possible explanation with supporting and contrary evidence.
 - **Verified:** a repeatable controlled test or validated deterministic cause.
 
-Present causality limits. Never turn an unsupported counter, lack of data, or clock skew into a root-cause claim.
+The current baseline displays observations; it does not claim an automated root-cause engine. Never turn missing data or one threshold crossing into a verified cause.
 
-## Collection controls
+## Collection and retention
 
-- Default: metadata only, no payloads, model prompts/completions, user keys or weights.
-- Sampling and aggregation have explicit CPU/memory limits, event queue caps, lost-event counters and operator-visible warnings.
-- Persist local history only if configured; provide retention, delete/export, and redaction controls.
-- Metrics exporters and support bundles must not expose local or host secrets; handle process command-lines carefully.
+Collection is metadata-only and local. No payloads, secrets, process environments or command lines are collected. Source files are capped at 1 MiB and snapshots at 2048 observations. Capacity omissions are reported as `dropped_metrics`; this is not a lost-kernel-event count. Source input sizes and sample/device counts are bounded, and polling intervals have an allowed range. History primitives bound sample count, not arbitrary bytes; see [history contract](P0_TELEMETRY_HISTORY.md). No persistence or outbound export is enabled by ordinary startup.
 
-## Stability and diagnostics
-
-Expose an additive, versioned schema with compatibility tests; incompatible changes require major-version handling. Format JSON output with documented units and stable names. Normalized errors include typed reason, source, last successful timestamp, and actionable next check.
+Operator-requested text/JSON can contain host/device activity metadata. Sharing it is an operator action. Future support bundles, stored history or exporters need explicit privacy/retention review and documented controls.

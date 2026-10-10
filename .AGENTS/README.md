@@ -26,7 +26,7 @@ Source code and tests prove behavior. [../docs/ARCHITECTURE.md](../docs/ARCHITEC
 
 ## Current status
 
-P0 has not been started and no runtime code has been implemented. Agents must never infer otherwise from the existence of comprehensive documentation.
+Existing core contracts and bounded history are retained. A runnable local Linux foundation is the current delivery goal; consult [STATE.md](STATE.md), source and recorded tests for its actual integrated status. Documentation alone does not establish phase acceptance or platform validation.
 
 ## Agents and responsibilities
 

@@ -7,8 +7,6 @@ Read [../SKILL_POLICY.md](../SKILL_POLICY.md) before choosing a skill, and read 
 - [Rust core](rust-core/SKILL.md)
 - [Linux networking](linux-networking/SKILL.md)
 - [eBPF kernel](ebpf-kernel/SKILL.md)
-- [GPU and AI serving](gpu-ai/SKILL.md)
-- [Distributed fabric](distributed-fabric/SKILL.md)
 - [Security and privacy](security-privacy/SKILL.md)
 - [Terminal UX](terminal-ux/SKILL.md)
 - [Testing and quality](testing-quality/SKILL.md)
