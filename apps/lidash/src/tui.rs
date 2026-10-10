@@ -27,16 +27,21 @@ use std::{
     time::Duration,
 };
 
+/// Active dashboard view tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
+    /// Full list of all collected host metrics.
     #[default]
     Metrics = 0,
+    /// Dedicated CPU utilization and memory overview dashboard.
     CpuMemory = 1,
 }
 
 impl Tab {
+    /// All available tabs in presentation order.
     pub const ALL: [Tab; 2] = [Tab::Metrics, Tab::CpuMemory];
 
+    /// Cycles forward to the next tab.
     pub fn next(&self) -> Self {
         match self {
             Self::Metrics => Self::CpuMemory,
@@ -44,6 +49,7 @@ impl Tab {
         }
     }
 
+    /// Cycles backward to the previous tab.
     pub fn prev(&self) -> Self {
         match self {
             Self::Metrics => Self::CpuMemory,
@@ -52,6 +58,7 @@ impl Tab {
     }
 }
 
+/// In-memory interactive state for the terminal UI.
 #[derive(Default)]
 pub struct View {
     pub update: Option<Update>,
@@ -66,6 +73,7 @@ pub struct View {
 }
 
 impl View {
+    /// Adjusts table scroll position by a signed delta bounded to available metrics.
     fn scroll_by(&mut self, count: isize) {
         let max = self.update.as_ref().map_or(0, |update| {
             update.snapshot.metrics().len().saturating_sub(1)
@@ -74,6 +82,7 @@ impl View {
         self.text_scroll = 0;
     }
 
+    /// Scrolls text views (help and details) by one page up or down.
     fn scroll_text_page(&mut self, down: bool) {
         let page = self.text_page_size.max(1);
         self.text_scroll = if down {
@@ -84,6 +93,7 @@ impl View {
     }
 }
 
+/// Draws scrollable wrapped text inside a bordered block.
 fn draw_text(frame: &mut Frame<'_>, text: &str, title: &str, scroll: &mut u16, area: Rect) {
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
     let lines = paragraph.line_count(area.width.saturating_sub(2));
@@ -97,6 +107,7 @@ fn draw_text(frame: &mut Frame<'_>, text: &str, title: &str, scroll: &mut u16, a
     );
 }
 
+/// Renders the complete terminal dashboard into the given frame.
 pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let area = frame.area();
     let mode = if view.fixture {
@@ -157,13 +168,17 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let shortcuts = if view.help || view.detail {
         "q quit | PgUp/PgDn scroll text"
     } else {
-        "q quit | Tab / 1-2 tab | Space pause | ? help | Enter detail | arrows scroll"
+        "q quit | Tab / 1-2 tab | Space pause | ? help | Enter detail | Up/Down scroll"
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
-        draw_text(frame,
-            "q, Esc, Ctrl-C: quit\nTab, 1, 2, Left/Right: switch between 1:Metrics and 2:CPU/Mem tabs\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: select metrics (scroll text in help)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
-            " Help ", &mut view.text_scroll, layout[1]);
+        draw_text(
+            frame,
+            "q, Esc, Ctrl-C: quit\nTab, 1, 2, Left/Right: switch between 1:Metrics and 2:CPU/Mem tabs\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            " Help ",
+            &mut view.text_scroll,
+            layout[1],
+        );
         return;
     }
     let Some(update) = &view.update else {
@@ -261,6 +276,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     }
 }
 
+/// Finds a metric observation within a snapshot by its exact unique name.
 fn find_metric<'a>(
     snapshot: &'a Snapshot,
     name: &str,
@@ -268,10 +284,12 @@ fn find_metric<'a>(
     snapshot.metrics().iter().find(|m| m.name() == name)
 }
 
+/// Formats a metric observation for display, or returns "not probed" if absent.
 fn metric_display(m: Option<&MetricObservation<MetricValue>>) -> String {
     m.map_or_else(|| "not probed".to_owned(), value_text)
 }
 
+/// Renders the dedicated CPU and Memory overview dashboard tab.
 fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
     let cpu_busy = find_metric(snapshot, "cpu.busy.percent");
     let (cpu_pct, cpu_label) = match cpu_busy.map(MetricObservation::state) {
@@ -324,13 +342,11 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
                 format!("{used_gib:.2} GiB / {total_gib:.2} GiB ({pct}%, {avail_str})"),
             )
         }
-        _ => (
-            0,
-            format!(
-                "RAM: {}",
-                mem_total.map_or_else(|| "not probed".to_owned(), value_text)
-            ),
-        ),
+        _ => {
+            let total_str = mem_total.map_or_else(|| "not probed".to_owned(), value_text);
+            let used_str = mem_used.map_or_else(|| "not probed".to_owned(), value_text);
+            (0, format!("RAM: used {used_str} / total {total_str}"))
+        }
     };
 
     let mem_gauge = Gauge::default()
@@ -365,13 +381,11 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
                 (0, "No swap configured (0 B)".to_owned())
             }
         }
-        _ => (
-            0,
-            format!(
-                "Swap: {}",
-                swap_total.map_or_else(|| "not probed".to_owned(), value_text)
-            ),
-        ),
+        _ => {
+            let total_str = swap_total.map_or_else(|| "not probed".to_owned(), value_text);
+            let used_str = swap_used.map_or_else(|| "not probed".to_owned(), value_text);
+            (0, format!("Swap: used {used_str} / total {total_str}"))
+        }
     };
 
     let swap_gauge = Gauge::default()
@@ -406,9 +420,13 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
         let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
         let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
         let psi_io = metric_display(find_metric(snapshot, "pressure.io.some.avg10.percent"));
-        let psi_text = format!("PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | I/O {psi_io}");
+        let psi_text = if area.width >= 60 {
+            format!("PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | I/O {psi_io}")
+        } else {
+            format!("PSI CPU: {psi_cpu}\nMem: {psi_mem} | I/O: {psi_io}")
+        };
         frame.render_widget(
-            Paragraph::new(psi_text).block(
+            Paragraph::new(psi_text).wrap(Wrap { trim: true }).block(
                 Block::default()
                     .title(" Pressure Stalls ")
                     .borders(Borders::ALL),
@@ -444,15 +462,28 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
     let steal = metric_display(find_metric(snapshot, "cpu.steal.ticks"));
     let nice = metric_display(find_metric(snapshot, "cpu.nice.ticks"));
 
-    let ticks_paragraph = Paragraph::new(vec![
-        Line::from(format!("User: {user}   System: {system}   Idle: {idle}")),
-        Line::from(format!(
-            "I/O Wait: {iowait}   Steal: {steal}   Nice: {nice}"
-        )),
-    ])
-    .block(
+    let ticks_lines = if area.width >= 70 {
+        vec![
+            Line::from(format!("User: {user}   System: {system}   Idle: {idle}")),
+            Line::from(format!(
+                "I/O Wait: {iowait}   Steal: {steal}   Nice: {nice}"
+            )),
+        ]
+    } else if area.width >= 48 {
+        vec![
+            Line::from(format!("usr: {user}  sys: {system}  idl: {idle}")),
+            Line::from(format!("iow: {iowait}  stl: {steal}  nic: {nice}")),
+        ]
+    } else {
+        vec![
+            Line::from(format!("u:{user} s:{system} i:{idle}")),
+            Line::from(format!("w:{iowait} st:{steal} ni:{nice}")),
+        ]
+    };
+
+    let ticks_paragraph = Paragraph::new(ticks_lines).wrap(Wrap { trim: true }).block(
         Block::default()
-            .title(" CPU Tick Accounting (/proc/stat) ")
+            .title(" CPU Ticks (/proc/stat) ")
             .borders(Borders::ALL),
     );
     frame.render_widget(ticks_paragraph, rows[2]);
@@ -466,19 +497,37 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
     let load15 = metric_display(find_metric(snapshot, "load.15m"));
     let uptime = metric_display(find_metric(snapshot, "uptime.seconds"));
 
-    let psi_load_paragraph = Paragraph::new(vec![
-        Line::from(format!(
-            "PSI Stall avg10: CPU {psi_cpu}  │  Mem {psi_mem}  │  I/O {psi_io}"
-        )),
-        Line::from(format!(
-            "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}s"
-        )),
-    ])
-    .block(
-        Block::default()
-            .title(" Pressure Stalls & System Load (/proc/pressure & /proc/loadavg) ")
-            .borders(Borders::ALL),
-    );
+    let psi_load_lines = if area.width >= 70 {
+        vec![
+            Line::from(format!(
+                "PSI Stall avg10: CPU {psi_cpu}  │  Mem {psi_mem}  │  I/O {psi_io}"
+            )),
+            Line::from(format!(
+                "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}s"
+            )),
+        ]
+    } else if area.width >= 48 {
+        vec![
+            Line::from(format!(
+                "PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | IO {psi_io}"
+            )),
+            Line::from(format!("Load: {load1} {load5} {load15} │ Up: {uptime}s")),
+        ]
+    } else {
+        vec![
+            Line::from(format!("PSI: C:{psi_cpu} M:{psi_mem} IO:{psi_io}")),
+            Line::from(format!("Load: {load1} {load5} {load15}")),
+            Line::from(format!("Uptime: {uptime}s")),
+        ]
+    };
+
+    let psi_load_paragraph = Paragraph::new(psi_load_lines)
+        .wrap(Wrap { trim: true })
+        .block(
+            Block::default()
+                .title(" PSI & Load (/proc/pressure & /proc/loadavg) ")
+                .borders(Borders::ALL),
+        );
     frame.render_widget(psi_load_paragraph, rows[3]);
 }
 
@@ -498,11 +547,13 @@ impl Drop for TerminalGuard {
     }
 }
 
+/// Restores terminal raw mode and screen settings.
 fn restore_terminal() {
     let _ = disable_raw_mode();
     let _ = execute!(io::stdout(), LeaveAlternateScreen, Show);
 }
 
+/// Fetches the latest collection update from the background worker if not paused.
 pub(crate) fn update_from_worker(view: &mut View, worker: &Worker) -> io::Result<()> {
     // Leave the bounded mailbox untouched while paused so resume shows its latest
     // snapshot immediately, even when the next sample is a minute away.
@@ -543,6 +594,7 @@ impl Drop for SignalGuard {
     }
 }
 
+/// Runs the interactive terminal dashboard event loop until user exit or termination signal.
 pub fn run(config: Config) -> io::Result<()> {
     // Restore before the default panic hook prints; the guard also covers unwinding/errors.
     let previous = panic::take_hook();
@@ -585,8 +637,10 @@ pub fn run(config: Config) -> io::Result<()> {
                         view.text_scroll = 0;
                     }
                     KeyCode::Enter => {
-                        view.detail = !view.detail;
-                        view.text_scroll = 0;
+                        if view.detail || view.tab == Tab::Metrics {
+                            view.detail = !view.detail;
+                            view.text_scroll = 0;
+                        }
                     }
                     KeyCode::Tab => {
                         view.tab = view.tab.next();
@@ -807,10 +861,52 @@ mod tests {
         let narrow = render(40, 30, &mut view);
         assert!(narrow.contains("Overall CPU Utilization"));
         assert!(narrow.contains("Physical Memory (RAM)"));
+        assert!(narrow.contains("Uptime"));
+        assert!(narrow.contains("Load"));
 
         let minimum = render(35, 10, &mut view);
         assert!(minimum.contains("CPU"));
         assert!(minimum.contains("RAM"));
+    }
+
+    #[test]
+    fn cpu_memory_tab_renders_fallback_labels_when_metrics_unavailable() {
+        let mut snapshot = Snapshot::new(0, 100, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "memory.total.bytes",
+                    "procfs/meminfo",
+                    Unit::Bytes,
+                    0,
+                    MetricState::Available(MetricValue::Integer(16_000_000_000)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "memory.used.bytes",
+                    "procfs/meminfo",
+                    Unit::Bytes,
+                    0,
+                    MetricState::TemporarilyUnavailable("baseline required".into()),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let mut view = View {
+            update: Some(Update {
+                snapshot,
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::CpuMemory,
+            ..View::default()
+        };
+        let output = render(100, 30, &mut view);
+        assert!(output.contains("RAM: used temporarily_unavailable"));
     }
 
     #[test]

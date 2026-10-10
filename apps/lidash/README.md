@@ -36,7 +36,7 @@ The TUI is monochrome by default, accepts `--no-color`, and adapts to narrow
 windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, or `Left`/`Right` switches
 between the full metric list and the CPU & Memory overview tab; `Space` pauses
 displayed readings; `?` or `h` toggles help; Enter opens the full details of the
-first visible metric. Arrows or `j`/`k` scroll metrics, PageUp/PageDown scroll ten
+first visible metric on the Metrics tab. `Up`/`Down` or `j`/`k` scroll metrics, PageUp/PageDown scroll ten
 metrics or scroll wrapped text while help/details are open,
 and Home/End jump to the first/last. Windows below 35x10 show a resize prompt.
 Sampling continues while paused; resume immediately displays the latest retained

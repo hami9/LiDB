@@ -20,7 +20,7 @@ Without a command: open TUI when stdin and stdout are terminals, otherwise snaps
 Snapshot/doctor take two samples (default 250ms); TUI defaults to 1000ms.
 Doctor is read-only. Exit: 0 usable (possibly degraded), 1 no available metrics,
 2 invalid arguments or runtime failure. Snapshot preserves unavailable states.
-TUI keys: q/Esc/Ctrl-C quit, Tab/1/2 switch tabs, Space pause, ?/h help, Enter detail, arrows scroll.
+TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/Left/Right tabs, Space pause, ?/h help, Enter detail, Up/Down scroll.
 ";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
