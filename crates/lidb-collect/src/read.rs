@@ -32,11 +32,23 @@ const O_NOFOLLOW: i32 = 0x20000;
 #[cfg(all(target_os = "linux", not(target_arch = "x86_64")))]
 const O_NOFOLLOW: i32 = 0x8000;
 
+// Stable Linux ABI flags: O_NONBLOCK=0x800.
+// O_NOFOLLOW is 0x20000 on x86_64 and 0x8000 on aarch64 (asm-generic).
+// These protect against opening a substituted FIFO or final-component symlink
+// between metadata inspection and open, without privileged/unsafe code.
+#[cfg(target_os = "linux")]
+fn open_source(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(O_NONBLOCK | O_NOFOLLOW)
+        .open(path)
+}
+
 #[cfg(target_os = "linux")]
 fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<String, State> {
-    use std::fs::{self, OpenOptions};
+    use std::fs;
     use std::io::Read;
-    use std::os::unix::fs::OpenOptionsExt;
 
     if mode == SnapshotMode::Fixture {
         // Reject fixture directory symlinks, including /fixture/net -> /proc.
@@ -63,15 +75,7 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
     if !metadata.file_type().is_file() {
         return Err(error("source is not a regular file"));
     }
-    // Stable Linux ABI flags: O_NONBLOCK=0x800.
-    // O_NOFOLLOW is 0x20000 on x86_64 and 0x8000 on aarch64 (asm-generic).
-    // These protect against opening a substituted FIFO or final-component symlink
-    // between metadata inspection and open, without privileged/unsafe code.
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(O_NONBLOCK | O_NOFOLLOW)
-        .open(path)
-        .map_err(io_state)?;
+    let file = open_source(&path).map_err(io_state)?;
     if !file.metadata().map_err(io_state)?.is_file() {
         return Err(error("opened source is not a regular file"));
     }
@@ -109,6 +113,24 @@ fn io_state(error_value: std::io::Error) -> State {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_flags_refuse_final_symlink() {
+        use std::os::unix::fs::symlink;
+        let directory = std::env::temp_dir().join(format!("lidb-nofollow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("target"), "data").unwrap();
+        symlink(directory.join("target"), directory.join("link")).unwrap();
+        // Calls the production open, so losing O_NOFOLLOW there fails this test.
+        let result = open_source(&directory.join("link"));
+        std::fs::remove_dir_all(&directory).unwrap();
+        // ELOOP is 40 on both x86_64 and aarch64.
+        assert_eq!(
+            result.err().and_then(|error| error.raw_os_error()),
+            Some(40)
+        );
+    }
 
     #[test]
     fn reports_permission_denied_without_embedding_os_text() {
