@@ -208,7 +208,10 @@ mod tests {
             Err(FrameError::PayloadTooLarge)
         );
         let mut decoder = FrameDecoder::new();
-        assert_eq!(decoder.push(&0u32.to_be_bytes()), Err(FrameError::EmptyPayload));
+        assert_eq!(
+            decoder.push(&0u32.to_be_bytes()),
+            Err(FrameError::EmptyPayload)
+        );
         assert_eq!(decoder.push(b"new"), Err(FrameError::Poisoned));
         decoder.reset();
         assert_eq!(
@@ -267,7 +270,10 @@ mod tests {
         let mut decoder = FrameDecoder::new();
         assert!(decoder.push(&[0, 0]).unwrap().is_empty());
         decoder.reset();
-        assert_eq!(decoder.push(&encode_frame(b"safe").unwrap()).unwrap(), vec![b"safe".to_vec()]);
+        assert_eq!(
+            decoder.push(&encode_frame(b"safe").unwrap()).unwrap(),
+            vec![b"safe".to_vec()]
+        );
         assert_eq!(decoder.finish(), Ok(()));
     }
 }
