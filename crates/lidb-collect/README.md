@@ -32,9 +32,11 @@ sequentially; the shared batch timestamp does not imply an atomic host snapshot.
 | `/proc/loadavg` | `load.{1m,5m,15m}` | Nonnegative, fractional `count`; system load averages |
 | `/proc/uptime` | `uptime.seconds` | Nonnegative fractional `seconds` |
 | `/proc/net/dev` | `network.state` | `count` of interfaces, or one typed source failure |
+| `/proc/net/dev` | `network.omitted` | `count` of interfaces past the 64-device limit |
 | `/proc/net/dev` | `network.<interface>.{rx,tx}.bytes` | Exact cumulative `bytes`, including loopback when exposed |
 | `/proc/net/dev` | `network.<interface>.{rx,tx}.bytes_per_second` | Derived `bytes_per_second` over the collector's measured monotonic interval |
 | `/proc/diskstats` | `disk.state` | `count` of devices, or one typed source failure |
+| `/proc/diskstats` | `disk.omitted` | `count` of devices past the 64-device limit |
 | `/proc/diskstats` | `disk.<device>.{read,write}.bytes` | Exact cumulative `bytes`, using Linux's fixed 512-byte diskstats sectors |
 | `/proc/diskstats` | `disk.<device>.{read,write}.bytes_per_second` | Derived `bytes_per_second` over the measured monotonic interval |
 | `/proc/pressure/{cpu,memory,io}` | `pressure.{cpu,memory,io}.some.avg10.percent` | Optional PSI `percent`; missing pressure files are `unsupported` |
@@ -74,10 +76,12 @@ ordered by source, then by encoded device name.
   second successful observation. Counter decreases reset the affected baseline.
 
 Each of nine source files is limited to 1 MiB, with one extra detection byte.
-Each network or disk source accepts at most 64 distinct devices; exceeding the
-limit fails that source visibly through its `.state` metric. No entities are
-silently truncated. A maximum accepted batch has 538 observations, below the
-core snapshot limit of 2048. Read-time terminal control characters and invalid
+Each network or disk source reports at most 64 devices. Extra devices are
+counted in `network.omitted` or `disk.omitted`, so nothing is dropped silently.
+`loop*` and `ram*` disks and `veth*`, `cali*` and `lxc*` interfaces are kept
+only after all other devices, so container or snap hosts still show physical
+devices. A maximum batch has 540 observations, below the core snapshot limit of
+2048. Read-time terminal control characters and invalid
 UTF-8 fail the source. Numeric counters retain exact `u64` precision; rates and
 fractional values use finite nonnegative floating-point numbers.
 
