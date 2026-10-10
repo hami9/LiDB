@@ -16,10 +16,10 @@ These instructions apply to **all coding agents working in this repository**. Th
 ## Non-negotiable contract
 
 - **English only** in repository documents, code, commits, PRs, changelog and test reports.
-- Work on the currently approved phase. Define one small independently testable vertical slice; do not implement a whole roadmap phase in one speculative commit.
+- Work on the maintainer-approved scope and revised roadmap. Define independently testable vertical slices and report their actual evidence.
 - Preserve existing code and human changes. Never force-push, rewrite history, overwrite secrets or merge your own PR unless explicitly authorized.
 - State exactly what is implemented and tested. A proposed feature or simulated fixture is **not** a production or hardware-validated implementation.
-- Default to non-root, local, offline, read-only and metadata-only operation. Do not change system/network/kernel/GPU configuration without explicit operator approval.
+- Default to non-root, local, offline, read-only and metadata-only operation. Do not change system/network/kernel configuration without explicit operator approval.
 - Always provide typed `unsupported`/`unavailable`/`permission_denied` results instead of fabricating metrics.
 - Every code change requires tests and docs; each meaningful change requires a worklog entry and updated agent state.
 - Honor [SECURITY.md](SECURITY.md), [LICENSE](LICENSE), and compatibility contracts; escalate conflicting instructions to the maintainer.

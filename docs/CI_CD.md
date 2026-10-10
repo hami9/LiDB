@@ -1,12 +1,12 @@
 # CI/CD, release versioning and operational policy
 
-**Status:** configured in GitHub workflows; software implementation is still P0/not started. Binary release publishing is gated on a working Cargo workspace and a real `lidash` binary.
+**Status:** the runnable Linux Core workspace is reviewed through PR CI. Binary publishing requires the complete CI gate and actual `lidash` binaries; no release is published by this development task.
 
 ## Workflows
 
 | Workflow | Trigger | Responsibilities |
 | --- | --- | --- |
-| [CI](../.github/workflows/ci.yml) | PR, main push, merge queue, manual, reusable call | Docs/link checks; Python policy tests; PR naming; Linux x86_64 and aarch64 Rust format, clippy, tests when code exists; stable `CI Gate` |
+| [CI](../.github/workflows/ci.yml) | PR, main push, merge queue, manual, reusable call | Docs/link checks; Python policy tests; PR naming; required Linux x86_64 and aarch64 Rust format, clippy, unit/integration/doc tests and live CLI smoke; stable `CI Gate` |
 | [Documentation quality](../.github/workflows/docs.yml) | PR, main | Existing standalone docs link check |
 | [CodeQL](../.github/workflows/codeql.yml) | PR, main, weekly | Actions analysis, and Rust/C analysis when sources exist |
 | [Automatic Release](../.github/workflows/release.yml) | main push, manual dry-run | Re-runs gate, plans SemVer, compiles both architectures, packages, validates checksums and publishes GitHub Release |
@@ -36,7 +36,8 @@ If multiple changes are merged between releases, the strongest bump wins. **One 
 5. GitHub prerelease flag is used for `0.x.y` versions, indicating immature API support.
 6. Workflow tokens default to read-only; only the final publishing job has `contents: write`. Never use `pull_request_target` for build-and-execute workflows.
 7. Checksums are integrity checks, while GitHub artifact attestations provide cryptographic build provenance, **not a guarantee of binary safety**. Verify released archives with `gh attestation verify <file> -R hami9/LiDB`. Artifact attestations are configured but remain **untested until the first real binary release**. SBOM and reproducible build hardening remain future gates.
-8. Agent tasks must keep worklogs and disclose tests not run. No release script can assert that hardware support was validated solely by a successful cross-architecture build.
+8. Rust is pinned to 1.85.0 in `rust-toolchain.toml` and build workflows. The release job supplies `LIDB_BUILD_VERSION`, so `lidash --version` reports the planned release version. Packaging includes only the current `lidash` binary from a fresh staging directory, preventing obsolete helper binaries from entering an archive.
+9. Agent tasks must keep worklogs and disclose tests not run. Cross-architecture compilation is distinct from validating every Linux/kernel/container configuration.
 
 ## Branch protection
 
@@ -54,7 +55,9 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked --all-targets
 cargo test --workspace --locked --doc
-# Standalone TUI prototype workspace:
+cargo run -p lidash --locked -- snapshot --json
+cargo run -p lidash --locked -- doctor --json
+# Standalone TUI prototype workspace (Rust 1.88, pinned in prototypes/tui/rust-toolchain.toml):
 cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
 cargo clippy --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked -- -D warnings
 cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked
@@ -67,4 +70,4 @@ The `plan` command requires Git history/tags. Publishing a release requires GitH
 
 ## Remaining open-source release hardening
 
-Before a supported stable release, implement: supply chain and dependency scanning beyond baseline CodeQL/Dependabot; independently verified attestation/provenance policy; SBOM; reproducible environment; security advisories; supported kernel/toolchain matrix; actual DGX/cluster evidence; and installation/uninstall smoke tests. These remain explicitly incomplete.
+Before a supported stable release, implement: supply chain and dependency scanning beyond baseline CodeQL/Dependabot; independently verified attestation/provenance policy; SBOM; reproducible environment; security advisories; supported Linux/kernel/container matrix; and installation/uninstall smoke tests. These remain explicitly incomplete.

@@ -11,5 +11,5 @@ description: Open-source documentation, public API compatibility, packaging and 
 - Verify license compatibility of Rust/C/eBPF/vendor dependencies; retain notices and produce SBOM for releases.
 - Document installation, upgrade, removal, system requirements, threats and user data retention.
 - Sign published artifacts using approved process; no unsigned release promoted to verified.
-- Document support matrix with real test evidence, including unsupported architectures and AI devices.
+- Document support matrix with real test evidence, including pending/unsupported Linux architectures and restricted environments.
 - Require maintainer approval for publish, tags and public release announcements.

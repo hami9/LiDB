@@ -33,6 +33,8 @@
 .DS_Store
 Thumbs.db
 *.tmp
+__pycache__/
+*.py[cod]
 
 # Keep Cargo.lock when the application workspace is introduced.
 

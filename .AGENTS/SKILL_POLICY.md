@@ -4,11 +4,9 @@ Local skills under `skills/*/SKILL.md` are **task playbooks**, not privileged ex
 
 ## Selection
 
-- `rust-core`: Rust crates, schema, IPC and error boundaries
+- `rust-core`: Rust crates, schema, bounded snapshots and error boundaries
 - `linux-networking`: route/socket/netlink/network namespaces
 - `ebpf-kernel`: CO-RE, verifier, eBPF safety
-- `gpu-ai`: GPU sensors, DGX Spark memory and model serving
-- `distributed-fabric`: ConnectX/RDMA/NCCL/multi-node runtime
 - `security-privacy`: privilege, sandbox, credential handling and disclosures
 - `terminal-ux`: Ratatui, CLI, accessibility, headless modes
 - `testing-quality`: fixtures, CI, hardware evidence and fault handling

@@ -62,33 +62,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Rust workspace availability
-        id: rust
-        shell: bash
-        run: |
-          if [[ -f Cargo.toml ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "Rust workspace not implemented (P0). Skipping Rust tests only."
-          fi
       - name: Install Rust components
-        if: steps.rust.outputs.present == 'true'
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt,clippy
-          rustup default stable
+          rustup toolchain install 1.85.0 --profile minimal --component rustfmt,clippy
       - name: Validate formatting
-        if: steps.rust.outputs.present == 'true'
         run: cargo fmt --all -- --check
       - name: Lint
-        if: steps.rust.outputs.present == 'true'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
-        if: steps.rust.outputs.present == 'true'
         run: cargo test --workspace --locked --all-targets
       - name: Documentation tests
-        if: steps.rust.outputs.present == 'true'
         run: cargo test --workspace --locked --doc
+      - name: Unprivileged CLI smoke
+        run: |
+          cargo run -p lidash --locked -- --help
+          cargo run -p lidash --locked -- snapshot --json > snapshot.json
+          cargo run -p lidash --locked -- doctor --json > doctor.json
+          python3 -c 'import json; s=json.load(open("snapshot.json")); assert s["schema_version"] == "0.1"; assert s["mode"] == "live"; assert s["metrics"]; json.load(open("doctor.json"))'
+      - name: Terminal lifecycle smoke
+        run: python3 apps/lidash/tests/pty_smoke.py target/debug/lidash
 
   tui-checks:
     name: TUI (${{ matrix.arch }})
@@ -102,6 +94,9 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    env:
+      # The prototype's ratatui 0.30 needs Rust 1.88; the root workspace stays on 1.85.
+      RUSTUP_TOOLCHAIN: 1.88.0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,8 +110,7 @@ jobs:
       - name: Install Rust components
         if: steps.tui.outputs.present == 'true'
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt,clippy
-          rustup default stable
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
       - name: Validate TUI formatting
         if: steps.tui.outputs.present == 'true'
         run: cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
@@ -171,4 +165,3 @@ jobs:
           WORKTREES: ${{ needs.worktree-windows.result }}
           TUI: ${{ needs.tui-checks.result }}
         run: python3 scripts/ci/check_gate.py
-
