@@ -26,6 +26,8 @@ The core and collector forbid project-owned unsafe Rust. Build dependencies are 
 | `network.state` | count | Number of parsed interfaces, or a source failure state |
 | `network.<interface>.{rx,tx}.bytes` | bytes | `/proc/net/dev` cumulative byte counters per interface |
 | `network.<interface>.{rx,tx}.bytes_per_second` | bytes per second | Counter deltas over the collector-local monotonic interval |
+| `network.<interface>.{rx,tx}.errors` | count | Cumulative directional `errs` column from `/proc/net/dev` |
+| `network.<interface>.{rx,tx}.drops` | count | Cumulative directional `drop` column; RX includes missed packets |
 | `disk.state` | count | Number of parsed block devices/partitions, or a source failure state |
 | `disk.<device>.{read,write}.bytes` | bytes | `/proc/diskstats` cumulative sectors multiplied by the kernel's fixed 512-byte accounting unit |
 | `disk.<device>.{read,write}.bytes_per_second` | bytes per second | Counter deltas over the collector-local monotonic interval |
@@ -34,6 +36,8 @@ The core and collector forbid project-owned unsafe Rust. Build dependencies are 
 Disk entries include partitions. Do not sum a parent block device and its partitions into one host total. Network interfaces can represent stacked/virtual paths, so summing them can also double-count traffic. Device names preserve common ASCII characters and percent-encode other UTF-8 bytes, including `%`; for example `vpn+prod` becomes `vpn%2Bprod`. Encoding is reversible and collision-free, with a 100-byte encoded-name limit. See the [collector reference](../crates/lidb-collect/README.md).
 
 The visible procfs view determines coverage in containers and namespaces. These metrics do not promise host-wide visibility, cgroup limits, filesystem free space, process attribution or a diagnosis of root cause.
+
+Interface errors/drops are raw counters, available on the first sample and after a decrease. They are not rates, percentages or proof of end-to-end packet loss. Procfs combines RX dropped and missed packets; error/drop categories may overlap and must not be summed. See the [Linux statistics reference](https://docs.kernel.org/networking/statistics.html). New metric names extend schema 0.1 without changing core types or existing byte/rate names. A network source failure remains explicit in `network.state` and produces no fabricated per-interface values.
 
 ## Rates, time and missing data
 
@@ -45,7 +49,7 @@ JSON preserves exact unsigned integer counters. Derived quantities are finite fl
 
 ## Resource and privacy boundaries
 
-Each of nine source files is limited to 1 MiB. Interface and disk sources accept at most 64 entries each; excess entries invalidate that source with a reason. The baseline emits at most 538 observations, below the core limit of 2048. Snapshot overflow increments `dropped_metrics`. This counter is distinct from UI updates replaced before display and history samples evicted by capacity.
+Each of nine source files is limited to 1 MiB. Interface and disk sources accept at most 64 entries each; excess entries invalidate that source with a reason. The baseline emits at most 794 observations, below the core limit of 2048. Snapshot overflow increments `dropped_metrics`. This counter is distinct from UI updates replaced before display and history samples evicted by capacity.
 
 The application stores no persistent history, launches no shell command or connectivity probe, opens no listener and makes no outbound network request. It reads no packet contents, credentials, process environments or process arguments. An explicit custom procfs directory is fixture input; use a trusted, static directory, since the collector does not provide a sandbox for concurrent adversarial directory replacement.
 

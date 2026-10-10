@@ -13,6 +13,7 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 - Require native Linux x86_64/aarch64 Core builds, tests and CLI smoke in CI; pin Rust 1.85.0 and embed the release version in packaged binaries.
 
 ### Added
+- Per-interface RX/TX error and drop counters from `/proc/net/dev`, with exact cumulative values and existing source failure states.
 - English open-source architecture, product requirements and research blueprint.
 - Agent collaboration contracts, phase gates, review and worklog templates.
 - Security, governance, feature-capability, test and integration specifications.

@@ -40,7 +40,7 @@ impl Fixture {
             ("meminfo", "MemTotal: 1024 kB\nMemAvailable: 512 kB\nMemFree: 100 kB\nSwapTotal: 128 kB\nSwapFree: 64 kB\n"),
             ("uptime", "123.25 99.00\n"),
             ("loadavg", "0.10 0.20 0.30 1/100 42\n"),
-            ("net/dev", "Inter-| Receive | Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n eth0: 1000 2 0 0 0 0 0 0 2000 2 0 0 0 0 0 0\n"),
+            ("net/dev", "Inter-| Receive | Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n eth0: 1000 2 3 4 0 0 0 0 2000 2 5 0 0 0 0 0\n"),
             ("diskstats", "8 0 sda 10 0 2 1 20 0 4 1 0 1 1 0 0 0 0\n"),
             ("pressure/cpu", "some avg10=1.00 avg60=0.50 avg300=0.20 total=123\n"),
             ("pressure/memory", "some avg10=2.00 avg60=1.00 avg300=0.20 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"),
@@ -122,6 +122,10 @@ fn piped_default_and_json_export_use_real_fixture_values_and_rate_states() {
     assert!(text.contains("memory.total.bytes = 1048576 bytes"));
     assert!(text.contains("proc.meminfo"));
     assert!(!text.contains('\u{1b}'));
+    assert!(text.contains("network.eth0.rx.errors = 3 count"));
+    assert!(text.contains("network.eth0.rx.drops = 4 count"));
+    assert!(text.contains("network.eth0.tx.errors = 5 count"));
+    assert!(text.contains("network.eth0.tx.drops = 0 count"));
     let output = fixture.run(&["snapshot", "--json", "--no-color"]);
     let data = json(&output);
     assert_eq!(data["schema_version"], "0.1");
@@ -141,6 +145,23 @@ fn piped_default_and_json_export_use_real_fixture_values_and_rate_states() {
         .unwrap();
     assert_eq!(rate["state"]["status"], "available");
     assert_eq!(rate["state"]["value"].as_f64(), Some(0.0));
+    for (suffix, expected) in [
+        ("rx.errors", 3),
+        ("rx.drops", 4),
+        ("tx.errors", 5),
+        ("tx.drops", 0),
+    ] {
+        let name = format!("network.eth0.{suffix}");
+        let counter = metrics
+            .iter()
+            .find(|metric| metric["name"] == name)
+            .unwrap();
+        assert_eq!(counter["state"]["status"], "available");
+        assert_eq!(counter["state"]["value"].as_u64(), Some(expected));
+        assert_eq!(counter["unit"], "count");
+        assert_eq!(counter["source"], "proc.net.dev");
+        assert_eq!(counter["monotonic_ns"], data["monotonic_ns"]);
+    }
     assert!(!metrics
         .iter()
         .any(|metric| metric["name"].as_str().unwrap().contains("gpu")));
