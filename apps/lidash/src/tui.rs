@@ -9,12 +9,13 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use lidb_core::{MetricObservation, MetricState, MetricValue, Snapshot};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Gauge, Paragraph, Row, Table, Tabs, Wrap},
     Frame, Terminal,
 };
 use std::{
@@ -26,6 +27,31 @@ use std::{
     time::Duration,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Tab {
+    #[default]
+    Metrics = 0,
+    CpuMemory = 1,
+}
+
+impl Tab {
+    pub const ALL: [Tab; 2] = [Tab::Metrics, Tab::CpuMemory];
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Metrics => Self::CpuMemory,
+            Self::CpuMemory => Self::Metrics,
+        }
+    }
+
+    pub fn prev(&self) -> Self {
+        match self {
+            Self::Metrics => Self::CpuMemory,
+            Self::CpuMemory => Self::Metrics,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct View {
     pub update: Option<Update>,
@@ -36,6 +62,7 @@ pub struct View {
     pub text_scroll: u16,
     pub(crate) text_page_size: u16,
     pub fixture: bool,
+    pub tab: Tab,
 }
 
 impl View {
@@ -104,21 +131,38 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             )
         },
     );
-    let header = Paragraph::new(format!("{state} | {freshness}")).block(
-        Block::default()
-            .title(format!(" LiDB {mode} | read-only host metrics "))
-            .borders(Borders::ALL),
-    );
-    frame.render_widget(header, layout[0]);
+    let header_block = Block::default()
+        .title(format!(" LiDB {mode} | read-only host metrics "))
+        .borders(Borders::ALL);
+    let inner_header = header_block.inner(layout[0]);
+    frame.render_widget(header_block, layout[0]);
+
+    if inner_header.width >= 58 {
+        let header_layout =
+            Layout::horizontal([Constraint::Min(24), Constraint::Length(26)]).split(inner_header);
+        frame.render_widget(
+            Paragraph::new(format!("{state} | {freshness}")),
+            header_layout[0],
+        );
+        let tabs = Tabs::new(vec!["1: Metrics", "2: CPU/Mem"])
+            .select(view.tab as usize)
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED));
+        frame.render_widget(tabs, header_layout[1]);
+    } else {
+        frame.render_widget(
+            Paragraph::new(format!("{state} | {freshness}")),
+            inner_header,
+        );
+    }
     let shortcuts = if view.help || view.detail {
         "q quit | PgUp/PgDn scroll text"
     } else {
-        "q quit | Space pause | ? help | Enter detail | arrows scroll"
+        "q quit | Tab / 1-2 tab | Space pause | ? help | Enter detail | arrows scroll"
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
         draw_text(frame,
-            "q, Esc, Ctrl-C: quit\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: select metrics (scroll text in help)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            "q, Esc, Ctrl-C: quit\nTab, 1, 2, Left/Right: switch between 1:Metrics and 2:CPU/Mem tabs\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric\nUp/Down, j/k: select metrics (scroll text in help)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
             " Help ", &mut view.text_scroll, layout[1]);
         return;
     }
@@ -152,6 +196,10 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             &mut view.text_scroll,
             layout[1],
         );
+        return;
+    }
+    if view.tab == Tab::CpuMemory {
+        draw_cpu_mem(frame, &update.snapshot, layout[1]);
         return;
     }
     if area.width >= 90 {
@@ -211,6 +259,227 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             layout[1],
         );
     }
+}
+
+fn find_metric<'a>(
+    snapshot: &'a Snapshot,
+    name: &str,
+) -> Option<&'a MetricObservation<MetricValue>> {
+    snapshot.metrics().iter().find(|m| m.name() == name)
+}
+
+fn metric_display(m: Option<&MetricObservation<MetricValue>>) -> String {
+    m.map_or_else(|| "not probed".to_owned(), value_text)
+}
+
+fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
+    let cpu_busy = find_metric(snapshot, "cpu.busy.percent");
+    let (cpu_pct, cpu_label) = match cpu_busy.map(MetricObservation::state) {
+        Some(MetricState::Available(val)) => {
+            let p = val.as_f64();
+            let pct = p.clamp(0.0, 100.0) as u16;
+            (pct, format!("{p:.1}% [CPU Busy]"))
+        }
+        Some(MetricState::TemporarilyUnavailable(reason)) => (0, format!("CPU Busy: {reason}")),
+        Some(state) => (0, format!("CPU Busy: {}", state.name())),
+        None => (0, "CPU Busy: not probed".to_owned()),
+    };
+
+    let cpu_gauge = Gauge::default()
+        .block(
+            Block::default()
+                .title(" Overall CPU Utilization (/proc/stat) ")
+                .borders(Borders::ALL),
+        )
+        .gauge_style(Style::default().add_modifier(Modifier::REVERSED))
+        .percent(cpu_pct)
+        .label(cpu_label);
+
+    let mem_total = find_metric(snapshot, "memory.total.bytes");
+    let mem_used = find_metric(snapshot, "memory.used.bytes");
+    let mem_avail = find_metric(snapshot, "memory.available.bytes");
+
+    let (mem_pct, mem_label) = match (
+        mem_total.map(MetricObservation::state),
+        mem_used.map(MetricObservation::state),
+    ) {
+        (Some(MetricState::Available(total_val)), Some(MetricState::Available(used_val))) => {
+            let total = total_val.as_f64();
+            let used = used_val.as_f64();
+            let total_gib = total / 1_073_741_824.0;
+            let used_gib = used / 1_073_741_824.0;
+            let avail_str = match mem_avail.map(MetricObservation::state) {
+                Some(MetricState::Available(avail_val)) => {
+                    format!("{:.2} GiB avail", avail_val.as_f64() / 1_073_741_824.0)
+                }
+                _ => "avail n/a".to_owned(),
+            };
+            let pct = if total > 0.0 {
+                ((used / total) * 100.0).clamp(0.0, 100.0) as u16
+            } else {
+                0
+            };
+            (
+                pct,
+                format!("{used_gib:.2} GiB / {total_gib:.2} GiB ({pct}%, {avail_str})"),
+            )
+        }
+        _ => (
+            0,
+            format!(
+                "RAM: {}",
+                mem_total.map_or_else(|| "not probed".to_owned(), value_text)
+            ),
+        ),
+    };
+
+    let mem_gauge = Gauge::default()
+        .block(
+            Block::default()
+                .title(" Physical Memory (RAM) ")
+                .borders(Borders::ALL),
+        )
+        .gauge_style(Style::default().add_modifier(Modifier::REVERSED))
+        .percent(mem_pct)
+        .label(mem_label);
+
+    let swap_total = find_metric(snapshot, "swap.total.bytes");
+    let swap_used = find_metric(snapshot, "swap.used.bytes");
+
+    let (swap_pct, swap_label) = match (
+        swap_total.map(MetricObservation::state),
+        swap_used.map(MetricObservation::state),
+    ) {
+        (Some(MetricState::Available(total_val)), Some(MetricState::Available(used_val))) => {
+            let total = total_val.as_f64();
+            let used = used_val.as_f64();
+            if total > 0.0 {
+                let total_gib = total / 1_073_741_824.0;
+                let used_gib = used / 1_073_741_824.0;
+                let pct = ((used / total) * 100.0).clamp(0.0, 100.0) as u16;
+                (
+                    pct,
+                    format!("{used_gib:.2} GiB / {total_gib:.2} GiB ({pct}%)"),
+                )
+            } else {
+                (0, "No swap configured (0 B)".to_owned())
+            }
+        }
+        _ => (
+            0,
+            format!(
+                "Swap: {}",
+                swap_total.map_or_else(|| "not probed".to_owned(), value_text)
+            ),
+        ),
+    };
+
+    let swap_gauge = Gauge::default()
+        .block(Block::default().title(" Swap Space ").borders(Borders::ALL))
+        .gauge_style(Style::default().add_modifier(Modifier::REVERSED))
+        .percent(swap_pct)
+        .label(swap_label);
+
+    if area.height <= 7 {
+        let rows = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).split(area);
+        frame.render_widget(cpu_gauge, rows[0]);
+        frame.render_widget(mem_gauge, rows[1]);
+        return;
+    }
+
+    if area.height < 14 {
+        let rows = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ])
+        .split(area);
+        frame.render_widget(cpu_gauge, rows[0]);
+        if area.width >= 70 {
+            let cols = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(rows[1]);
+            frame.render_widget(mem_gauge, cols[0]);
+            frame.render_widget(swap_gauge, cols[1]);
+        } else {
+            frame.render_widget(mem_gauge, rows[1]);
+        }
+        let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
+        let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
+        let psi_io = metric_display(find_metric(snapshot, "pressure.io.some.avg10.percent"));
+        let psi_text = format!("PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | I/O {psi_io}");
+        frame.render_widget(
+            Paragraph::new(psi_text).block(
+                Block::default()
+                    .title(" Pressure Stalls ")
+                    .borders(Borders::ALL),
+            ),
+            rows[2],
+        );
+        return;
+    }
+
+    let rows = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Length(4),
+        Constraint::Min(4),
+    ])
+    .split(area);
+
+    frame.render_widget(cpu_gauge, rows[0]);
+
+    if area.width >= 70 {
+        let cols = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(rows[1]);
+        frame.render_widget(mem_gauge, cols[0]);
+        frame.render_widget(swap_gauge, cols[1]);
+    } else {
+        frame.render_widget(mem_gauge, rows[1]);
+    }
+
+    let user = metric_display(find_metric(snapshot, "cpu.user.ticks"));
+    let system = metric_display(find_metric(snapshot, "cpu.system.ticks"));
+    let idle = metric_display(find_metric(snapshot, "cpu.idle.ticks"));
+    let iowait = metric_display(find_metric(snapshot, "cpu.iowait.ticks"));
+    let steal = metric_display(find_metric(snapshot, "cpu.steal.ticks"));
+    let nice = metric_display(find_metric(snapshot, "cpu.nice.ticks"));
+
+    let ticks_paragraph = Paragraph::new(vec![
+        Line::from(format!("User: {user}   System: {system}   Idle: {idle}")),
+        Line::from(format!(
+            "I/O Wait: {iowait}   Steal: {steal}   Nice: {nice}"
+        )),
+    ])
+    .block(
+        Block::default()
+            .title(" CPU Tick Accounting (/proc/stat) ")
+            .borders(Borders::ALL),
+    );
+    frame.render_widget(ticks_paragraph, rows[2]);
+
+    let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
+    let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
+    let psi_io = metric_display(find_metric(snapshot, "pressure.io.some.avg10.percent"));
+
+    let load1 = metric_display(find_metric(snapshot, "load.1m"));
+    let load5 = metric_display(find_metric(snapshot, "load.5m"));
+    let load15 = metric_display(find_metric(snapshot, "load.15m"));
+    let uptime = metric_display(find_metric(snapshot, "uptime.seconds"));
+
+    let psi_load_paragraph = Paragraph::new(vec![
+        Line::from(format!(
+            "PSI Stall avg10: CPU {psi_cpu}  │  Mem {psi_mem}  │  I/O {psi_io}"
+        )),
+        Line::from(format!(
+            "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}s"
+        )),
+    ])
+    .block(
+        Block::default()
+            .title(" Pressure Stalls & System Load (/proc/pressure & /proc/loadavg) ")
+            .borders(Borders::ALL),
+    );
+    frame.render_widget(psi_load_paragraph, rows[3]);
 }
 
 struct TerminalGuard;
@@ -318,6 +587,24 @@ pub fn run(config: Config) -> io::Result<()> {
                     KeyCode::Enter => {
                         view.detail = !view.detail;
                         view.text_scroll = 0;
+                    }
+                    KeyCode::Tab => {
+                        view.tab = view.tab.next();
+                    }
+                    KeyCode::BackTab => {
+                        view.tab = view.tab.prev();
+                    }
+                    KeyCode::Char('1') => {
+                        view.tab = Tab::Metrics;
+                    }
+                    KeyCode::Char('2') => {
+                        view.tab = Tab::CpuMemory;
+                    }
+                    KeyCode::Left if !view.help && !view.detail => {
+                        view.tab = view.tab.prev();
+                    }
+                    KeyCode::Right if !view.help && !view.detail => {
+                        view.tab = view.tab.next();
                     }
                     KeyCode::Down | KeyCode::Char('j') if view.help => {
                         view.text_scroll = view.text_scroll.saturating_add(1)
@@ -505,5 +792,33 @@ mod tests {
         assert!(pages.contains("observation:"));
         view.scroll_text_page(false);
         assert!(view.text_scroll <= view.text_page_size);
+    }
+
+    #[test]
+    fn cpu_memory_tab_renders_gauges_and_subsystems() {
+        let mut view = fixture();
+        view.tab = Tab::CpuMemory;
+        for width in [120, 70] {
+            let output = render(width, 30, &mut view);
+            assert!(output.contains("Overall CPU Utilization"));
+            assert!(output.contains("Physical Memory (RAM)"));
+            assert!(output.contains("Swap Space"));
+        }
+        let narrow = render(40, 30, &mut view);
+        assert!(narrow.contains("Overall CPU Utilization"));
+        assert!(narrow.contains("Physical Memory (RAM)"));
+
+        let minimum = render(35, 10, &mut view);
+        assert!(minimum.contains("CPU"));
+        assert!(minimum.contains("RAM"));
+    }
+
+    #[test]
+    fn tab_navigation_cycles_correctly() {
+        let tab = Tab::Metrics;
+        assert_eq!(tab.next(), Tab::CpuMemory);
+        assert_eq!(tab.next().next(), Tab::Metrics);
+        assert_eq!(tab.prev(), Tab::CpuMemory);
+        assert_eq!(tab.prev().prev(), Tab::Metrics);
     }
 }
