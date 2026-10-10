@@ -6,6 +6,9 @@ use lidb_core::MetricState;
 use lidb_core::SnapshotMode;
 use std::path::Path;
 
+#[cfg(target_os = "linux")]
+const OPEN_FLAGS: i32 = 0x800 | 0x20000;
+
 pub(crate) fn source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<String, State> {
     #[cfg(target_os = "linux")]
     {
@@ -61,7 +64,7 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
     // between metadata inspection and open, without privileged/unsafe code.
     let file = OpenOptions::new()
         .read(true)
-        .custom_flags(0x800 | 0x20000)
+        .custom_flags(OPEN_FLAGS)
         .open(path)
         .map_err(io_state)?;
     if !file.metadata().map_err(io_state)?.is_file() {
@@ -101,6 +104,26 @@ fn io_state(error_value: std::io::Error) -> State {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_flags_refuse_final_symlink() {
+        use std::os::unix::fs::{symlink, OpenOptionsExt};
+        let directory = std::env::temp_dir().join(format!("lidb-nofollow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("target"), "data").unwrap();
+        symlink(directory.join("target"), directory.join("link")).unwrap();
+        let result = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(OPEN_FLAGS)
+            .open(directory.join("link"));
+        std::fs::remove_dir_all(&directory).unwrap();
+        // ELOOP is 40 on both x86_64 and aarch64.
+        assert_eq!(
+            result.err().and_then(|error| error.raw_os_error()),
+            Some(40)
+        );
+    }
 
     #[test]
     fn reports_permission_denied_without_embedding_os_text() {
