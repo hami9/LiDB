@@ -183,25 +183,6 @@ impl CapabilityRegistry {
     }
 }
 
-/// Known P0 product areas; they remain **disabled**, not fabricated as available.
-#[must_use]
-pub fn bootstrap_registry() -> CapabilityRegistry {
-    let mut registry = CapabilityRegistry::new();
-    for id in ["org.lidb.linux.host", "org.lidb.linux.network"] {
-        registry
-            .register(
-                Capability::new(
-                    id,
-                    CapabilityState::Disabled,
-                    Some("Collector not implemented in P0".to_owned()),
-                )
-                .expect("constant P0 capability is valid"),
-            )
-            .expect("constant P0 IDs are unique");
-    }
-    registry
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,15 +229,6 @@ mod tests {
             registry.register(new("org.lidb.a")),
             Err(CapabilityError::DuplicateId("org.lidb.a".into()))
         );
-    }
-
-    #[test]
-    fn bootstrap_does_not_claim_active_collectors() {
-        let registry = bootstrap_registry();
-        assert_eq!(registry.len(), 2);
-        assert!(registry
-            .iter()
-            .all(|item| item.state() == CapabilityState::Disabled));
     }
 
     #[test]
