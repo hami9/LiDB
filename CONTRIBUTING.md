@@ -14,8 +14,21 @@ Read [README.md](README.md), [AGENTS.md](AGENTS.md), [ROADMAP.md](ROADMAP.md), [
 - Include exact test commands and environment; distinguish simulated and real hardware.
 - Do not claim GPU/NCCL/NVLink behavior tested on hardware without test evidence.
 - Use English across code, docs, reviews and commit messages.
-- Preferred commits: `docs(scope): description`, `feat(scope): description`, `fix(scope): description`, `test(scope): description`.
+- Follow the [naming rules](#naming) for commits, branches, files and PR titles.
 - External contributors retain their copyright under the project's MIT license; no CLA currently required.
+
+## Naming
+
+Keep names short and plain. A name says what something is in 1 to 3 words.
+
+- **Commits:** one lowercase line that starts with a plain verb: `add disk limit`, `fix arm64 open flags`, `update ci docs`. No `feat:` prefix and no Title Case. Add a body only when the change needs it. Trailers such as `Co-Authored-By:` and `Release-Bump:` are fine.
+- **PR titles:** keep the Conventional Commit prefix, because CI and release versioning read it. Keep the rest short and lowercase: `fix(collect): arm64 open flags`.
+- **Branches:** agents use the branch the worktree tool creates, `agent/<agent>/<task>`. Keep `<task>` to 1 to 3 words: `agent/codex/disk-limit`. Human branches use no prefix: `fix-disk-limit`.
+- **Files and folders:** new names are lowercase with hyphens: `telemetry-history.md`, not `P0_TELEMETRY_HISTORY.md`. Keep fixed names such as `README.md`, `Cargo.toml` and `LICENSE`. Do not rename existing files in an unrelated PR.
+- **Task notes:** put them in `.AGENTS/worklogs/`, not inside app or crate folders.
+- **Issues, labels and tags:** short and plain, for example `disk limit` or `arm64`.
+
+Write docs, PR bodies and issue text in short sentences with common words. Skip hype words such as "powerful", "seamless" or "robust".
 
 ## Review expectations
 

@@ -29,7 +29,8 @@ Read [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) before starting implementation. 
 ## Automation and release contract
 
 - Read [docs/CI_CD.md](docs/CI_CD.md) and [.AGENTS/skills/ci-cd/SKILL.md](.AGENTS/skills/ci-cd/SKILL.md) before touching workflows, release scripts or dependency configuration.
-- Name PRs with a Conventional Commit prefix. Preserve exact release intent; `feat:` means minor, `!:` or a BREAKING CHANGE footer means major, all routine changes default to patch.
+- Follow the [naming rules](CONTRIBUTING.md#naming): short lowercase commits like `fix arm64 open flags`, 1 to 3 word task names, lowercase hyphenated file names.
+- Name PRs with a Conventional Commit prefix and a short lowercase summary. Preserve exact release intent; `feat:` means minor, `!:` or a BREAKING CHANGE footer means major, all routine changes default to patch.
 - Never bypass `CI Gate`, publish from a PR, invent a successful hardware test, manually alter a published version tag, or create artifacts without verified binaries.
 - Branch rulesets require administrative activation: placing JSON files in `.github/rulesets/` does not enforce GitHub repository settings.
 

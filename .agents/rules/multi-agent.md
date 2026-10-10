@@ -12,4 +12,5 @@ The top-level `AGENTS.md` and `.AGENTS/WORKTREES.md` are authoritative.
 - The normal path is `.worktrees/antigravity/<task>` and branch `agent/antigravity/<task>`.
 - Agree on a GitHub issue and mutually exclusive scope before starting. Do not race other agents on core schemas, version controls or central agent state.
 - Use GitHub PRs for cross-machine collaboration. Do not pretend local files sync between cloud sessions.
+- Follow the naming rules in `CONTRIBUTING.md`: short lowercase commits like `fix tab scroll`, 1 to 3 word task names, Conventional Commit PR titles.
 - Commit and push only scoped work, run real tests and request review before merging. Keep product and architecture source files English-only.
