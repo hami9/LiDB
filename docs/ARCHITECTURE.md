@@ -20,15 +20,17 @@ The CLI owns presentation and lifecycle. The `lidb-collect` Linux collector owns
 
 ## Sources and semantics
 
+The baseline uses a standard collection thread and a bounded latest-snapshot slot, rather than a required async runtime. Size-bounded synchronous reads do not imply a hard read or shutdown deadline. [ADR-022](DECISIONS.md#adr-022--implemented-core-boundaries-and-abi-validation-2026-10-12) and the [architecture review](ARCHITECTURE_REVIEW.md) record actual boundaries, verified ABI fixes and remaining lifecycle work.
+
 | Host observation | Source | Interpretation |
 | --- | --- | --- |
 | CPU counters and sampled activity | `/proc/stat` | Cumulative counters; utilization needs consecutive compatible samples |
 | Memory and swap | `/proc/meminfo` | Explicit bytes; `MemAvailable` is different from free memory |
 | Load averages | `/proc/loadavg` | Runnable/uninterruptible workload averages, not CPU utilization percentages |
 | Uptime | `/proc/uptime` | Host uptime from the selected procfs view |
-| Interface counters | `/proc/net/dev` | Cumulative byte/packet/error/drop counts in the visible namespace |
+| Interface counters | `/proc/net/dev` | Cumulative receive/transmit bytes and sampled byte rates in the visible namespace |
 | Block-device counters | `/proc/diskstats` | Device-level cumulative I/O statistics, not filesystem capacity |
-| Pressure stalls | `/proc/pressure/{cpu,memory,io}` | Optional kernel PSI averages/counters with explicitly reported support |
+| Pressure stalls | `/proc/pressure/{cpu,memory,io}` | Optional `some avg10` percentages with explicitly reported support |
 
 The collector reads at most 1 MiB per source file and uses configurable procfs roots for deterministic fixtures. `LinuxCollector::new(proc_root)` owns a collector-local clock and `sample()` returns a `Snapshot`. A fixture is labeled test evidence, and cannot establish real-host support. Source files, input sizes, collection count and refresh interval are bounded. A missing, malformed, denied or changing source affects its observations visibly; it must not silently invalidate every other collector.
 

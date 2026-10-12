@@ -10,7 +10,7 @@ Decisions are **proposed** unless explicitly accepted by maintainers. Changing o
 | ADR-004 | proposed | Read-only, metadata-only baseline | Operator trust and privacy |
 | ADR-005 | proposed | Capability-gated integrations | Hardware/runtime support is highly variable |
 | ADR-006 | proposed | Collector-local monotonic timestamps; no cross-domain comparability | Avoid false timeline correlations |
-| ADR-007 | proposed | Default Tokio/epoll; optional later io_uring benchmark | Reduce initial complexity |
+| ADR-007 | superseded in Core candidate by ADR-022 | No required async runtime; standard collection worker | Match the implemented bounded local baseline |
 | ADR-008 | proposed | Defer external adapters; no native dynamic loading | Avoid unsafe native dynamic loading |
 | ADR-009 | proposed | No automatic remediation or job scheduler | Needs separate safety and reliability validation |
 | ADR-010 | proposed | MIT for project-owned code | Permissive open-source contribution and redistribution |
@@ -46,3 +46,15 @@ Rust 1.85 is the selected minimum toolchain for the runnable foundation. Record 
 **Consequences:** Active product docs, roadmap and agent guidance adopt the public scope. Existing history and protocol contracts are preserved, and snapshot JSON remains pre-stable. No privileged operation, outbound runtime network request, persistent store or remote listener is introduced. Local x86_64 and pending native aarch64 evidence remain distinct; runnable code is not production or phase-exit approval.
 
 **Migration:** The CLI presents `snapshot`, `doctor` and `tui`; legacy scaffold `status`/`capabilities` remain compatibility aliases. The internal workspace version remains pre-release. There is no published stable release to migrate, and no installed daemon service is removed by application startup. Historical task/worklog records remain intact.
+
+## ADR-022 — implemented Core boundaries and ABI validation (2026-10-12)
+
+**Status:** implementation proposal in the issue #26 follow-up; maintainer integration/phase acceptance remains pending.
+
+**Context:** The runnable baseline has acyclic pure-Core → collector → application layering, a standard collection thread and one bounded latest-snapshot slot. Earlier proposals suggested Tokio/epoll without an implemented need. A shared numeric Linux open flag was wrong for arm64; static symlink preinspection tests did not exercise the actual open defense. Pure Core also retained an unused product bootstrap registry with obsolete disabled declarations.
+
+**Decision:** Keep the existing in-process layers and standard worker; add no async runtime or daemon for current procfs reads. Preserve the maintainer's already-integrated architecture-specific `O_NOFOLLOW`/`O_NONBLOCK` implementation; PR #27 owns direct final-component symlink regression coverage on both native architectures. Preserve the maintainer's removal of the unused product bootstrap helper from pure Core; source availability belongs to actual collector observations, while generic capability construction remains platform-independent.
+
+**Alternatives:** Adding libc solely for two constants is unnecessary for the existing two-target baseline; sharing the wrong ABI value is incorrect. An async wrapper alone cannot cancel a synchronous kernel read. A daemon/transport or invented timeout guarantee adds cost without resolving that boundary. Lifecycle isolation/timeout design is explicitly tracked in AG-01.
+
+**Consequences and migration:** Snapshot JSON 0.1 and protocol negotiation are unchanged. The pre-stable, unused `capability::bootstrap_registry` helper was already removed in merged PR #25; callers can use an empty `CapabilityRegistry` and explicitly checked registrations. Intermediate fixture directory races, synchronous read stalls, clock-domain replay identity and release evidence remain documented limits. No unsafe code, new dependency, host configuration or privilege is introduced.

@@ -4,6 +4,8 @@ These are deliberately concise agent playbooks for the LiDB architecture. They l
 
 Read [../SKILL_POLICY.md](../SKILL_POLICY.md) before choosing a skill, and read the top-level [../../AGENTS.md](../../AGENTS.md) first.
 
+- [GitHub style](../../.agents/skills/github-style/SKILL.md) — maintainer-supplied shared delivery skill; [installation/provenance](../../docs/AGENT_SKILLS.md)
+
 - [Rust core](rust-core/SKILL.md)
 - [Linux networking](linux-networking/SKILL.md)
 - [eBPF kernel](ebpf-kernel/SKILL.md)

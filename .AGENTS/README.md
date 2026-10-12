@@ -19,6 +19,8 @@ This **version-controlled workspace** coordinates multiple AI coding agents. It 
 | [REVIEW_5_AXES.md](REVIEW_5_AXES.md) | Five domain reviews before phase completion |
 | [SKILL_POLICY.md](SKILL_POLICY.md) | How to choose and validate skills |
 | [skills/README.md](skills/README.md) | Local topic-specific agent playbooks |
+| [ANTIGRAVITY.md](ANTIGRAVITY.md) | Persistent ordered continuation queue and session resume contract |
+| [../docs/AGENT_SKILLS.md](../docs/AGENT_SKILLS.md) | Shared github-style discovery, provenance and user-scope installation |
 
 ## Canonical source of truth
 

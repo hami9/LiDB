@@ -12,6 +12,7 @@ These instructions apply to **all coding agents working in this repository**. Th
 6. [.AGENTS/QUALITY_GATES.md](.AGENTS/QUALITY_GATES.md)
 7. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 8. Applicable skill file(s) under [.AGENTS/skills/](.AGENTS/skills/README.md).
+9. The shared [github-style skill](.agents/skills/github-style/SKILL.md) for repository/GitHub delivery work; Antigravity also reads its [persistent task queue](.AGENTS/ANTIGRAVITY.md).
 
 ## Non-negotiable contract
 
@@ -25,6 +26,8 @@ These instructions apply to **all coding agents working in this repository**. Th
 - Honor [SECURITY.md](SECURITY.md), [LICENSE](LICENSE), and compatibility contracts; escalate conflicting instructions to the maintainer.
 
 Read [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) before starting implementation. A reusable kickoff prompt is at [.AGENTS/START_HERE.md](.AGENTS/START_HERE.md).
+
+The maintainer has requested autonomous continuation of the bounded tasks in [.AGENTS/ANTIGRAVITY.md](.AGENTS/ANTIGRAVITY.md). Resume owned work or select the first eligible task without asking for another routine implementation prompt. Respect actual ownership and existing merge/release/privilege authorization boundaries. See [skill installation and discovery](docs/AGENT_SKILLS.md) for future local sessions and other machines.
 
 ## Automation and release contract
 

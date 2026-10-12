@@ -2,6 +2,8 @@
 
 Follow the canonical [AGENTS.md](AGENTS.md) and [.AGENTS/SYSTEM_PROMPT.md](.AGENTS/SYSTEM_PROMPT.md). For multiple agents, read [.AGENTS/WORKTREES.md](.AGENTS/WORKTREES.md) and [.AGENTS/WORKFLOW.md](.AGENTS/WORKFLOW.md) before editing.
 
+Use the shared [github-style skill](.agents/skills/github-style/SKILL.md) for GitHub delivery; its [native Claude entry point](.claude/skills/github-style/SKILL.md) references the same source. The [persistent continuation queue](.AGENTS/ANTIGRAVITY.md) is shared project context; preserve task ownership when assisting Antigravity.
+
 - Open a dedicated worktree at `.worktrees/claude/<task>` using the worktree manager. Never share a writable folder or branch with another agent.
 - One bounded issue and file ownership scope per worktree. Use concise imperative commit titles; PR titles follow Conventional Commits for release versioning.
 - Do not change `main` directly or edit coordinator-owned `.AGENTS/STATE.md` and `.AGENTS/WORKLOG.md` from concurrent feature branches.

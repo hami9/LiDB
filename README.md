@@ -4,7 +4,7 @@
 
 LiDB provides a runnable foundation for developers, VPS owners and system operators inspecting a Linux host over SSH. The core collects CPU, memory, load, uptime, disk, network-interface and pressure observations without a cloud account, a daemon or elevated privileges. Missing data is reported with a reason instead of a fabricated zero.
 
-The project is in core development. There is no published binary release or production performance claim. Native Linux x86_64 and aarch64 passed the baseline CI checks; see the [compatibility matrix](docs/INTEGRATION_MATRIX.md) for exact evidence and limits.
+The project is in core development. [Prerelease v0.2.0](https://github.com/hami9/LiDB/releases/tag/v0.2.0) contains Linux binaries for x86_64 and aarch64; stable compatibility and production performance remain unclaimed. Native Linux x86_64 and aarch64 passed the baseline CI checks; see the [compatibility matrix](docs/INTEGRATION_MATRIX.md) for exact evidence and limits.
 
 ## Build and install
 
@@ -62,5 +62,7 @@ python3 scripts/check_docs.py
 See the [Core data reference](docs/CORE.md), [architecture](docs/ARCHITECTURE.md), [product requirements](docs/PRODUCT_REQUIREMENTS.md), [roadmap](ROADMAP.md), [capability model](docs/CAPABILITY_MODEL.md), [telemetry contract](docs/OBSERVABILITY_CONTRACT.md), [test strategy](docs/TEST_STRATEGY.md) and [architecture decisions](docs/DECISIONS.md). The preserved [core contracts](docs/P0_CORE_CONTRACTS.md) and [bounded history](docs/P0_TELEMETRY_HISTORY.md) describe the existing foundation libraries.
 
 Contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Parallel coding uses [isolated worktrees](.AGENTS/WORKTREES.md). [CI/CD](docs/CI_CD.md) and [branch protection](docs/BRANCH_PROTECTION.md) describe repository automation; committed rulesets require administrative activation.
+
+The shared [GitHub style skill](.agents/skills/github-style/SKILL.md), [installation guide](docs/AGENT_SKILLS.md) and [Antigravity continuation queue](.AGENTS/ANTIGRAVITY.md) keep delivery instructions available across repository sessions. The [architecture review](docs/ARCHITECTURE_REVIEW.md) records verified fixes and remaining engineering limits.
 
 LiDB is [MIT licensed](LICENSE). See [SECURITY.md](SECURITY.md) for vulnerability reporting, [GOVERNANCE.md](GOVERNANCE.md) for maintainership and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community conduct.

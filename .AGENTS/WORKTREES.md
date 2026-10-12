@@ -8,6 +8,8 @@
 - **`AGENTS.md` (root):** universal instructions.
 - **`CLAUDE.md`:** Claude Code entry point referencing canonical rules.
 - **`.agents/rules/`:** native Antigravity scoped rules; **lowercase** is intentional and distinct from `.AGENTS/`.
+- **`.agents/skills/`:** native shared skill discovery; github-style is loaded through all agent entry points.
+- **`.claude/skills/`:** native Claude adapters referencing the shared skill source.
 - **`.AGENTS/`:** project agent policy, worklogs, skills, phases and review gates.
 - **`scripts/worktrees.py`:** source of truth for create/list/remove/doctor.
 - **`scripts/worktree.sh` and `scripts/worktree.ps1`:** Linux/macOS Git Bash and Windows PowerShell entry points.
@@ -46,6 +48,8 @@ The manager fetches `origin/main` for each fresh branch, rejects branch collisio
 5. CI Gate, human decision, protected `main` and squash merge are the only route to integration.
 6. Coordinator updates `.AGENTS/STATE.md` and central `.AGENTS/WORKLOG.md` during integration/handoff. Each agent puts task evidence in its own PR or a unique `.AGENTS/worklogs/<task-id>.md` file to avoid central-write conflicts.
 
+An explicitly planned dependency chain may use a stacked PR targeting a verified candidate branch instead of `main`. On a newly created clean worktree, the owner may fast-forward to that fetched candidate with `git merge --ff-only origin/<candidate-branch>`, recording the base branch/SHA, dependent PR and integration order. This does not merge the candidate into main or authorize publication. Retarget to main when the dependency is actually integrated, without force-pushing or rewriting shared history. The [persistent Antigravity queue](ANTIGRAVITY.md) describes this delivery/resume exception for Core follow-ups.
+
 **Important:** Git worktrees do **not** create a distributed lock. On separate devices, the same branch name or task can be claimed twice. GitHub issues, PRs and human ownership provide the cross-device coordination mechanism. A normal Git worktree shares a repository's refs and object database with other local worktrees but maintains its own HEAD, index and working files.
 
 ## Integration boundaries and anti-conflict rules
@@ -57,7 +61,8 @@ The manager fetches `origin/main` for each fresh branch, rejects branch collisio
 | Diagnostic fixtures / tests | Claude | Yes, if not editing the same files |
 | Procfs fixtures / contract review | ChatGPT | Yes in owned tests/docs; schema edits need coordinator lock |
 | `.AGENTS/STATE.md`, central `WORKLOG.md`, CI workflows | Integrator | **No**; serialize edits |
-| Optional networking/eBPF future phases | Assigned module owner | Only after P0 API acceptance |
+| Networking candidate slices | Assigned module owner | After verified Core inputs; record stacked dependencies separately from phase acceptance |
+| Optional eBPF/privileged slices | Explicitly authorized module owner | Only after scoped operator authorization and required compatibility evidence |
 
 Examples are suggested allocations, **not claims of active assignments or launched agents**.
 

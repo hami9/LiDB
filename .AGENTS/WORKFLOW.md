@@ -24,6 +24,8 @@ Use [REVIEW_5_AXES.md](REVIEW_5_AXES.md). Security-sensitive and API-breaking ch
 
 Update [WORKLOG.md](WORKLOG.md) and [STATE.md](STATE.md), docs, tests and changelog. Fill out [HANDOFF_TEMPLATE.md](HANDOFF_TEMPLATE.md); open a PR with targeted scope. Do not merge or trigger release actions unless explicitly authorized.
 
+For maintainer-requested ongoing Antigravity work, use [ANTIGRAVITY.md](ANTIGRAVITY.md) to resume the first eligible task without another routine selection prompt. Record an explicitly stacked PR's base/dependency as described in [WORKTREES.md](WORKTREES.md). Independent candidate work can continue while a PR is under review; it does not accept a phase, bypass required checks or grant merge/release authority.
+
 ## Parallel work: strict ownership
 
 Read [WORKTREES.md](WORKTREES.md) and the [multi-agent skill](skills/multi-agent/SKILL.md). One GitHub issue and one unique `agent/<agent>/<task>` branch per agent. Work locally in an isolated linked Git worktree created by `scripts/worktrees.py`. Other devices and cloud agents have independent clones and communicate by GitHub PRs, not shared uncommitted files.
