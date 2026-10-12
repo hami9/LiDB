@@ -6,9 +6,9 @@ The maintainer requested durable instructions for completing the public LiDB pro
 
 1. Read this file, [STATE.md](STATE.md), [WORKTREES.md](WORKTREES.md), [architecture](../docs/ARCHITECTURE.md), [architecture review](../docs/ARCHITECTURE_REVIEW.md) and your existing task note. Inspect `git status`, branch/base, local changes, current issues/PRs and actual source. Do not start from a remembered phase label.
 2. Resume your owned unfinished task first. Otherwise select the earliest eligible queue item whose inputs exist and whose files are unclaimed. Do not ask the maintainer to choose among already-listed routine tasks. A task blocked on a review, hardware or authorization does not block an independent eligible task.
-3. Look for an existing issue with that task ID before creating another. Give it one owner, acceptance criteria, dependencies and expected paths; create a dedicated `agent/antigravity/<task-id>` branch with `python3 scripts/worktrees.py create antigravity <task-id>`. Open that worktree as the editor workspace. Do not edit a Codex/Claude worktree or reuse another owner's branch.
-4. If `main` lacks the implemented Core while PR #25 and the follow-up to issue #26 are open, fetch the actual candidate refs. On a newly created clean worktree only, fast-forward to the required candidate with `git merge --ff-only origin/<verified-candidate-branch>` and record that branch as the stacked PR base. Do not merge either PR yourself, invent its number/status or independently re-import obsolete scaffolds. If fast-forward fails, inspect the dependency and preserve the worktree; do not reset it.
-5. Before editing, write `.AGENTS/worklogs/antigravity-<task-id>.md` with task ID, issue, owner, base SHA/branch, owned paths, acceptance criteria and status. Record a checkpoint after each meaningful slice. File existence, a GitHub issue assignment or a local worktree does not by itself provide a distributed lock; inspect current work and coordinate genuine collisions.
+3. Look for an existing issue with that task ID before creating another. Give it one owner, acceptance criteria, dependencies and expected paths. Task IDs such as `AG-01` use lowercase branch slugs, for example `python3 scripts/worktrees.py create antigravity ag-01-lifecycle`, yielding `agent/antigravity/ag-01-lifecycle`. Open that worktree as the editor workspace. Do not edit a Codex/Claude worktree or reuse another owner's branch.
+4. If a future required dependency is still unmerged and `main` lacks its implementation, fetch the actual candidate refs. On a newly created clean worktree only, fast-forward to the required candidate with `git merge --ff-only origin/<verified-candidate-branch>` and record that branch as the stacked PR base. Do not merge either PR yourself, invent its number/status or independently re-import obsolete scaffolds. If fast-forward fails, inspect the dependency and preserve the worktree; do not reset it.
+5. Before editing, write a lowercase task note such as `.AGENTS/worklogs/antigravity-ag-01.md` with task ID, issue, owner, base SHA/branch, owned paths, acceptance criteria and status. Record a checkpoint after each meaningful slice. File existence, a GitHub issue assignment or a local worktree does not by itself provide a distributed lock; inspect current work and coordinate genuine collisions.
 6. Implement one reviewable slice. Keep collection outside UI rendering, domain contracts independent of OS/UI libraries, exact counters and explicit failures. Reuse supported source readers and contracts. Introduce dependencies only with license/MSRV review. Document ordinary design choices in an ADR instead of asking for a new prompt; an unapproved privileged/listener/persistence change is a real authorization boundary.
 7. Run relevant gates below; fix reproducible failures and relevant review findings. Report blocked/unrun platform tests precisely. Update operator docs and the scoped task note. Only the coordinator edits central STATE/WORKLOG/CI/shared schemas during concurrent work; a sole authorized integration owner may do so serially. Otherwise put the proposed central update in the handoff.
 8. Commit with imperative subjects, push your branch, open a Conventional Commit PR linked to the issue, and inspect CI at the actual head SHA. Record `under_review`, not `done`, while integration remains pending. Continue an independent queue item when appropriate. Dependent work can use an explicitly recorded stacked base; phase/release acceptance remains separate.
@@ -32,10 +32,23 @@ Valid task statuses: `planned`, `in_progress`, `blocked`, `under_review`, `integ
 
 ### AG-00 — verify before extending
 
-- Inspect PR #25 and the follow-up linked to issue #26, their current head SHAs, native checks and review findings. Confirm code is present in your chosen base and do not treat old AI/vendor TUI/IPC prototypes as integration requirements.
+- Inspect current main and the actual status of PR #25 (Core merged), #34 (CPU/Memory tab merged), #35 (this guidance), plus the pending candidates below. Confirm code is present in your base; do not treat old AI/vendor TUI/IPC prototypes as integration requirements.
 - Validate format/lint/tests, live snapshot/doctor and terminal lifecycle where supported. Record local OS/kernel/architecture/toolchain and each native GitHub result separately.
 - Confirm ownership of schemas/CI/central state before choosing AG-01 or AG-02. Capture any genuine regression in a focused issue and fix it before extending the affected boundary.
 - **Acceptance:** a scoped verification note with exact base/check URLs, pending integration status and the first eligible task. Checking an existing candidate is not permission to merge it or accept a phase.
+
+## Existing candidate ownership to inspect
+
+As checked on 2026-10-12, these PRs remain separate owners' work, not tasks to duplicate or auto-merge. Fetch their actual status at startup; this table is a discovery aid, not a permanent reservation or approval.
+
+| PR | Existing scope | Continuation implication |
+| --- | --- | --- |
+| [#27](https://github.com/hami9/LiDB/pull/27) | Direct ARM64 no-follow regression; flags already corrected in main by maintainer | Inspect native before/fix evidence; preserve owner's reader tests |
+| [#28](https://github.com/hami9/LiDB/pull/28) | Naming rules / contributor and agent entry points | Reconcile when integrated; shared supplied skill follows current repo conventions |
+| [#29](https://github.com/hami9/LiDB/pull/29) | Device-limit partial collection | Do not reimplement or overwrite that owner's limit path |
+| [#30](https://github.com/hami9/LiDB/pull/30) | Pure protocol frame codec | Evaluate actual need separately; no mandatory daemon/IPC inference |
+| [#33](https://github.com/hami9/LiDB/pull/33) | Interface error/drop counters | Reuse checked records if integrated; avoid duplicating collector work |
+| [#31](https://github.com/hami9/LiDB/pull/31) | Fixes to a separate earlier TUI prototype | Current baseline is the merged public app; do not import vendor/planned tabs by default |
 
 ### AG-01 — lifecycle under slow or failed reads
 
@@ -76,10 +89,10 @@ Valid task statuses: `planned`, `in_progress`, `blocked`, `under_review`, `integ
 - Export only to an operator-selected path, with bounded validated records and privacy documentation; do not silently persist or accept unchecked serde input. History/replay and export can be separate PRs.
 - **Acceptance:** deterministic retention/eviction and mixed-domain rejection, corrupted/unknown-schema/control-bearing/oversized replay cases, pause/resume/narrow-terminal lifecycle, explicit live/fixture/replay labels and exact integer round trips. Default startup still needs no database, cloud or service.
 
-### AG-07 — release readiness evidence
+### AG-07 — stable release readiness evidence
 
 - Owned scope: packaging/licenses/support docs and measured benchmarks; read the CI/CD skill before touching CI or release/dependency configuration.
-- Complete third-party license notices and SBOM/provenance checks for the locked dependencies. Verify installation/removal and archive content/checksum on native x86_64/aarch64. Measure CPU/RSS, collection latency and skipped updates with named workloads and intervals; record wider distribution/container visibility accurately.
+- Prereleases v0.1.0/v0.2.0 already exist; do not recreate published tags or pretend they are absent. Complete third-party license notices and SBOM/provenance checks for the locked dependencies before stable-release commitments. Verify installation/removal and archive content/checksum on native x86_64/aarch64. Measure CPU/RSS, collection latency and skipped updates with named workloads and intervals; record wider distribution/container visibility accurately.
 - **Acceptance:** independently reviewable evidence and accurate support/release checklist; no fabricated overhead targets, undisclosed network operations, missing license notices or bootstrap-only binary. Open publication/tag/administration steps remain explicitly pending until authorized; completing this task does not publish a release.
 
 ### AG-08 — optional deeper diagnostics

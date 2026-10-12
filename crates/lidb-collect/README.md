@@ -84,7 +84,7 @@ fractional values use finite nonnegative floating-point numbers.
 Only regular files are accepted. Metadata checks and Linux
 `O_NONBLOCK | O_NOFOLLOW` flags prevent blocking on FIFOs and following a
 substituted final symlink. `O_NOFOLLOW` is architecture-specific: `0x20000` on
-x86_64 and `0x8000` on aarch64; the direct open-boundary regression exercises
+x86_64 and `0x8000` on aarch64; PR #27 owns the direct open-boundary regression for
 symlink refusal independently of metadata preinspection. Reads are synchronous; the byte limits do not provide
 a wall-clock deadline for an unresponsive filesystem.
 

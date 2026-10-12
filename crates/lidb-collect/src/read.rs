@@ -26,9 +26,17 @@ pub(crate) fn source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<
 }
 
 #[cfg(target_os = "linux")]
+const O_NONBLOCK: i32 = 0x800;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const O_NOFOLLOW: i32 = 0x20000;
+#[cfg(all(target_os = "linux", not(target_arch = "x86_64")))]
+const O_NOFOLLOW: i32 = 0x8000;
+
+#[cfg(target_os = "linux")]
 fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<String, State> {
-    use std::fs;
+    use std::fs::{self, OpenOptions};
     use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
 
     if mode == SnapshotMode::Fixture {
         // Reject fixture directory symlinks, including /fixture/net -> /proc.
@@ -55,7 +63,18 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
     if !metadata.file_type().is_file() {
         return Err(error("source is not a regular file"));
     }
-    let file = open_source(&path)?;
+    // Stable Linux ABI flags: O_NONBLOCK=0x800.
+    // O_NOFOLLOW is 0x20000 on x86_64 and 0x8000 on aarch64 (asm-generic).
+    // These protect against opening a substituted FIFO or final-component symlink
+    // between metadata inspection and open, without privileged/unsafe code.
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(O_NONBLOCK | O_NOFOLLOW)
+        .open(path)
+        .map_err(io_state)?;
+    if !file.metadata().map_err(io_state)?.is_file() {
+        return Err(error("opened source is not a regular file"));
+    }
     let mut bytes = Vec::new();
     file.take((MAX_SOURCE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
@@ -71,30 +90,6 @@ fn linux_source(root: &Path, relative: &str, mode: SnapshotMode) -> Result<Strin
         return Err(error("source contains terminal control characters"));
     }
     Ok(text)
-}
-
-#[cfg(target_os = "linux")]
-fn open_source(path: &Path) -> Result<std::fs::File, State> {
-    use std::fs::OpenOptions;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    // Linux arm64 overrides asm-generic's O_NOFOLLOW. On arm64 0x20000
-    // means O_LARGEFILE, which cannot stop a replaced final-component link.
-    // source() restricts this helper to the two explicitly supported ABIs.
-    #[cfg(target_arch = "aarch64")]
-    const O_NOFOLLOW: i32 = 0x8000;
-    #[cfg(not(target_arch = "aarch64"))]
-    const O_NOFOLLOW: i32 = 0x20000;
-    const O_NONBLOCK: i32 = 0x800;
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(O_NONBLOCK | O_NOFOLLOW)
-        .open(path)
-        .map_err(io_state)?;
-    if !file.metadata().map_err(io_state)?.is_file() {
-        return Err(error("opened source is not a regular file"));
-    }
-    Ok(file)
 }
 
 #[cfg(target_os = "linux")]
@@ -124,27 +119,5 @@ mod tests {
             )),
             MetricState::PermissionDenied("source access is denied".into())
         );
-    }
-
-    #[test]
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-    fn open_itself_rejects_symlinks_without_relying_on_preinspection() {
-        use std::{fs, os::unix::fs::symlink, time::SystemTime};
-        let unique = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let directory =
-            std::env::temp_dir().join(format!("lidb-open-flags-{}-{unique}", std::process::id()));
-        fs::create_dir(&directory).unwrap();
-        let regular = directory.join("regular");
-        let link = directory.join("replacement-link");
-        fs::write(&regular, "bounded fixture").unwrap();
-        symlink(&regular, &link).unwrap();
-        assert!(open_source(&regular).is_ok());
-        // Exercise the open boundary directly: source()'s earlier metadata
-        // rejection would conceal an incorrect O_NOFOLLOW value on arm64.
-        assert!(matches!(open_source(&link), Err(MetricState::Error(_))));
-        fs::remove_dir_all(directory).unwrap();
     }
 }

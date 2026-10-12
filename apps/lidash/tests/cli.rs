@@ -1,14 +1,30 @@
 use serde_json::Value;
+use std::process::{Command, Output};
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 use std::{
     fs,
     path::PathBuf,
-    process::{Command, Output},
     sync::atomic::{AtomicU64, Ordering},
 };
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 struct Fixture(PathBuf);
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 impl Fixture {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!(
@@ -44,6 +60,10 @@ impl Fixture {
             .unwrap()
     }
 }
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
@@ -89,6 +109,10 @@ fn help_version_invalid_options_and_nonterminal_tui_have_defined_exits() {
 }
 
 #[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn piped_default_and_json_export_use_real_fixture_values_and_rate_states() {
     let fixture = Fixture::new();
     let output = fixture.run(&[]);
@@ -123,6 +147,10 @@ fn piped_default_and_json_export_use_real_fixture_values_and_rate_states() {
 }
 
 #[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn doctor_derives_capabilities_from_reads_and_marks_complete_source_failure() {
     let fixture = Fixture::new();
     let usable = json(&fixture.run(&["doctor", "--json"]));
@@ -156,6 +184,22 @@ fn doctor_derives_capabilities_from_reads_and_marks_complete_source_failure() {
         .unwrap()
         .iter()
         .all(|source| !source["failures"].as_array().unwrap().is_empty()));
+}
+
+#[test]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+fn non_linux_platforms_report_unsupported_cleanly() {
+    let output = binary(&["snapshot", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["schema_version"], "0.1");
+    let metrics = data["metrics"].as_array().unwrap();
+    assert!(metrics
+        .iter()
+        .all(|metric| metric["state"]["status"] == "unsupported"));
 }
 
 #[test]

@@ -6,11 +6,17 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 
 ### Core review and persistent agent delivery
 
-- Correct Linux arm64 final-component symlink protection and add a direct open-boundary regression test.
-- Remove the unused pre-stable capability bootstrap helper with obsolete disabled collector declarations.
+- Document the maintainer's integrated Linux arm64 no-follow fix and pre-stable bootstrap removal; preserve the separately owned regression work in PR #27.
 - Add the maintainer-supplied shared github-style skill, safe local user-scope installation and native agent entry points.
 - Add an always-on Antigravity continuation rule and ordered task queue with ownership, dependencies, acceptance checks and session checkpoints.
 - Record the actual Core architecture review, boundary fixes and remaining lifecycle/release limitations.
+
+## [0.2.0] — 2026-10-10 (prerelease)
+
+- Add the CPU/Memory overview tab and keyboard tab navigation in the public terminal app (PR #34).
+- Publish architecture-specific Linux prerelease archives and checksums through the existing release workflow.
+
+## [0.1.0] — 2026-10-10 (prerelease)
 
 ### Linux Core
 
@@ -25,15 +31,15 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 - Agent collaboration contracts, phase gates, review and worklog templates.
 - Security, governance, feature-capability, test and integration specifications.
 
-> No runnable software has been released yet.
+> The first runnable prerelease was published; stable compatibility, performance and broader support commitments remain under development.
 
-### Build and automation (unreleased)
+### Build and automation
 
 - Added CI Gate, Linux x86_64/aarch64 checks, CodeQL and dependency-update configuration.
-- Added SemVer release planner, regression tests and gated GitHub Releases with checksummed architecture-specific binaries (first published release still pending).
+- Added SemVer release planner, regression tests and gated GitHub Releases with checksummed architecture-specific binaries (prereleases now published).
 - Added proposed branch/tag rulesets and documented administrator activation procedure; rules are **not yet enforced** by committing them alone.
 
-### Developer collaboration (unreleased)
+### Developer collaboration
 
 - Added local multi-agent Git Worktree manager with safe create/list/remove/doctor actions for Windows and Linux.
 - Added Claude Code and Antigravity-specific instruction entry points and centralized ownership rules.

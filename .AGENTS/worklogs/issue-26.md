@@ -9,7 +9,7 @@
 - Verified defects: arm64 O_NOFOLLOW mismatch confirmed against Linux v6.18 headers; fixed named flags and added a direct open regression. Removed unused bootstrap-only registry/test with obsolete availability claims. Corrected architecture table and async-runtime proposal drift. Snapshot schema/protocol version unchanged; pre-stable helper migration documented.
 - Remaining limits: synchronous source reads and thread joins lack hard deadlines; intermediate fixture directory races require trusted static roots; replay clock identity, structured networking, measured overhead, notices/SBOM and wider compatibility remain future queue tasks. Source/dependency review is coordinator self-review, not independent/human approval.
 
-## Local verification — 2026-10-12
+## Initial candidate verification — 2026-10-12, before remote reconciliation
 
 Environment: Debian 13.6 / Linux 6.18.44 x86_64 / Rust 1.85.0 / unprivileged UID 1000. Commands below exited 0 unless a result explicitly says otherwise.
 
@@ -28,3 +28,11 @@ Environment: Debian 13.6 / Linux 6.18.44 x86_64 / Rust 1.85.0 / unprivileged UID
 | `python3 scripts/check_docs.py` / `git diff --check` | PASS: 195 local Markdown links and whitespace |
 
 Native GitHub results belong to the delivery PR/checks; they must be observed, not inferred. No public release build was required by this change and no release/tag/merge was performed. Resume by reading the final PR and `.AGENTS/ANTIGRAVITY.md` before taking AG-00/01; leave dependent phases under review until their own acceptance evidence exists.
+
+## Reconciliation with current main — 2026-10-12
+
+- Fresh fetch found PR #25 already merged with maintainer `ec50747` fixing ARM flags and removing bootstrap declarations, and PR #34 adding CPU/Memory UI. Current main is `842f877`; prereleases v0.1.0 and v0.2.0 are published with both native archives/checksums.
+- Merge current main into this published branch without history rewriting. Preserve its runtime source, CLI regression and CPU/Memory tab. Withdraw our duplicate reader refactor/regression because PR #27 already owns direct-open coverage and contains native failing-before/passing-after evidence. No other owner's branch or PR was modified or merged.
+- Retarget our PR #35 to main, update its scope to shared skills/persistent handoff and factual architecture documentation, and reconcile state/release claims. The original candidate-only local results above remain historical evidence; final main-based checks must be recorded separately.
+
+Final main-based local validation exited 0: formatter, strict locked Clippy, 51 Rust tests (19 Core + 2 protocol + 14 collector + 16 app), doctest command (zero cases), PTY lifecycle and live snapshot/doctor (146 observations). The three new CPU/Memory/tab tests ran; current runtime files are identical to main. The 21 Python tests cover the unchanged installer/policy code; final Markdown links (195) and whitespace passed. Native CI/CodeQL results are on PR #35's exact final head. No pending owner PR was imported or closed.
