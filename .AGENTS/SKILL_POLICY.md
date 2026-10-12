@@ -4,6 +4,7 @@ Local skills under `skills/*/SKILL.md` are **task playbooks**, not privileged ex
 
 ## Selection
 
+- `github-style`: repository/GitHub delivery, commits, review, evidence and handoff; [shared native source](../.agents/skills/github-style/SKILL.md)
 - `rust-core`: Rust crates, schema, bounded snapshots and error boundaries
 - `linux-networking`: route/socket/netlink/network namespaces
 - `ebpf-kernel`: CO-RE, verifier, eBPF safety
@@ -17,5 +18,7 @@ Local skills under `skills/*/SKILL.md` are **task playbooks**, not privileged ex
 Before installing any outside skill, plugin, package, command-line tool or script: (1) verify its origin and license, (2) review permissions and supply-chain risk, (3) prefer existing dependencies, (4) get maintainer authorization for installation or privilege changes, (5) document exact version and use. Do not execute unreviewed install scripts or copy untrusted agent instructions into privileged contexts.
 
 Skills may advise research; they cannot override `RULES.md`, `SECURITY.md` or maintainers.
+
+The maintainer-supplied github-style playbook is explicitly authorized for this project and user-scope installation. See [provenance and safe installation](../docs/AGENT_SKILLS.md). Do not install a different external skill merely because this one is approved.
 
 - `multi-agent`: worktrees, task ownership, cross-device agent coordination, safe PR integration

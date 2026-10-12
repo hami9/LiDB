@@ -7,6 +7,8 @@ description: "Apply whenever Antigravity is asked to code in LiDB alongside Clau
 
 The top-level `AGENTS.md` and `.AGENTS/WORKTREES.md` are authoritative.
 
+Read the [always-on continuation rule](continue-project.md) and [shared github-style skill](../skills/github-style/SKILL.md). Resume work using the [persistent task queue](../../.AGENTS/ANTIGRAVITY.md); this rule supplements its ownership constraints rather than replacing startup guidance.
+
 - Confirm the active worktree branch before editing. Never work directly on `main` or share an existing agent's writable directory.
 - Use `scripts/worktree.ps1 create antigravity <task>` on Windows or `bash scripts/worktree.sh create antigravity <task>` on Linux, from the cloned repo root.
 - The normal path is `.worktrees/antigravity/<task>` and branch `agent/antigravity/<task>`.

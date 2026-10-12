@@ -4,6 +4,14 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Core review and persistent agent delivery
+
+- Correct Linux arm64 final-component symlink protection and add a direct open-boundary regression test.
+- Remove the unused pre-stable capability bootstrap helper with obsolete disabled collector declarations.
+- Add the maintainer-supplied shared github-style skill, safe local user-scope installation and native agent entry points.
+- Add an always-on Antigravity continuation rule and ordered task queue with ownership, dependencies, acceptance checks and session checkpoints.
+- Record the actual Core architecture review, boundary fixes and remaining lifecycle/release limitations.
+
 ### Linux Core
 
 - Add versioned host snapshots with exact counters, source timestamps, explicit availability and bounded memory.

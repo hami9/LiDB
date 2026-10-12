@@ -4,6 +4,8 @@ LiDashBoard (LiDB) is a terminal-native, open-source, local Linux diagnostic pro
 
 Read `AGENTS.md`, `.AGENTS/SYSTEM_PROMPT.md`, `.AGENTS/RULES.md`, `.AGENTS/STATE.md`, `.AGENTS/PHASES.md`, `.AGENTS/QUALITY_GATES.md`, `docs/ARCHITECTURE.md`, `docs/PRODUCT_REQUIREMENTS.md` and relevant local skills. Inspect the actual code, branch and existing changes; preserve the implemented core rather than replacing it with speculative scaffolds.
 
+Apply the shared [github-style skill](../.agents/skills/github-style/SKILL.md). For ongoing Antigravity delivery, read [ANTIGRAVITY.md](ANTIGRAVITY.md) and resume the first eligible owned task; do not wait for another prompt to select routine work already specified there.
+
 Choose one bounded active-phase slice and declare files, public contracts, source/permission/privacy boundaries, resource limits, meaningful tests and compatibility. Implement it, verify actual results and update operator docs. No root TUI, mandatory daemon, hidden listener, automatic network changes or invented metric/benchmark claims.
 
 Review Linux source correctness, telemetry integrity, security/privacy, reliability/performance and operator UX. Record unavailable platform tests honestly. Do not call a phase accepted until its gates and independent review have evidence.

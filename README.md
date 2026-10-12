@@ -63,4 +63,6 @@ See the [Core data reference](docs/CORE.md), [architecture](docs/ARCHITECTURE.md
 
 Contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Parallel coding uses [isolated worktrees](.AGENTS/WORKTREES.md). [CI/CD](docs/CI_CD.md) and [branch protection](docs/BRANCH_PROTECTION.md) describe repository automation; committed rulesets require administrative activation.
 
+The shared [GitHub style skill](.agents/skills/github-style/SKILL.md), [installation guide](docs/AGENT_SKILLS.md) and [Antigravity continuation queue](.AGENTS/ANTIGRAVITY.md) keep delivery instructions available across repository sessions. The [architecture review](docs/ARCHITECTURE_REVIEW.md) records verified fixes and remaining engineering limits.
+
 LiDB is [MIT licensed](LICENSE). See [SECURITY.md](SECURITY.md) for vulnerability reporting, [GOVERNANCE.md](GOVERNANCE.md) for maintainership and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community conduct.

@@ -1,6 +1,6 @@
 # Current implementation state
 
-**Verified implementation snapshot:** 2026-10-09, branch `agent/codex/public-core`.
+**Verified implementation snapshot:** 2026-10-12, branch `agent/codex/agent-handoff`, based on the public Core candidate.
 
 | Field | Value |
 | --- | --- |
@@ -11,12 +11,14 @@
 | Observations | CPU, memory, swap, load, uptime, interface/disk counters and rates; optional PSI |
 | Data contract | JSON schema 0.1; exact integer counters, collector-local monotonic time, explicit failure states |
 | Local environment | Debian 13.6, Linux 6.18.44 x86_64, Rust 1.85.0 |
-| Native architecture evidence | Local Linux x86_64 plus native Ubuntu 24.04 x86_64/aarch64 [CI](https://github.com/hami9/LiDB/actions/runs/38004433311) passed at `c1dd00f`; [CodeQL](https://github.com/hami9/LiDB/actions/runs/38004433296) and docs passed |
+| Native architecture evidence | Prior public Core native x86_64/aarch64 CI passed; current follow-up adds an ARM ABI regression, whose actual native results must be checked on the PR linked to [issue #26](https://github.com/hami9/LiDB/issues/26) |
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
 | Release state | No binary release published by this task; stable compatibility and production performance unclaimed |
 | Review / tests | See the factual [worklog](WORKLOG.md), scoped task evidence and PR checks |
-| Current next action | Maintainer review of [PR #25](https://github.com/hami9/LiDB/pull/25); then choose one P2 networking task after integration |
+| Current next action | Review PR #25 and the issue #26 follow-up; Antigravity resumes the first eligible task from [its persistent queue](ANTIGRAVITY.md) with an explicit verified base |
 | Remaining limits | Trusted static fixtures; source reads lack deadlines; wider Linux/container matrix, measured overhead and release supply-chain hardening remain open |
+| Agent delivery | Shared github-style tracked and installed for local future sessions; always-on Antigravity startup and task queue written; no remote/native agent session launched |
+| Architecture review | [Actual review](../docs/ARCHITECTURE_REVIEW.md): acyclic layers; ARM open flag and obsolete bootstrap helper corrected; lifecycle/clock/release limits tracked |
 
 ## Public scope
 
