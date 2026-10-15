@@ -1,12 +1,16 @@
 //! Local IPC negotiation contracts. These are pure types only:
-//! no Unix socket, remote listener, serialization, or authentication exists yet.
+//! bounded byte framing is available, but no Unix socket, remote listener,
+//! payload serialization, or authentication exists yet.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 /// Current pre-stable IPC schema version.
 pub const PROTOCOL_VERSION: Version = Version { major: 0, minor: 1 };
-/// Planned maximum accepted wire frame length (not yet enforced by a socket).
+/// Maximum IPC payload bytes, excluding the 4-byte length prefix.
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
+
+/// Pure, bounded length-prefixed framing of opaque IPC payloads.
+pub mod framing;
 
 /// Public local protocol version. Major mismatch is an error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
