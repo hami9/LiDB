@@ -45,7 +45,7 @@ JSON preserves exact unsigned integer counters. Derived quantities are finite fl
 
 ## Resource and privacy boundaries
 
-Each of nine source files is limited to 1 MiB. Interface and disk sources accept at most 64 entries each; excess entries invalidate that source with a reason. The baseline emits at most 538 observations, below the core limit of 2048. Snapshot overflow increments `dropped_metrics`. This counter is distinct from UI updates replaced before display and history samples evicted by capacity.
+Each of nine source files is limited to 1 MiB. Interface and disk sources report at most 64 entries each; extra entries are counted in `network.omitted` and `disk.omitted`, and loop or container devices are dropped first. The baseline emits at most 540 observations, below the core limit of 2048. Snapshot overflow increments `dropped_metrics`. This counter is distinct from UI updates replaced before display and history samples evicted by capacity.
 
 The application stores no persistent history, launches no shell command or connectivity probe, opens no listener and makes no outbound network request. It reads no packet contents, credentials, process environments or process arguments. An explicit custom procfs directory is fixture input; use a trusted, static directory, since the collector does not provide a sandbox for concurrent adversarial directory replacement.
 

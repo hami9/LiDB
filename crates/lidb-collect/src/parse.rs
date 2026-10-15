@@ -258,14 +258,30 @@ pub(crate) fn disks(text: &str) -> Result<BTreeMap<String, TransferCounters>, St
     Ok(devices)
 }
 
+/// Keep at most [`MAX_DEVICES`] devices and return how many were omitted.
+///
+/// Names starting with a `deprioritized` prefix (loop disks, container veths)
+/// are kept only after every other device, so many virtual devices cannot hide
+/// physical ones. Selection is by name, so it is stable across samples.
+pub(crate) fn keep_devices(
+    devices: BTreeMap<String, TransferCounters>,
+    deprioritized: &[&str],
+) -> (BTreeMap<String, TransferCounters>, usize) {
+    let total = devices.len();
+    let (mut ordered, virtual_devices): (Vec<_>, Vec<_>) = devices
+        .into_iter()
+        .partition(|(name, _)| !deprioritized.iter().any(|prefix| name.starts_with(prefix)));
+    ordered.extend(virtual_devices);
+    let kept: BTreeMap<_, _> = ordered.into_iter().take(MAX_DEVICES).collect();
+    let omitted = total - kept.len();
+    (kept, omitted)
+}
+
 fn insert(
     devices: &mut BTreeMap<String, TransferCounters>,
     name: &str,
     counters: TransferCounters,
 ) -> Result<(), State> {
-    if devices.len() >= MAX_DEVICES {
-        return Err(error("source exceeds the device limit"));
-    }
     if devices.insert(name.into(), counters).is_some() {
         return Err(error("source contains duplicate device names"));
     }

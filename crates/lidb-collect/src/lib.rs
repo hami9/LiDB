@@ -20,8 +20,13 @@ type PreviousTransfers = Option<(u64, BTreeMap<String, TransferCounters>)>;
 
 /// Maximum bytes accepted from any one source file.
 pub const MAX_SOURCE_BYTES: usize = 1_048_576;
-/// Maximum interfaces or block devices accepted from one source.
+/// Maximum interfaces or block devices reported from one source. Extra
+/// devices are counted in `network.omitted` or `disk.omitted`.
 pub const MAX_DEVICES: usize = 64;
+/// Disk name prefixes kept only after other devices.
+const VIRTUAL_DISKS: &[&str] = &["loop", "ram"];
+/// Interface name prefixes kept only after other interfaces.
+const VIRTUAL_INTERFACES: &[&str] = &["veth", "cali", "lxc"];
 
 /// Stateful, read-only aggregate Linux telemetry collector.
 ///
@@ -238,10 +243,22 @@ impl LinuxCollector {
     }
 
     fn transfers(&mut self, snapshot: &mut Snapshot, disk: bool) {
-        let (path, source, prefix, directions) = if disk {
-            ("diskstats", "proc.diskstats", "disk", ["read", "write"])
+        let (path, source, prefix, directions, deprioritized) = if disk {
+            (
+                "diskstats",
+                "proc.diskstats",
+                "disk",
+                ["read", "write"],
+                VIRTUAL_DISKS,
+            )
         } else {
-            ("net/dev", "proc.net.dev", "network", ["rx", "tx"])
+            (
+                "net/dev",
+                "proc.net.dev",
+                "network",
+                ["rx", "tx"],
+                VIRTUAL_INTERFACES,
+            )
         };
         let result = self.read(path).and_then(|text| {
             if disk {
@@ -257,12 +274,20 @@ impl LinuxCollector {
         };
         match result {
             Ok(devices) => {
+                let (devices, omitted) = parse::keep_devices(devices, deprioritized);
                 add(
                     snapshot,
                     &format!("{prefix}.state"),
                     source,
                     Unit::Count,
-                    integer(devices.len() as u64),
+                    integer((devices.len() + omitted) as u64),
+                );
+                add(
+                    snapshot,
+                    &format!("{prefix}.omitted"),
+                    source,
+                    Unit::Count,
+                    integer(omitted as u64),
                 );
                 for (name, counters) in &devices {
                     let rates = transfer_rates(previous, snapshot.monotonic_ns(), name, counters);
@@ -290,6 +315,13 @@ impl LinuxCollector {
                 add(
                     snapshot,
                     &format!("{prefix}.state"),
+                    source,
+                    Unit::Count,
+                    state.clone(),
+                );
+                add(
+                    snapshot,
+                    &format!("{prefix}.omitted"),
                     source,
                     Unit::Count,
                     state,

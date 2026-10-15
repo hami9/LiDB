@@ -311,9 +311,21 @@ fn device_counts_duplicates_and_names_are_bounded() {
     for index in 0..MAX_DEVICES {
         disks.push_str(&format!("8 {index} disk{index} 1 0 1 0 1 0 1 0 0 0 0\n"));
     }
-    assert_eq!(parse::disks(&disks).unwrap().len(), MAX_DEVICES);
+    let (kept, omitted) = parse::keep_devices(parse::disks(&disks).unwrap(), &["loop"]);
+    assert_eq!((kept.len(), omitted), (MAX_DEVICES, 0));
     disks.push_str("8 99 overflow 1 0 1 0 1 0 1 0 0 0 0\n");
-    assert!(parse::disks(&disks).is_err());
+    let (kept, omitted) = parse::keep_devices(parse::disks(&disks).unwrap(), &["loop"]);
+    assert_eq!((kept.len(), omitted), (MAX_DEVICES, 1));
+
+    // Many loop devices must not hide a physical disk.
+    let mut disks = String::new();
+    for index in 0..MAX_DEVICES + 10 {
+        disks.push_str(&format!("7 {index} loop{index} 1 0 1 0 1 0 1 0 0 0 0\n"));
+    }
+    disks.push_str("8 0 sda 1 0 1 0 1 0 1 0 0 0 0\n");
+    let (kept, omitted) = parse::keep_devices(parse::disks(&disks).unwrap(), &["loop"]);
+    assert!(kept.contains_key("sda"));
+    assert_eq!((kept.len(), omitted), (MAX_DEVICES, 11));
 
     let punctuation = network_line("eth+0", 1, 2);
     assert!(parse::network(&punctuation)
@@ -349,6 +361,7 @@ fn kernel_valid_punctuation_preserves_other_device_observations() {
     assert_eq!(exact(&snapshot, "network.vpn%252Bprod.rx.bytes"), 5);
     assert_eq!(exact(&snapshot, "network.vpn%40prod.rx.bytes"), 7);
     assert_eq!(exact(&snapshot, "disk.state"), 2);
+    assert_eq!(exact(&snapshot, "disk.omitted"), 0);
     assert_eq!(exact(&snapshot, "disk.sda.read.bytes"), 10 * 512);
     assert_eq!(exact(&snapshot, "disk.cciss%21c0d0.read.bytes"), 30 * 512);
 
@@ -449,6 +462,7 @@ fn reads_reject_oversized_terminal_and_symlink_inputs() {
     symlink("/proc/net", fixture.0.join("net")).unwrap();
     let snapshot = LinuxCollector::new(&fixture.0).sample();
     assert_eq!(state(&snapshot, "network.state").name(), "error");
+    assert_eq!(state(&snapshot, "network.omitted").name(), "error");
 }
 
 #[test]
