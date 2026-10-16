@@ -20,6 +20,7 @@ The CLI owns presentation and lifecycle. The `lidb-collect` Linux collector owns
 
 ## Sources and semantics
 
+The baseline uses a standard collection thread and a bounded latest-snapshot slot, rather than a required async runtime. The interactive worker rejects batches taking 5 seconds and allows a 100ms joining grace after restoring the terminal. Cancellation suppresses later publication; a shutdown timeout permanently closes worker admission in that process, bounding abandoned workers to one. Size bounds and these lifecycle limits cannot cancel an arbitrary synchronous kernel read. Headless snapshot/doctor still have no read deadline. [ADR-023](DECISIONS.md#adr-023--bounded-interactive-collector-lifecycle-2026-10-16) records the exact policy and remaining OS limits.
 | Host observation | Source | Interpretation |
 | --- | --- | --- |
 | CPU counters and sampled activity | `/proc/stat` | Cumulative counters; utilization needs consecutive compatible samples |
