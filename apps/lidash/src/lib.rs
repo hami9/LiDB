@@ -6,6 +6,9 @@ pub mod output;
 pub mod tui;
 pub mod worker;
 
+#[cfg(all(test, target_os = "linux"))]
+mod lifecycle_tests;
+
 use config::{Command, Config};
 use lidb_collect::LinuxCollector;
 use std::{
