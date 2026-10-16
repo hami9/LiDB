@@ -4,6 +4,12 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Interactive collector lifecycle
+
+- Restore the terminal before collector cleanup; return an explicit timeout after a 100ms shutdown grace rather than waiting indefinitely for a blocked sample.
+- Reject interactive collection batches taking 5 seconds, including while paused; discard late results and exit 2 with an explanatory error.
+- Prevent replacement workers after a shutdown timeout, and test blocked sampling, destructor cleanup, publication/admission races and real PTY quit/signal/watchdog paths.
+
 ### Core review and persistent agent delivery
 
 - Document the maintainer's integrated Linux arm64 no-follow fix and pre-stable bootstrap removal; preserve the separately owned regression work in PR #27.

@@ -38,3 +38,15 @@ locally on 2026-10-16:
 - `git diff --check` — PASS (exit 0).
 - Rust compilation and actual PTY execution — NOT RUN in this worker checkout;
   the required coordinator APIs are not yet present in its base.
+
+## Coordinator integration checkpoint — 2026-10-16
+
+The coordinator cherry-picked this contribution as `014e67d` onto
+`agent/codex/collector-shutdown` with the worker/TUI APIs. The first actual run
+failed because Ratatui inserts cursor-position escapes between words; the parent
+now checks the `awaiting` token, rendered read-only header and sampler marker.
+After correction, `cargo test -p lidash --locked --all-targets` and workspace
+all-target tests passed: the parent executed all five isolated PTY children,
+including no-input watchdog at a 60000ms refresh interval. Native CI at the
+combined PR's exact head remains separate evidence. See [issue #43](issue-43.md)
+for final delivery, actual commands and known kernel/headless limits.

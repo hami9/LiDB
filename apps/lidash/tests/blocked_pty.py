@@ -58,7 +58,8 @@ def exercise(runner, label, quit_input, sample_timeout, shutdown_grace):
                 ready.exists()
                 and ready.read_bytes() == b"sampler entered\n"
                 and b"read-only" in output
-                and b"awaiting first sample" in output
+                # Ratatui emits cursor positioning between individual words.
+                and b"awaiting" in output
             ):
                 if child.poll() is not None or time.monotonic() >= ready_deadline:
                     raise AssertionError(f"{label}: blocked TUI did not initialize: {output!r}")

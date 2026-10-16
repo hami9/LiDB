@@ -44,10 +44,24 @@ snapshot. The age
 indicator shows the displayed snapshot getting older. A bounded slot retains
 only the latest collection; `skipped` counts replaced, unconsumed snapshots,
 while `dropped` counts omitted metrics. Collection runs outside the rendering
-thread. Cancellation wakes the sampling wait immediately and joins the worker;
-shutdown also waits for the current bounded procfs read to finish. Terminal modes,
-alternate screen, and cursor are restored on normal exit, errors, and unwinding.
-SIGINT and SIGTERM request a graceful exit through the same cleanup path.
+thread. SIGINT and SIGTERM request exit through the same cleanup path as `q`.
+Terminal modes, alternate screen, and cursor are restored before waiting for the
+worker on normal exit, errors, and unwinding.
+
+Interactive collection has a fixed 5-second batch deadline, checked independently
+of `--interval-ms` and pause. An overdue batch is discarded; the TUI restores the
+terminal, reports a collection timeout, and exits 2. Quitting cancels publication
+and wakes the refresh wait, then allows a 100ms userspace grace period for the
+worker to finish. A still-running worker is detached, an explicit shutdown timeout
+is reported, and the CLI exits 2. Repeated cleanup does not wait again. After a
+shutdown timeout, this process refuses replacement workers even if the abandoned
+worker later returns; restart the process instead.
+
+These are application lifecycle limits, not cancellation of an arbitrary kernel
+read or a hard real-time process-exit guarantee. One admitted batch may finish its
+remaining source reads after cancellation but cannot publish or start another
+batch. Snapshot/doctor remain synchronous and have no read deadline. See
+[ADR-023](../../docs/DECISIONS.md#adr-023--bounded-interactive-collector-lifecycle-2026-10-16).
 
 Doctor reports source capabilities from actual observation states. A source with
 both successful and unavailable observations is `degraded`. It performs no
@@ -67,5 +81,7 @@ python3 apps/lidash/tests/pty_smoke.py target/debug/lidash
 ```
 
 Tests use injected procfs files, Ratatui TestBackend, and a local pseudoterminal.
+Linux `cargo test` also exercises an indefinitely parked test-only sampler in
+separate PTY subprocesses for q/Ctrl-C/signals and the collection watchdog.
 They verify read-only host observation and failure handling, not specialized
 hardware support. Unix process termination with SIGKILL cannot run cleanup.

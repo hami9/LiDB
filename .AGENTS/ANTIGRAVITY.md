@@ -20,8 +20,8 @@ Valid task statuses: `planned`, `in_progress`, `blocked`, `under_review`, `integ
 
 | ID | Work | Dependency / eligibility | Initial state |
 | --- | --- | --- | --- |
-| AG-00 | Verify the public Core candidate and ownership | First session; actual PR/branch evidence | planned |
-| AG-01 | Bound collection lifecycle and shutdown behavior | AG-00 verification; candidate base available | planned |
+| AG-00 | Verify the public Core candidate and ownership | Verified main `842f877`, PR #35 `5360ace` and other owners on 2026-10-16; [evidence](worklogs/issue-43.md) | under_review |
+| AG-01 | Bound collection lifecycle and shutdown behavior | Codex issue #43 / isolated test issue #44, explicitly based on PR #35; [checkpoint](worklogs/issue-43.md) | in_progress |
 | AG-02 | Define typed network records and source policy | AG-00 verification; coordinator owns shared schema | planned |
 | AG-03 | Read-only IPv4/IPv6 route observations | AG-02 contracts present; reader limits respected | planned |
 | AG-04 | Interface metadata and namespace identity | AG-02 contracts present; source-specific symlink policy | planned |
@@ -39,7 +39,7 @@ Valid task statuses: `planned`, `in_progress`, `blocked`, `under_review`, `integ
 
 ## Existing candidate ownership to inspect
 
-As checked on 2026-10-12, these PRs remain separate owners' work, not tasks to duplicate or auto-merge. Fetch their actual status at startup; this table is a discovery aid, not a permanent reservation or approval.
+As checked again on 2026-10-16, these PRs remain separate owners' work, not tasks to duplicate or auto-merge. Fetch their actual status at startup; this table is a discovery aid, not a permanent reservation or approval. PR #35 remains the open guidance dependency; AG-01 is owned by Codex in issue #43, so resume its checkpoint instead of implementing another lifecycle branch. Dependency-update PRs #36–42 are separate work.
 
 | PR | Existing scope | Continuation implication |
 | --- | --- | --- |
@@ -52,8 +52,9 @@ As checked on 2026-10-12, these PRs remain separate owners' work, not tasks to d
 
 ### AG-01 — lifecycle under slow or failed reads
 
-- Owned scope: `crates/lidb-collect/src/read.rs`, source/lifecycle contracts and `apps/lidash/src/worker.rs`, with targeted tests/docs. Coordinate if another task needs the reader.
-- Current gap: reads are size-bounded but synchronous; cancellation wakes the refresh wait but cannot interrupt a blocked read, and `Worker::shutdown` joins the thread. Trusted fixture directories are still subject to filesystem stalls.
+- Owned scope: application worker/TUI lifecycle, targeted tests and docs. The current slice leaves `crates/lidb-collect/src/read.rs` to PR #27; coordinate before changing source readers.
+- Candidate policy: [ADR-023](../docs/DECISIONS.md#adr-023--bounded-interactive-collector-lifecycle-2026-10-16) specifies a 5s interactive batch watchdog, terminal restoration before a 100ms shutdown grace, cancellation/publication serialization and a permanently closed admission gate after shutdown timeout. Follow [issue #43](worklogs/issue-43.md) for actual verification/integration status; do not treat a candidate as merged.
+- Remaining limit: reads are size-bounded but synchronous and uncancellable; headless snapshot/doctor have no deadline. Trusted fixture directories are still subject to filesystem stalls. No hard real-time kernel/process-death guarantee is claimed.
 - Write an ADR evaluating source restrictions, reader isolation and timeout/shutdown behavior. Choose the smallest mechanism consistent with a non-root, local, no-daemon baseline; do not claim userspace can cancel an arbitrary kernel read. Declare worker lifetime, outstanding-read/process bounds, timeout states and cleanup explicitly.
 - **Acceptance:** a deterministic blocked-reader test demonstrates bounded UI exit/error handling; no unbounded worker creation, mailbox growth or silently reused stale value; q/Ctrl-C/SIGINT/SIGTERM restore the terminal; slow/failed sources retain typed reasons. Record measured latency and remaining OS limits. Any change requiring a new privileged helper or listener stays blocked on explicit authorization.
 

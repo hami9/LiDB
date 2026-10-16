@@ -596,14 +596,21 @@ impl Drop for SignalGuard {
 
 /// Runs the interactive terminal dashboard event loop until user exit or termination signal.
 pub fn run(config: Config) -> io::Result<()> {
+    let mut collector = crate::collector(&config);
+    run_with_sampler(config, move || collector.sample())
+}
+
+pub(crate) fn run_with_sampler(
+    config: Config,
+    sample: impl FnMut() -> Snapshot + Send + 'static,
+) -> io::Result<()> {
     // Restore before the default panic hook prints; the guard also covers unwinding/errors.
     let previous = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         restore_terminal();
         previous(info);
     }));
-    let mut collector = crate::collector(&config);
-    let mut worker = Worker::start(move || collector.sample(), config.interval)?;
+    let mut worker = Worker::start(sample, config.interval)?;
     let signals = SignalGuard::register()?;
     let guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -615,8 +622,12 @@ pub fn run(config: Config) -> io::Result<()> {
         if signals.stop.load(Ordering::Relaxed) {
             break;
         }
+        worker.check_collection()?;
         update_from_worker(&mut view, &worker)?;
         if worker.is_finished() {
+            // The worker can reject a late batch after the check above.
+            worker.check_collection()?;
+            drop(guard);
             worker.shutdown()?;
             return Err(io::Error::other("collector stopped unexpectedly"));
         }

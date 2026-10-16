@@ -6,7 +6,7 @@
 2. **Collector parsing:** realistic procfs fixtures, malformed numbers/units, missing mandatory fields, truncated input, optional PSI and bounded large sources.
 3. **Sampling:** consecutive counters, zero elapsed time, reset/regression and missing second samples. CPU activity and transfer rates must never be fabricated from one cumulative sample.
 4. **CLI:** help/version, text/JSON snapshot, doctor reasons, invalid options and fixture-root behavior.
-5. **Terminal:** explicit non-TTY behavior, keyboard quit, small dimensions, hostile identifiers and restored terminal modes on normal and error paths.
+5. **Terminal:** explicit non-TTY behavior, keyboard quit, small dimensions, hostile identifiers and restored terminal modes on normal and error paths. Linux unit tests run blocked-sampler PTY subprocesses for quit/signals and the 5-second collection watchdog; the ignored child fixture is explicitly invoked by that parent test, not omitted coverage.
 6. **Live Linux smoke:** real local procfs collection under a non-root identity; label the OS, kernel and architecture. A privileged development shell does not verify a non-root execution claim.
 
 Fixtures are deterministic parsing/sampling evidence. They are not real-host, native architecture, kernel-probe or performance validation.
@@ -30,7 +30,7 @@ Tests must verify the operator-visible consequence, such as an explicit unavaila
 
 ## Release evidence
 
-Public release requires reproducible native build/test reports, installation/uninstall checks, dependency/license review, verified checksums/provenance, compatibility documentation and measured resource use on labeled environments. Optional eBPF requires separate kernel verifier, privilege, detach and overhead evidence. No published binary release or production overhead claim currently exists.
+Stable public release requires reproducible native build/test reports, installation/uninstall checks, dependency/license review, verified checksums/provenance, compatibility documentation and measured resource use on labeled environments. Optional eBPF requires separate kernel verifier, privilege, detach and overhead evidence. Prereleases v0.1.0/v0.2.0 are published; production overhead and stable-support claims remain unvalidated.
 
 ## Test report
 
