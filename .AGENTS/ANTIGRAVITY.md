@@ -21,7 +21,7 @@ Valid task statuses: `planned`, `in_progress`, `blocked`, `under_review`, `integ
 | ID | Work | Dependency / eligibility | Initial state |
 | --- | --- | --- | --- |
 | AG-00 | Verify the public Core candidate and ownership | Verified main `842f877`, PR #35 `5360ace` and other owners on 2026-10-16; [evidence](worklogs/issue-43.md) | under_review |
-| AG-01 | Bound collection lifecycle and shutdown behavior | Codex issue #43 / isolated test issue #44, explicitly based on PR #35; [checkpoint](worklogs/issue-43.md) | in_progress |
+| AG-01 | Bound collection lifecycle and shutdown behavior | Codex [PR #45](https://github.com/hami9/LiDB/pull/45), issues #43/#44; explicitly based on PR #35; [checkpoint](worklogs/issue-43.md) | under_review |
 | AG-02 | Define typed network records and source policy | AG-00 verification; coordinator owns shared schema | planned |
 | AG-03 | Read-only IPv4/IPv6 route observations | AG-02 contracts present; reader limits respected | planned |
 | AG-04 | Interface metadata and namespace identity | AG-02 contracts present; source-specific symlink policy | planned |

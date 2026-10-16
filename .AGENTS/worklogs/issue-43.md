@@ -4,7 +4,7 @@
 - Base: main `842f877`; new clean worktree explicitly fast-forwarded to PR #35 candidate `5360ace9907819056fe4f67a1542e735df635358`. Runtime PR must target `agent/codex/agent-handoff` while that dependency is open. No merge, force push or release is authorized/performed.
 - Ownership verified on 2026-10-16: PRs #27–31/#33 remain separately owned; #35 remains open. Reader tests belong to #27. Existing worktrees and primary main are preserved. Dependency PRs #36–42 are outside this task.
 - Root owns worker/TUI implementation, ADR/docs and central state serially. Isolated issue #44 worker supplied Linux PTY fixtures on `agent/codex/blocked-pty`; cherry-picked as `014e67d` (original `cacec99`). Independent review/guidance workers read source only and made no changes.
-- Status: implementation/local validation in progress; remote runtime PR/native results pending. Resume this branch instead of starting another AG-01 implementation.
+- Status: `under_review`, [PR #45](https://github.com/hami9/LiDB/pull/45), targeting `agent/codex/agent-handoff`. Actual head/native/review outcomes are recorded in that PR's body/checks; inspect them at session startup. Resume review fixes on this branch instead of starting another AG-01 implementation.
 
 ## Reproduction and decision
 
@@ -34,7 +34,7 @@ Debian 13.6, Linux 6.18.44 x86_64, Rust 1.85.0, unprivileged UID 1000. Commands/
 - `cargo build -p lidash --locked` and `python3 apps/lidash/tests/pty_smoke.py target/debug/lidash` — PASS (exit 0): ordinary q/Ctrl-C/SIGINT/SIGTERM/resize/restoration at 60000ms interval.
 - `target/debug/lidash snapshot --json` and `doctor --json` — PASS (exit 0): 146 actual live observations, schema 0.1 and collector-monotonic clock; doctor reports degraded availability for unsupported PSI.
 - `python3 apps/lidash/tests/blocked_pty.py target/debug/deps/lidash-e686f242ff2c2b37 5 0.1` — PASS (exit 0). Observed exits after readiness: q 0.15s, raw Ctrl-C 0.15s, SIGINT 0.20s, SIGTERM 0.20s; no-input watchdog 5.19s. Each exited 2 with exact terminal restoration before its diagnostic. These are one local simulation run's observed times, not performance/OS guarantees. The binary filename is this build's test runner, not a portable hard-coded command for other machines.
-- Native Linux x86_64/aarch64 CI and CodeQL — pending actual pushed head; no cross-compilation or configured-runner result is substituted.
+- Native Linux x86_64/aarch64 CI and CodeQL — pending when this initial delivery checkpoint was written. Final actual head/results are recorded on [PR #45](https://github.com/hami9/LiDB/pull/45) and its [check page](https://github.com/hami9/LiDB/pull/45/checks); do not substitute cross-compilation, configured runners or earlier PR #35 results. The initial runtime commit is `a9ab108d4e5a5c0ed79a3a3e4e72159d750aa245`; later checkpoint-only commits do not change that runtime diff.
 
 ## Five-axis assessment
 
@@ -44,4 +44,8 @@ Debian 13.6, Linux 6.18.44 x86_64, Rust 1.85.0, unprivileged UID 1000. Commands/
 - **Reliability:** Blocked sample, repeated cleanup, concurrent/replacement admission, late publication, deadline boundary, captured-destructor stall and panic cleanup tested. One bounded mailbox and at most one abandoned worker. No CPU/RSS or kernel-stall performance claim.
 - **Usability/compatibility:** Help/operator docs explain fixed deadline, grace, restart requirement, exit 2 and headless limit. PTY tests verify q/raw Ctrl-C/SIGINT/SIGTERM/watchdog and restoration before diagnostics; ordinary resize smoke remains separate.
 
-Next checkpoint: finish final local checks, commit/push, open the stacked fix PR, observe native checks at its exact head and record URLs/results here. Then AG-02 can proceed independently under a new issue/worktree; AG-01 stays `under_review` until maintainer integration.
+## Delivery checkpoint
+
+Initial runtime commit `a9ab108` is pushed and PR #45 is open/mergeable, explicitly based on PR #35. Final local formatting, 207 Markdown links and whitespace passed. PR #35's metadata correction is applied, without changing its head. No other owner's branch was modified and no merge/tag/release was performed. This checkpoint updates delivery metadata only; exact final CI run URLs/results remain in PR #45's body/checks and must be inspected for its current head before integration.
+
+Resume by fetching #35/#45 and checking review/CI. If changes are requested, use this owned branch. AG-02 can proceed independently under a new issue/worktree; AG-01 stays `under_review` until observing maintainer integration. Do not merge either PR automatically. Existing native-agent startup guidance and shared skill continue unchanged.
