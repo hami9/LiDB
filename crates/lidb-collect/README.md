@@ -34,6 +34,8 @@ sequentially; the shared batch timestamp does not imply an atomic host snapshot.
 | `/proc/net/dev` | `network.state` | `count` of interfaces, or one typed source failure |
 | `/proc/net/dev` | `network.<interface>.{rx,tx}.bytes` | Exact cumulative `bytes`, including loopback when exposed |
 | `/proc/net/dev` | `network.<interface>.{rx,tx}.bytes_per_second` | Derived `bytes_per_second` over the collector's measured monotonic interval |
+| `/proc/net/dev` | `network.<interface>.{rx,tx}.errors` | Exact cumulative `count` from the directional `errs` column |
+| `/proc/net/dev` | `network.<interface>.{rx,tx}.drops` | Exact cumulative `count` from the directional `drop` column |
 | `/proc/diskstats` | `disk.state` | `count` of devices, or one typed source failure |
 | `/proc/diskstats` | `disk.<device>.{read,write}.bytes` | Exact cumulative `bytes`, using Linux's fixed 512-byte diskstats sectors |
 | `/proc/diskstats` | `disk.<device>.{read,write}.bytes_per_second` | Derived `bytes_per_second` over the measured monotonic interval |
@@ -62,6 +64,22 @@ and `cciss!c0d0` becomes `cciss%21c0d0`. Controls, whitespace, slash, colon, and
 labels exceeding 100 encoded bytes produce a source error. Observations are
 ordered by source, then by encoded device name.
 
+Network errors and drops are raw cumulative observations available from the
+first successful sample, including genuine zeros. A decrease publishes the new
+counter, without inventing a rate or retaining the previous value. They do not
+measure end-to-end packet loss or identify a cause. RX `drop` in procfs combines
+`rx_dropped` and `rx_missed_errors`; error and drop categories can overlap and
+must not be summed into a loss total. See the
+[Linux interface statistics reference](https://docs.kernel.org/networking/statistics.html).
+Coverage is limited to interfaces visible through the selected procfs network
+namespace. No namespace identity or host-wide visibility is inferred.
+
+The metrics appear automatically in snapshot text/JSON, doctor source counts,
+and the generic terminal metric list. This is an additive schema 0.1 metric
+extension using existing `count`, source and availability contracts. A failed
+network source emits only the existing `network.state` failure; it does not
+reuse cached interfaces or fabricate zero counters.
+
 ## Failure and resource limits
 
 - Missing sources or optional counters are `unsupported`.
@@ -76,7 +94,7 @@ ordered by source, then by encoded device name.
 Each of nine source files is limited to 1 MiB, with one extra detection byte.
 Each network or disk source accepts at most 64 distinct devices; exceeding the
 limit fails that source visibly through its `.state` metric. No entities are
-silently truncated. A maximum accepted batch has 538 observations, below the
+silently truncated. A maximum accepted batch has 794 observations, below the
 core snapshot limit of 2048. Read-time terminal control characters and invalid
 UTF-8 fail the source. Numeric counters retain exact `u64` precision; rates and
 fractional values use finite nonnegative floating-point numbers.

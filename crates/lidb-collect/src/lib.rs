@@ -243,11 +243,19 @@ impl LinuxCollector {
         } else {
             ("net/dev", "proc.net.dev", "network", ["rx", "tx"])
         };
+        let mut network_counters = BTreeMap::new();
         let result = self.read(path).and_then(|text| {
             if disk {
                 parse::disks(&text)
             } else {
-                parse::network(&text)
+                parse::network(&text).map(|devices| {
+                    let bytes = devices
+                        .iter()
+                        .map(|(name, counters)| (name.clone(), counters.bytes.clone()))
+                        .collect();
+                    network_counters = devices;
+                    bytes
+                })
             }
         });
         let previous = if disk {
@@ -282,6 +290,22 @@ impl LinuxCollector {
                             Unit::BytesPerSecond,
                             rate,
                         );
+                    }
+                    if let Some(counters) = network_counters.get(name) {
+                        for (index, direction) in directions.iter().enumerate() {
+                            for (field, value) in [
+                                ("errors", counters.errors[index]),
+                                ("drops", counters.drops[index]),
+                            ] {
+                                add(
+                                    snapshot,
+                                    &format!("network.{name}.{direction}.{field}"),
+                                    source,
+                                    Unit::Count,
+                                    integer(value),
+                                );
+                            }
+                        }
                     }
                 }
                 *previous = Some((snapshot.monotonic_ns(), devices));

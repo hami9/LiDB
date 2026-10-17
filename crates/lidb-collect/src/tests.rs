@@ -78,6 +78,147 @@ fn network_line(name: &str, rx: u64, tx: u64) -> String {
     )
 }
 
+#[test]
+fn network_error_fields_are_directional_exact_and_strict() {
+    // All columns differ to detect a bytes/packets/fifo/carrier index mix-up.
+    let text = "Inter-| Receive | Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n vpn+prod: 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115\n";
+    let devices = parse::network(text).unwrap();
+    let counters = &devices["vpn%2Bprod"];
+    assert_eq!(counters.bytes.0, [100, 108]);
+    assert_eq!(counters.errors, [102, 110]);
+    assert_eq!(counters.drops, [103, 111]);
+    for index in [2, 3, 10, 11] {
+        let mut fields = ["0"; 16];
+        fields[index] = "18446744073709551615";
+        let text = format!(
+            "{}eth0: {}\n",
+            text.lines().take(2).collect::<Vec<_>>().join("\n") + "\n",
+            fields.join(" ")
+        );
+        let devices = parse::network(&text).unwrap();
+        let counters = &devices["eth0"];
+        let observed = [
+            counters.errors[0],
+            counters.drops[0],
+            counters.errors[1],
+            counters.drops[1],
+        ];
+        assert_eq!(
+            observed.iter().filter(|value| **value == u64::MAX).count(),
+            1
+        );
+        for invalid in ["-1", "NaN", "1.5", "18446744073709551616"] {
+            fields[index] = invalid;
+            let malformed = format!(
+                "Inter-| Receive | Transmit\n face |bytes\n eth0: {}\n",
+                fields.join(" ")
+            );
+            assert!(
+                parse::network(&malformed).is_err(),
+                "column {index}: {invalid}"
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn network_errors_are_raw_first_sample_counts_with_source_failure_isolation() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    fixture.baseline();
+    fixture.write("net/dev", "Inter-| Receive | Transmit\n face |bytes\n vpn+prod: 100 0 7 18446744073709551615 0 0 0 0 200 0 9 0 0 0 0 0\n");
+    let mut collector = LinuxCollector::new(&fixture.0);
+    let first = collector.sample_at(1_000_000_000);
+    for (suffix, expected) in [
+        ("rx.errors", 7),
+        ("rx.drops", u64::MAX),
+        ("tx.errors", 9),
+        ("tx.drops", 0),
+    ] {
+        let name = format!("network.vpn%2Bprod.{suffix}");
+        let observation = first.get(&name).unwrap();
+        assert_eq!(exact(&first, &name), expected);
+        assert_eq!(observation.unit(), Unit::Count);
+        assert_eq!(observation.source(), "proc.net.dev");
+        assert_eq!(observation.monotonic_ns(), first.monotonic_ns());
+    }
+    assert_eq!(
+        state(&first, "network.vpn%2Bprod.rx.bytes_per_second").name(),
+        "temporarily_unavailable"
+    );
+    fixture.write("net/dev", "Inter-| Receive | Transmit\n face |bytes\n vpn+prod: 160 0 1 2 0 0 0 0 280 0 3 4 0 0 0 0\n");
+    let next = collector.sample_at(3_000_000_000);
+    assert_eq!(exact(&next, "network.vpn%2Bprod.rx.errors"), 1);
+    assert_eq!(exact(&next, "network.vpn%2Bprod.rx.drops"), 2);
+    assert_eq!(
+        fractional(&next, "network.vpn%2Bprod.rx.bytes_per_second"),
+        30.0
+    );
+    fixture.write(
+        "net/dev",
+        "Inter-| Receive | Transmit\n face |bytes\n eth0: 1 0 invalid 0 0 0 0 0 2 0 0 0 0 0 0 0\n",
+    );
+    let malformed = collector.sample_at(4_000_000_000);
+    assert_eq!(state(&malformed, "network.state").name(), "error");
+    assert!(!malformed
+        .metrics()
+        .iter()
+        .any(|metric| metric.name().ends_with(".errors") || metric.name().ends_with(".drops")));
+    assert_eq!(exact(&malformed, "memory.total.bytes"), 1024 * 1024);
+    fs::remove_file(fixture.0.join("net/dev")).unwrap();
+    let missing = collector.sample_at(5_000_000_000);
+    assert_eq!(state(&missing, "network.state").name(), "unsupported");
+    assert!(missing.get("network.vpn%2Bprod.rx.errors").is_none());
+    fixture.baseline();
+    let recovered = collector.sample_at(6_000_000_000);
+    assert_eq!(exact(&recovered, "network.eth0.rx.errors"), 0);
+    assert_eq!(
+        state(&recovered, "network.eth0.rx.bytes_per_second").name(),
+        "temporarily_unavailable"
+    );
+    let path = fixture.0.join("net/dev");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read(&path).is_ok() {
+        eprintln!("network permission fixture bypassed by the test runner");
+        return;
+    }
+    let denied = collector.sample_at(7_000_000_000);
+    assert_eq!(state(&denied, "network.state").name(), "permission_denied");
+    assert!(denied.get("network.eth0.rx.errors").is_none());
+    assert_eq!(exact(&denied, "memory.total.bytes"), 1024 * 1024);
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn maximum_device_batch_includes_all_error_counts_without_drops() {
+    let fixture = Fixture::new();
+    fixture.baseline();
+    let mut network = network_line(&"n".repeat(100), 1, 2);
+    let mut disk = format!("8 0 {} 1 0 1 0 1 0 1 0 0 0 0\n", "d".repeat(100));
+    for index in 1..MAX_DEVICES {
+        network.push_str(&format!("eth{index}: 1 0 2 3 0 0 0 0 4 0 5 6 0 0 0 0\n"));
+        disk.push_str(&format!("8 {index} disk{index} 1 0 1 0 1 0 1 0 0 0 0\n"));
+    }
+    fixture.write("net/dev", &network);
+    fixture.write("diskstats", &disk);
+    let snapshot = LinuxCollector::new(&fixture.0).sample();
+    assert_eq!(snapshot.metrics().len(), 794);
+    assert_eq!(snapshot.dropped_metrics(), 0);
+    assert_eq!(exact(&snapshot, "network.eth63.tx.drops"), 6);
+    assert_eq!(exact(&snapshot, "network.state"), 64);
+    assert!(snapshot
+        .metrics()
+        .iter()
+        .all(|metric| metric.name().len() <= 128));
+}
+
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
@@ -300,7 +441,10 @@ fn negative_malformed_nonfinite_and_overflow_inputs_are_rejected() {
 #[test]
 fn device_counts_duplicates_and_names_are_bounded() {
     let network = network_line("eth0", u64::MAX, 0);
-    assert_eq!(parse::network(&network).unwrap()["eth0"].0[0], u64::MAX);
+    assert_eq!(
+        parse::network(&network).unwrap()["eth0"].bytes.0[0],
+        u64::MAX
+    );
     for name in ["bad/name", "bad name", "bad\u{1b}[2J", "a:b"] {
         assert!(parse::network(&network_line(name, 1, 2)).is_err());
     }
