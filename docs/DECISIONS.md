@@ -46,3 +46,16 @@ Rust 1.85 is the selected minimum toolchain for the runnable foundation. Record 
 **Consequences:** Active product docs, roadmap and agent guidance adopt the public scope. Existing history and protocol contracts are preserved, and snapshot JSON remains pre-stable. No privileged operation, outbound runtime network request, persistent store or remote listener is introduced. Local x86_64 and pending native aarch64 evidence remain distinct; runnable code is not production or phase-exit approval.
 
 **Migration:** The CLI presents `snapshot`, `doctor` and `tui`; legacy scaffold `status`/`capabilities` remain compatibility aliases. The internal workspace version remains pre-release. There is no published stable release to migrate, and no installed daemon service is removed by application startup. Historical task/worklog records remain intact.
+
+## ADR-022 — typed network inventory contracts and source availability (2026-10-17)
+
+**Status:** proposed for Task AG-02 in `lidb-core`.
+
+**Context:** LiDB requires deep network diagnostics (interfaces, routes, socket tables) without violating its core architectural principles: pure platform-agnostic core contracts, bounded resource use, zero-allocation/bounded vectors, truthful representation of missing or privileged data, and resistance against terminal injection attacks.
+
+**Decision:** Define structured network records (`InterfaceRecord`, `RouteRecord`, `SocketRecord`) and a bounded `NetworkReport` (schema `0.1`) in `lidb-core::network`. Differentiate empty tables from failed source reads using `SourceAvailability` (`Available`, `Unsupported`, `Disabled`, `PermissionDenied`, `TemporarilyUnavailable`, `Error`). Enforce address family consistency (destination vs gateway, local vs remote endpoint), bounded prefix lengths, bounded table sizes (64 interfaces, 1,024 routes, 2,048 sockets), and strip or reject ASCII control characters.
+
+**Alternatives:** Combining network inventories into `Snapshot` as pseudo-metrics would obscure topology and bloat scalar metrics. Fabricating zeroes or empty tables when `/proc/net/*` is unreadable would mislead operators regarding security and visibility. Dynamic unbounded vectors would introduce memory-exhaustion vectors in busy environments.
+
+**Consequences:** Downstream collectors (`lidb-collect`) and terminal renderers (`apps/lidash`) have strongly-typed contracts for network data with clear provenance and drop accounting. Unprivileged environments truthfully report `PermissionDenied` or `Unsupported` rather than producing misleading empty state.
+
