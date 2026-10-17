@@ -35,6 +35,28 @@ Disk entries include partitions. Do not sum a parent block device and its partit
 
 The visible procfs view determines coverage in containers and namespaces. These metrics do not promise host-wide visibility, cgroup limits, filesystem free space, process attribution or a diagnosis of root cause.
 
+## Network inventory contracts
+
+Network interfaces, routes, and socket connections represent structured inventory distinct from numeric counter time-series. The pure `lidb_core::network` module defines bounded, versioned inventory records and reports (`NetworkReport`, schema `0.1`) without filesystem, OS-specific, or network dependencies:
+
+| Record type | Description | Capacity bound | Key invariants |
+| --- | --- | --- | --- |
+| `InterfaceRecord` | Host interface name, operational state (`up`, `down`, `unknown`), optional ifindex, MTU, speed (Mbps), MAC address, and flags | 64 entries | Name and MAC length bounded; ASCII control characters forbidden |
+| `RouteRecord` | Routing entry destination, prefix length, outgoing interface, optional gateway, metric, and scope | 1,024 entries | IPv4 prefix in `0..=32`, IPv6 prefix in `0..=128`; destination and gateway address families must match |
+| `SocketRecord` | Socket protocol (`tcp`, `udp`), state (`listen`, `established`, etc.), local endpoint, optional remote endpoint, inode, and owning PID/process name | 2,048 entries | Local and remote endpoint address families must match |
+
+### Source availability and empty states
+
+Procfs and netlink sources may succeed with zero records (e.g. an isolated network namespace with zero sockets), or fail due to system constraints. `SourceAvailability` explicitly differentiates these states:
+- `Available`: Source read succeeded; table may contain 0 to capacity records.
+- `Unsupported`: The kernel or platform does not provide this subsystem (e.g. non-Linux runtime).
+- `Disabled`: Explicitly turned off by configuration.
+- `PermissionDenied`: Insufficient process capabilities or DAC permissions (e.g. unprivileged `/proc/net/tcp` inode-to-PID correlation).
+- `TemporarilyUnavailable`: Transient failure or kernel lock contention; caller should retry later.
+- `Error`: Malformed kernel format or unrecoverable read failure.
+
+Every non-available status carries a validated explanatory string with ASCII control characters stripped. Excess records beyond table capacity are safely omitted and accounted for in `NetworkReport.dropped_records`.
+
 ## Rates, time and missing data
 
 One-shot commands take two samples; the initial rate is `temporarily_unavailable`. Newly observed devices also need a baseline. A decreasing counter creates an explicit reset error and a new baseline. A failed source discards its old rate baseline. No interpolation or unavailable-to-zero conversion occurs. CPU iowait counters can decrease on Linux; that creates a visible gap.
