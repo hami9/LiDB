@@ -8,6 +8,10 @@
 
 mod parse;
 mod read;
+/// Bounded, read-only IPv4 and IPv6 route collection from Linux procfs.
+pub mod route;
+
+pub use route::RouteReport;
 
 use lidb_core::{MetricObservation, MetricState, MetricValue, Snapshot, SnapshotMode, Unit};
 use parse::{CpuCounters, TransferCounters};
@@ -80,6 +84,12 @@ impl LinuxCollector {
         let mut snapshot = self.sample_at(timestamp);
         snapshot.set_collection_duration_ns(duration_ns(began.elapsed()));
         snapshot
+    }
+
+    /// Collects IPv4 and IPv6 routing table entries from the configured procfs root.
+    #[must_use]
+    pub fn routes(&self) -> RouteReport {
+        route::collect_routes(&self.proc_root, self.mode)
     }
 
     fn sample_at(&mut self, timestamp: u64) -> Snapshot {

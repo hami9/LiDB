@@ -86,6 +86,16 @@ Only regular files are accepted. Metadata checks and Linux
 substituted final symlink. Reads are synchronous; the byte limits do not provide
 a wall-clock deadline for an unresponsive filesystem.
 
+## Route collection
+
+`collector.routes()` or `lidb_collect::route::collect_routes` parses IPv4 (`/proc/net/route`) and IPv6 (`/proc/net/ipv6_route`) into structured `RouteRecord` entries.
+
+- IPv4 parses little-endian hex destinations and netmasks, calculating CIDR prefix lengths (`0..=32`) and gateways. Non-contiguous netmasks are rejected.
+- IPv6 parses 32-hex destinations, 2-hex prefix lengths (`0..=128`), and next-hop gateways.
+- Enforces `MAX_NETWORK_ROUTES = 1024` table bounds. Excess routes beyond the capacity limit are dropped and accounted for in `dropped_routes`.
+- Returns a `RouteReport` containing independent `v4_status` and `v6_status` (`SourceAvailability`) and a `consolidated_status()`.
+- Supports populating into `lidb_core::network::NetworkReport`.
+
 ## Fixtures and validation
 
 The exact `/proc` root selects live mode. Other explicit roots select fixture
