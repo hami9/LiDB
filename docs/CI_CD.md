@@ -57,9 +57,16 @@ cargo test --workspace --locked --all-targets
 cargo test --workspace --locked --doc
 cargo run -p lidash --locked -- snapshot --json
 cargo run -p lidash --locked -- doctor --json
+# Standalone TUI prototype workspace (Rust 1.88, pinned in prototypes/tui/rust-toolchain.toml):
+cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
+cargo clippy --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked -- -D warnings
+cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked
+cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --doc --locked
+cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --headless-test
+cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --smoke-test
 ```
 
-The `plan` command requires Git history/tags. Publishing a release requires GitHub Actions, configured permissions and passing CI. Do not copy production tokens into local config or the repository.
+The `plan` command requires Git history/tags. Publishing a release requires GitHub Actions, configured permissions and passing CI. Do not copy production tokens into local config or the repository. The required `CI Gate` aggregates docs, root Rust workspace, Windows worktrees, and standalone TUI matrix checks.
 
 ## Remaining open-source release hardening
 

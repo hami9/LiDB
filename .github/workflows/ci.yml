@@ -82,6 +82,54 @@ jobs:
       - name: Terminal lifecycle smoke
         run: python3 apps/lidash/tests/pty_smoke.py target/debug/lidash
 
+  tui-checks:
+    name: TUI (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      # The prototype's ratatui 0.30 needs Rust 1.88; the root workspace stays on 1.85.
+      RUSTUP_TOOLCHAIN: 1.88.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Standalone TUI availability
+        id: tui
+        run: python3 scripts/ci/check_tui.py >> "$GITHUB_OUTPUT"
+      - name: Report absent prototype
+        if: steps.tui.outputs.present == 'false'
+        run: echo "Standalone TUI absent. No TUI runtime checks executed."
+      - name: Install Rust components
+        if: steps.tui.outputs.present == 'true'
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
+      - name: Validate TUI formatting
+        if: steps.tui.outputs.present == 'true'
+        run: cargo fmt --manifest-path prototypes/tui/Cargo.toml --all -- --check
+      - name: Lint TUI
+        if: steps.tui.outputs.present == 'true'
+        run: cargo clippy --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked -- -D warnings
+      - name: Test TUI
+        if: steps.tui.outputs.present == 'true'
+        run: cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --all-targets --locked
+      - name: Test TUI documentation
+        if: steps.tui.outputs.present == 'true'
+        run: cargo test --manifest-path prototypes/tui/Cargo.toml --workspace --doc --locked
+      - name: Render TUI without a terminal
+        if: steps.tui.outputs.present == 'true'
+        run: cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --headless-test
+      - name: Smoke test TUI without a terminal
+        if: steps.tui.outputs.present == 'true'
+        run: cargo run --manifest-path prototypes/tui/Cargo.toml --locked -- --smoke-test
+
   worktree-windows:
     name: Worktree Windows smoke
     runs-on: windows-2022
@@ -103,19 +151,17 @@ jobs:
   ci-gate:
     name: CI Gate
     if: always()
-    needs: [docs-and-policy, rust-checks, worktree-windows]
+    needs: [docs-and-policy, rust-checks, worktree-windows, tui-checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Require all CI branches to pass
         env:
           DOCS: ${{ needs.docs-and-policy.result }}
           RUST: ${{ needs.rust-checks.result }}
           WORKTREES: ${{ needs.worktree-windows.result }}
-        run: |
-          set -euo pipefail
-          if [[ "$DOCS" != "success" || "$RUST" != "success" || "$WORKTREES" != "success" ]]; then
-            echo "::error::CI Gate blocked: docs=$DOCS rust=$RUST worktrees=$WORKTREES"
-            exit 1
-          fi
-          echo "CI Gate: PASS"
+          TUI: ${{ needs.tui-checks.result }}
+        run: python3 scripts/ci/check_gate.py
