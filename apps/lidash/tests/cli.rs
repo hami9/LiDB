@@ -207,3 +207,38 @@ fn explicit_system_proc_root_remains_labeled_fixture() {
     let output = binary(&["status", "--json", "--proc-root", "/proc"]);
     assert_eq!(json(&output)["mode"], "fixture");
 }
+
+#[test]
+fn routes_command_runs_cleanly_on_all_platforms() {
+    let output = binary(&["routes", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert!(data.get("v4_status").is_some());
+    assert!(data.get("v6_status").is_some());
+    assert!(data.get("routes").is_some());
+    assert!(data.get("dropped_routes").is_some());
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn routes_command_reads_fixture_routes() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.0.join("net/route"),
+        "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n",
+    )
+    .unwrap();
+    let output = fixture.run(&["routes", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["v4_status"], "available");
+    let routes = data["routes"].as_array().unwrap();
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0]["destination"], "0.0.0.0");
+    assert_eq!(routes[0]["gateway"], "192.168.1.1");
+    assert_eq!(routes[0]["interface"], "eth0");
+}

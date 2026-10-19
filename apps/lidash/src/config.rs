@@ -1,15 +1,16 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 pub const HELP: &str = "LiDashBoard — read-only Linux host monitor
-Usage: lidash [snapshot|doctor|tui] [OPTIONS]
+Usage: lidash [snapshot|doctor|routes|tui] [OPTIONS]
 
 Commands:
   snapshot       Print one host snapshot (alias: status)
   doctor         Report observed source capabilities (alias: capabilities)
+  routes         Print routing table entries (alias: route)
   tui            Open the keyboard-driven terminal monitor
 
 Options:
-  --json                 JSON snapshot or doctor report; no terminal required
+  --json                 JSON snapshot, doctor report, or routing table; no terminal required
   --interval-ms N        Sample interval, 250..60000 milliseconds
   --proc-root PATH       Read a fixture instead of /proc; output is labeled fixture
   --no-color             Monochrome output (also the default)
@@ -27,6 +28,7 @@ TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/Left/Right tabs, Space pause, ?/h help, Ent
 pub enum Command {
     Snapshot,
     Doctor,
+    Routes,
     Tui,
     Help,
     Version,
@@ -61,6 +63,7 @@ impl Config {
                 Some("-V" | "--version") => return Ok(Self::special(Command::Version)),
                 Some("snapshot" | "status") => set_command(&mut command, Command::Snapshot)?,
                 Some("doctor" | "capabilities") => set_command(&mut command, Command::Doctor)?,
+                Some("routes" | "route") => set_command(&mut command, Command::Routes)?,
                 Some("tui") => set_command(&mut command, Command::Tui)?,
                 Some("--json") => json = true,
                 Some("--no-color") => {}
@@ -90,7 +93,8 @@ impl Config {
         });
         if command == Command::Tui && json {
             return Err(
-                "--json is supported by snapshot and doctor; choose one of those commands".into(),
+                "--json is supported by snapshot, doctor, and routes; choose one of those commands"
+                    .into(),
             );
         }
         Ok(Self {
@@ -139,6 +143,11 @@ mod tests {
         assert_eq!(headless.command, Command::Snapshot);
         assert_eq!(headless.interval, Duration::from_millis(250));
         assert_eq!(parse(&["--json"], true).unwrap().command, Command::Snapshot);
+        assert_eq!(parse(&["routes"], false).unwrap().command, Command::Routes);
+        assert_eq!(
+            parse(&["routes", "--json"], false).unwrap().command,
+            Command::Routes
+        );
         assert!(parse(&["tui", "--json"], true).is_err());
     }
 
