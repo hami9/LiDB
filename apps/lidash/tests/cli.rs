@@ -235,7 +235,7 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n",
     let output = fixture.run(&["routes", "--json"]);
     assert!(output.status.success());
     let data = json(&output);
-    assert_eq!(data["v4_status"], "available");
+    assert_eq!(data["v4_status"]["status"], "available");
     let routes = data["routes"].as_array().unwrap();
     assert_eq!(routes.len(), 1);
     assert_eq!(routes[0]["destination"], "0.0.0.0");
