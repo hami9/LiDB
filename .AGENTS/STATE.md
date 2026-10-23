@@ -1,6 +1,6 @@
 # Current implementation state
 
-**Verified implementation snapshot:** 2026-10-16, branch `agent/codex/collector-shutdown`, explicitly stacked on PR #35 candidate `5360ace`; current main remains `842f877` (merged Core and CPU/Memory tab).
+**Verified implementation snapshot:** 2026-10-23 coordination checkpoint on `agent/codex/collector-shutdown`, explicitly stacked on PR #35 candidate `5360ace`; current main remains `842f877` (merged Core and CPU/Memory tab). Network candidates below are separate branches, not code present in this checkout.
 
 | Field | Value |
 | --- | --- |
@@ -15,12 +15,14 @@
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
 | Release state | Repository prerelease [v0.2.0](https://github.com/hami9/LiDB/releases/tag/v0.2.0) is published; this task publishes no release; stable/performance guarantees unclaimed |
 | Review / tests | See the factual [worklog](WORKLOG.md), scoped task evidence and PR checks |
-| Current next action | Inspect actual head checks/review on [PR #45](https://github.com/hami9/LiDB/pull/45), stacked on [PR #35](https://github.com/hami9/LiDB/pull/35); resume review fixes from [issue #43 evidence](worklogs/issue-43.md). AG-02 is the next independent eligible task; do not duplicate AG-01 |
+| Current next action | Inspect review/checks on [PR #51](https://github.com/hami9/LiDB/pull/51) (Codex report fix, base Antigravity #48/#46), then claim the reproduced parser repair [issue #50](https://github.com/hami9/LiDB/issues/50) in a new isolated worktree; preserve #35/#45 and other owners' branches |
 | Remaining limits | Arbitrary kernel reads remain uncancellable; snapshot/doctor have no deadline; trusted static fixtures, wider Linux/container matrix, measured overhead and release supply-chain hardening remain open |
 | Agent delivery | Shared github-style tracked and installed for local future sessions; always-on Antigravity startup and task queue written; no remote/native agent session launched |
 | Architecture review | [Actual review](../docs/ARCHITECTURE_REVIEW.md): acyclic layers; maintainer ARM/bootstrap fixes retained; lifecycle/clock/release limits tracked |
 | Interactive lifecycle candidate | 5s batch watchdog; terminal restored before 100ms shutdown grace; explicit timeout and permanent worker-admission latch after abandonment; [ADR-023](../docs/DECISIONS.md#adr-023--bounded-interactive-collector-lifecycle-2026-10-16) |
 | Review evidence limits | Independent agent lifecycle source review found/fixed a timeout-classification race; no human approval inferred. PR #35 CodeRabbit explicitly skipped review despite a successful status wrapper |
+| Network candidates | AG-02 [#46](https://github.com/hami9/LiDB/pull/46) and AG-03 [#48](https://github.com/hami9/LiDB/pull/48) have passing native CI at their recorded heads; report provenance/empty/failure/omission fixes are in [#51](https://github.com/hami9/LiDB/pull/51), under review |
+| Network limits | Issue #50 reproduces distinct IPv6 source prefixes collapsing as duplicates; route flags, temporary parser retention and namespace capture remain open. Do not claim a complete routing-policy lookup |
 
 ## Public scope
 
