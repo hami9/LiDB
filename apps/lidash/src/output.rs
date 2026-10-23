@@ -43,14 +43,24 @@ pub fn snapshot_text(snapshot: &Snapshot) -> String {
     out
 }
 
-pub fn routes_text(report: &lidb_collect::RouteReport, mode: SnapshotMode) -> String {
+pub fn routes_text(report: &lidb_collect::RouteReport) -> String {
     let mut out = format!(
-        "LiDB {} routes | v4: {} | v6: {} | dropped={}\n",
-        mode_name(mode),
+        "LiDB {} routes | collector_monotonic={}ns | collection={}ns | v4: {} | v6: {} | dropped={}\n",
+        mode_name(report.mode),
+        report.monotonic_ns,
+        report.collection_duration_ns,
         report.v4_status.as_str(),
         report.v6_status.as_str(),
         report.dropped_routes
     );
+    for (source, status) in [
+        (report.v4_source, &report.v4_status),
+        (report.v6_source, &report.v6_status),
+    ] {
+        if let Some(reason) = status.reason() {
+            let _ = writeln!(out, "{source}: {} — {reason}", status.as_str());
+        }
+    }
     if !report.routes.is_empty() {
         for route in &report.routes {
             let gw_text = match route.gateway() {
@@ -71,8 +81,30 @@ pub fn routes_text(report: &lidb_collect::RouteReport, mode: SnapshotMode) -> St
                 metric_text
             );
         }
-    } else {
-        let _ = writeln!(out, "no routing entries observed");
+    }
+    for (family, label, status) in [
+        (
+            lidb_core::network::AddressFamily::Ipv4,
+            "IPv4",
+            &report.v4_status,
+        ),
+        (
+            lidb_core::network::AddressFamily::Ipv6,
+            "IPv6",
+            &report.v6_status,
+        ),
+    ] {
+        let has_records = report.routes.iter().any(|route| route.family() == family);
+        if !status.is_available() {
+            let _ = writeln!(out, "{label} routing table unavailable");
+        } else if !has_records && report.dropped_routes == 0 {
+            let _ = writeln!(out, "no {label} routing entries observed");
+        } else if !has_records {
+            let _ = writeln!(
+                out,
+                "no {label} routing entries retained; report has omissions"
+            );
+        }
     }
     out
 }

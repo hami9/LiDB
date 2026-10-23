@@ -206,6 +206,8 @@ fn non_linux_platforms_report_unsupported_cleanly() {
 fn explicit_system_proc_root_remains_labeled_fixture() {
     let output = binary(&["status", "--json", "--proc-root", "/proc"]);
     assert_eq!(json(&output)["mode"], "fixture");
+    let routes = json(&binary(&["routes", "--json", "--proc-root", "/proc"]));
+    assert_eq!(routes["mode"], "fixture");
 }
 
 #[test]
@@ -217,6 +219,7 @@ fn routes_command_runs_cleanly_on_all_platforms() {
     assert!(data.get("v6_status").is_some());
     assert!(data.get("routes").is_some());
     assert!(data.get("dropped_routes").is_some());
+    assert_eq!(data["mode"], "live");
 }
 
 #[test]
@@ -236,9 +239,65 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n",
     assert!(output.status.success());
     let data = json(&output);
     assert_eq!(data["v4_status"]["status"], "available");
+    assert_eq!(data["mode"], "fixture");
+    assert_eq!(data["schema_version"], "0.1");
+    assert_eq!(data["clock_source"], "collector_monotonic");
+    assert_eq!(data["v4_source"], "procfs/net/route");
+    assert_eq!(data["v6_source"], "procfs/net/ipv6_route");
+    assert!(data["monotonic_ns"].is_u64());
+    assert!(data["collection_duration_ns"].is_u64());
     let routes = data["routes"].as_array().unwrap();
     assert_eq!(routes.len(), 1);
     assert_eq!(routes[0]["destination"], "0.0.0.0");
     assert_eq!(routes[0]["gateway"], "192.168.1.1");
     assert_eq!(routes[0]["interface"], "eth0");
+
+    let text = String::from_utf8(fixture.run(&["routes"]).stdout).unwrap();
+    assert!(text.contains("LiDB fixture routes"));
+    assert!(text.contains("0.0.0.0/0 dev eth0 via 192.168.1.1 metric 100"));
+    assert!(text.contains("procfs/net/ipv6_route: unsupported — source is not present"));
+    assert!(text.contains("IPv6 routing table unavailable"));
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn routes_empty_failed_and_partial_sources_are_distinct() {
+    let fixture = Fixture::new();
+    let missing = String::from_utf8(fixture.run(&["routes"]).stdout).unwrap();
+    assert!(missing.contains("IPv4 routing table unavailable"));
+    assert!(missing.contains("IPv6 routing table unavailable"));
+    assert!(!missing.contains("entries observed"));
+    assert!(missing.contains("source is not present"));
+
+    fs::write(
+        fixture.0.join("net/route"),
+        "Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n",
+    )
+    .unwrap();
+    fs::write(fixture.0.join("net/ipv6_route"), "").unwrap();
+    let empty = String::from_utf8(fixture.run(&["routes"]).stdout).unwrap();
+    assert!(empty.contains("no IPv4 routing entries observed"));
+    assert!(empty.contains("no IPv6 routing entries observed"));
+    assert!(!empty.contains("unavailable"));
+
+    fs::write(fixture.0.join("net/route"), "broken\n").unwrap();
+    let partial = json(&fixture.run(&["routes", "--json"]));
+    assert_eq!(partial["v4_status"]["status"], "error");
+    assert_eq!(partial["v6_status"]["status"], "available");
+    let partial = String::from_utf8(fixture.run(&["routes"]).stdout).unwrap();
+    assert!(partial.contains("procfs/net/route: error — route line lacks required fields"));
+    assert!(partial.contains("IPv4 routing table unavailable"));
+    assert!(partial.contains("no IPv6 routing entries observed"));
+
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let source = fixture.0.join("net/route");
+    if fs::metadata(&source).unwrap().uid() != 0 {
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o0)).unwrap();
+        let denied = fixture.run(&["routes", "--json"]);
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(json(&denied)["v4_status"]["status"], "permission_denied");
+    }
 }

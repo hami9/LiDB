@@ -7,16 +7,35 @@
 
 use crate::read;
 use lidb_core::network::{
-    NetworkReport, RouteRecord, SourceAvailability, MAX_INTERFACE_NAME_CHARS, MAX_NETWORK_ROUTES,
+    NetworkError, NetworkReport, RouteRecord, SourceAvailability, MAX_INTERFACE_NAME_CHARS,
+    MAX_NETWORK_ROUTES,
 };
 use lidb_core::{MetricState, MetricValue, SnapshotMode};
 use serde::Serialize;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
+use std::time::Instant;
+
+/// Pre-stable schema for the route-only report, separate from snapshot JSON.
+pub const ROUTE_REPORT_SCHEMA_VERSION: &str = "0.1";
 
 /// Outcome of reading host routing tables.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RouteReport {
+    /// Route-report schema version.
+    pub schema_version: &'static str,
+    /// Origin of the batch timestamp; comparable only within one collector lifetime.
+    pub clock_source: &'static str,
+    /// Batch start in nanoseconds since construction of the owning collector.
+    pub monotonic_ns: u64,
+    /// Duration of the sequential IPv4/IPv6 reads, in nanoseconds.
+    pub collection_duration_ns: u64,
+    /// Live process procfs view or explicitly selected fixture input.
+    pub mode: SnapshotMode,
+    /// IPv4 source identifier, without a private fixture path.
+    pub v4_source: &'static str,
+    /// IPv6 source identifier, without a private fixture path.
+    pub v6_source: &'static str,
     /// Availability status of the IPv4 routing table (`/proc/net/route`).
     pub v4_status: SourceAvailability,
     /// Availability status of the IPv6 routing table (`/proc/net/ipv6_route`).
@@ -28,6 +47,22 @@ pub struct RouteReport {
 }
 
 impl RouteReport {
+    fn new(mode: SnapshotMode, monotonic_ns: u64) -> Self {
+        Self {
+            schema_version: ROUTE_REPORT_SCHEMA_VERSION,
+            clock_source: "collector_monotonic",
+            monotonic_ns,
+            collection_duration_ns: 0,
+            mode,
+            v4_source: "procfs/net/route",
+            v6_source: "procfs/net/ipv6_route",
+            v4_status: SourceAvailability::Disabled("source not collected".into()),
+            v6_status: SourceAvailability::Disabled("source not collected".into()),
+            routes: Vec::new(),
+            dropped_routes: 0,
+        }
+    }
+
     /// Evaluates the consolidated route availability status.
     ///
     /// If at least one table succeeded, returns [`SourceAvailability::Available`].
@@ -56,12 +91,31 @@ impl RouteReport {
         }
     }
 
-    /// Populates routes into an existing [`NetworkReport`].
-    pub fn populate_into(&self, report: &mut NetworkReport) {
+    /// Appends routes and omission counts without relabeling a known context.
+    ///
+    /// Callers must already know the reports share one collector clock domain.
+    /// Matching timestamps alone cannot prove that. The destination must cover
+    /// this exact batch and have no asserted namespace (not captured here).
+    /// Unequal family states cannot be collapsed losslessly into the target's
+    /// single routes status; retain this report instead. Rejection is atomic.
+    pub fn populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError> {
+        if report.mode() != self.mode
+            || report.monotonic_ns() != self.monotonic_ns
+            || report.collection_duration_ns() < self.collection_duration_ns
+            || report.clock_source() != self.clock_source
+            || report.namespace().is_some()
+        {
+            return Err(NetworkError::ReportContextMismatch);
+        }
+        if self.v4_status != self.v6_status {
+            return Err(NetworkError::RouteSourceStatusMismatch);
+        }
         report.set_routes_status(self.consolidated_status());
+        report.record_dropped_routes(self.dropped_routes);
         for route in &self.routes {
             let _ = report.push_route(route.clone());
         }
+        Ok(())
     }
 }
 
@@ -275,8 +329,20 @@ pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
 /// Collects all IPv4 and IPv6 routing table entries from the specified procfs root.
 ///
 /// Enforces [`MAX_NETWORK_ROUTES`] total capacity, counting any excess as dropped routes.
+/// This standalone call starts its own one-call clock domain at zero; use
+/// [`crate::LinuxCollector::routes`] for timestamps shared with snapshots.
 #[must_use]
 pub fn collect_routes(proc_root: &Path, mode: SnapshotMode) -> RouteReport {
+    // Standalone calls have a single-call clock domain starting at zero.
+    collect_routes_at(proc_root, mode, 0)
+}
+
+pub(crate) fn collect_routes_at(
+    proc_root: &Path,
+    mode: SnapshotMode,
+    monotonic_ns: u64,
+) -> RouteReport {
+    let began = Instant::now();
     let mut routes = Vec::new();
     let mut dropped_routes = 0u64;
 
@@ -321,6 +387,8 @@ pub fn collect_routes(proc_root: &Path, mode: SnapshotMode) -> RouteReport {
         v6_status,
         routes,
         dropped_routes,
+        collection_duration_ns: crate::duration_ns(began.elapsed()),
+        ..RouteReport::new(mode, monotonic_ns)
     }
 }
 
@@ -475,6 +543,7 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
             v6_status: SourceAvailability::unsupported("no ipv6 on kernel").unwrap(),
             routes: Vec::new(),
             dropped_routes: 0,
+            ..RouteReport::new(SnapshotMode::Fixture, 0)
         };
         assert_eq!(avail.consolidated_status(), SourceAvailability::Available);
 
@@ -483,6 +552,7 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
             v6_status: SourceAvailability::unsupported("unsupported v6").unwrap(),
             routes: Vec::new(),
             dropped_routes: 0,
+            ..RouteReport::new(SnapshotMode::Fixture, 0)
         };
         assert!(matches!(
             denied.consolidated_status(),
@@ -501,10 +571,11 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
             v6_status: SourceAvailability::Available,
             routes: vec![route],
             dropped_routes: 0,
+            ..RouteReport::new(SnapshotMode::Live, 100)
         };
 
         let mut net_report = NetworkReport::new(100, 10, SnapshotMode::Live);
-        report_src.populate_into(&mut net_report);
+        report_src.populate_into(&mut net_report).unwrap();
 
         assert_eq!(net_report.routes_status(), &SourceAvailability::Available);
         assert_eq!(net_report.routes().len(), 1);
@@ -525,5 +596,62 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
         ));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn population_preserves_upstream_and_destination_omissions() {
+        let route = RouteRecord::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 32, "lo").unwrap();
+        let source = RouteReport {
+            v4_status: SourceAvailability::Available,
+            v6_status: SourceAvailability::Available,
+            routes: vec![route.clone()],
+            dropped_routes: 17,
+            ..RouteReport::new(SnapshotMode::Fixture, 100)
+        };
+        let mut target = NetworkReport::new(100, 0, SnapshotMode::Fixture);
+        for _ in 0..MAX_NETWORK_ROUTES {
+            target.push_route(route.clone()).unwrap();
+        }
+        source.populate_into(&mut target).unwrap();
+        assert_eq!(target.routes().len(), MAX_NETWORK_ROUTES);
+        assert_eq!(target.dropped_routes(), 18);
+        assert_eq!(target.dropped_records(), 18);
+        assert!(!target.interfaces_status().is_available());
+        assert!(!target.sockets_status().is_available());
+    }
+
+    #[test]
+    fn population_rejects_context_and_source_state_loss_before_mutation() {
+        let source = RouteReport {
+            v4_status: SourceAvailability::Available,
+            v6_status: SourceAvailability::Available,
+            collection_duration_ns: 10,
+            dropped_routes: 9,
+            ..RouteReport::new(SnapshotMode::Fixture, 100)
+        };
+        let namespace = lidb_core::network::NetworkNamespace::new("target", Some(10)).unwrap();
+        for mut target in [
+            NetworkReport::new(100, 10, SnapshotMode::Live),
+            NetworkReport::new(101, 10, SnapshotMode::Fixture),
+            NetworkReport::new(100, 9, SnapshotMode::Fixture),
+            NetworkReport::new(100, 10, SnapshotMode::Fixture).with_namespace(namespace),
+        ] {
+            assert_eq!(
+                source.populate_into(&mut target),
+                Err(NetworkError::ReportContextMismatch)
+            );
+            assert_eq!(target.routes_status().as_str(), "disabled");
+            assert_eq!(target.dropped_routes(), 0);
+            assert!(target.routes().is_empty());
+        }
+        let mut target = NetworkReport::new(100, 10, SnapshotMode::Fixture);
+        let mut partial = source;
+        partial.v6_status = SourceAvailability::PermissionDenied("denied IPv6".into());
+        assert_eq!(
+            partial.populate_into(&mut target),
+            Err(NetworkError::RouteSourceStatusMismatch)
+        );
+        assert_eq!(target.routes_status().as_str(), "disabled");
+        assert_eq!(target.dropped_routes(), 0);
     }
 }

@@ -1,22 +1,24 @@
 # Current implementation state
 
-**Verified implementation snapshot:** 2026-10-09, branch `agent/codex/public-core`.
+**Verified implementation snapshot:** 2026-10-23, branch `agent/codex/route-report`, explicitly based on route candidate `87531e0` (PR #48), contract candidate #46 and main `842f877`.
 
 | Field | Value |
 | --- | --- |
-| Active roadmap delivery | P0 foundations + P1 local Linux baseline |
-| Status | Runnable implementation proposed for integration; phase/release acceptance remains pending maintainer review |
+| Active roadmap delivery | Integrated P0/P1 baseline; proposed P2 networking slices |
+| Status | Core and CPU/Memory tab integrated; PRs #35/#45 guidance/lifecycle and #46/#48 networking remain under review; issue #49 report-integrity follow-up in progress |
 | Application code present | YES: retained core/history/protocol, collector and `apps/lidash` |
 | Collector / terminal / headless runnable | YES, tested as unprivileged UID 1000 |
-| Observations | CPU, memory, swap, load, uptime, interface/disk counters and rates; optional PSI |
-| Data contract | JSON schema 0.1; exact integer counters, collector-local monotonic time, explicit failure states |
-| Local environment | Debian 13.6, Linux 6.18.44 x86_64, Rust 1.85.0 |
-| Native architecture evidence | Local Linux x86_64 plus native Ubuntu 24.04 x86_64/aarch64 [CI](https://github.com/hami9/LiDB/actions/runs/38004433311) passed at `c1dd00f`; [CodeQL](https://github.com/hami9/LiDB/actions/runs/38004433296) and docs passed |
+| Observations | CPU, memory, swap, load, uptime, interface/disk counters and rates; optional PSI; route candidate adds IPv4/IPv6 records with independent availability |
+| Data contract | Snapshot JSON 0.1 unchanged; route-only report schema 0.1 adds source IDs, mode and batch timing; uncollected generic network sources are explicitly disabled |
+| Local environment | Debian 13, Linux 6.18.55 x86_64, Rust 1.85.0, unprivileged UID 1000 |
+| Native architecture evidence | Actual PR #48 head `87531e0` passed [native x86_64/aarch64 CI](https://github.com/hami9/LiDB/actions/runs/39275008572) and [CodeQL](https://github.com/hami9/LiDB/actions/runs/39275008682); this follow-up's exact head checks remain separate |
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
-| Release state | No binary release published by this task; stable compatibility and production performance unclaimed |
+| Release state | Prerelease [v0.2.0](https://github.com/hami9/LiDB/releases/tag/v0.2.0) exists; this task publishes nothing; stable compatibility and production performance unclaimed |
 | Review / tests | See the factual [worklog](WORKLOG.md), scoped task evidence and PR checks |
-| Current next action | Maintainer review of [PR #25](https://github.com/hami9/LiDB/pull/25); then choose one P2 networking task after integration |
-| Remaining limits | Trusted static fixtures; source reads lack deadlines; wider Linux/container matrix, measured overhead and release supply-chain hardening remain open |
+| Current next action | Resume report-integrity [issue #49](worklogs/issue-49.md), then [parser follow-up #50](https://github.com/hami9/LiDB/issues/50) before routing completeness claims; preserve other owners' candidates |
+| Remaining limits | IPv6 source selectors/route flags and temporary parser bounds; namespace capture, cross-collector clock identity and synchronous read deadlines; wider compatibility, measured overhead and release hardening |
+| Parallel candidate boundaries | This route branch does not include PR #45's 5s/100ms TUI lifecycle change or PR #35's installed-skill guidance; inspect those actual stacks before integration |
+| Persistent continuation | Canonical [queue on PR #45's branch](https://github.com/hami9/LiDB/blob/agent/codex/collector-shutdown/.AGENTS/ANTIGRAVITY.md); shared [github-style](https://github.com/hami9/LiDB/blob/agent/codex/agent-handoff/.agents/skills/github-style/SKILL.md) read/applied |
 
 ## Public scope
 
@@ -24,8 +26,8 @@ The maintainer authorized a general Linux diagnostic product and completion of C
 
 ## Phase exit ledger
 
-- [ ] P0 — core foundations: implementation present; integration/acceptance pending
-- [ ] P1 — useful Linux baseline: implementation present; integration/acceptance pending
+- [ ] P0 — core foundations: implementation merged in PR #25; phase acceptance pending
+- [ ] P1 — useful Linux baseline: implementation merged in PR #25 and #34; phase acceptance pending
 - [ ] P2 — networking diagnostics
 - [ ] P3 — terminal and evidence usability
 - [ ] P4 — optional deeper instrumentation

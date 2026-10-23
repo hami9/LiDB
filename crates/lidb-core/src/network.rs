@@ -619,7 +619,7 @@ pub struct NetworkReport {
 }
 
 impl NetworkReport {
-    /// Creates an initial network report; all sources default to `Available`.
+    /// Creates a report with uncollected sources explicitly `Disabled`.
     #[must_use]
     pub fn new(monotonic_ns: u64, collection_duration_ns: u64, mode: SnapshotMode) -> Self {
         Self {
@@ -629,9 +629,9 @@ impl NetworkReport {
             collection_duration_ns,
             mode,
             namespace: None,
-            interfaces_status: SourceAvailability::Available,
-            routes_status: SourceAvailability::Available,
-            sockets_status: SourceAvailability::Available,
+            interfaces_status: SourceAvailability::Disabled("source not collected".into()),
+            routes_status: SourceAvailability::Disabled("source not collected".into()),
+            sockets_status: SourceAvailability::Disabled("source not collected".into()),
             interfaces: Vec::new(),
             routes: Vec::new(),
             sockets: Vec::new(),
@@ -661,6 +661,11 @@ impl NetworkReport {
     /// Sets the source availability status for routes.
     pub fn set_routes_status(&mut self, status: SourceAvailability) {
         self.routes_status = status;
+    }
+
+    /// Preserve upstream omissions in addition to this report's own capacity drops.
+    pub fn record_dropped_routes(&mut self, count: u64) {
+        self.dropped_routes = self.dropped_routes.saturating_add(count);
     }
 
     /// Sets the source availability status for sockets.
@@ -800,6 +805,10 @@ impl NetworkReport {
 /// Errors returned when validating or constructing network records.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetworkError {
+    /// An imported report's known mode, batch window or namespace does not match.
+    ReportContextMismatch,
+    /// Independent route-family states cannot fit one status without losing evidence.
+    RouteSourceStatusMismatch,
     /// A table capacity limit was exceeded.
     Capacity(&'static str),
     /// An identifier string was empty.
@@ -829,6 +838,10 @@ pub enum NetworkError {
 impl fmt::Display for NetworkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ReportContextMismatch => f.write_str("network report context mismatch"),
+            Self::RouteSourceStatusMismatch => {
+                f.write_str("independent route source states must be retained")
+            }
             Self::Capacity(table) => write!(f, "network report table capacity exceeded: {table}"),
             Self::EmptyIdentifier(field) => write!(f, "network field must not be empty: {field}"),
             Self::StringTooLong { field, max } => {
@@ -860,6 +873,27 @@ impl Error for NetworkError {}
 mod tests {
     use super::*;
     use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn uncollected_tables_are_not_successful_empty_tables() {
+        let mut report = NetworkReport::new(0, 0, SnapshotMode::Fixture);
+        for status in [
+            report.interfaces_status(),
+            report.routes_status(),
+            report.sockets_status(),
+        ] {
+            assert_eq!(status.as_str(), "disabled");
+            assert_eq!(status.reason(), Some("source not collected"));
+        }
+        report.record_dropped_routes(u64::MAX);
+        report.record_dropped_routes(1);
+        assert_eq!(report.dropped_routes(), u64::MAX);
+        assert_eq!(report.dropped_records(), u64::MAX);
+        assert_eq!(
+            serde_json::to_value(report).unwrap()["dropped_routes"].as_u64(),
+            Some(u64::MAX)
+        );
+    }
 
     #[test]
     fn address_family_names_and_display() {
