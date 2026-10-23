@@ -334,15 +334,15 @@ pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
 #[must_use]
 pub fn collect_routes(proc_root: &Path, mode: SnapshotMode) -> RouteReport {
     // Standalone calls have a single-call clock domain starting at zero.
-    collect_routes_at(proc_root, mode, 0)
+    collect_routes_at(proc_root, mode, 0, Instant::now())
 }
 
 pub(crate) fn collect_routes_at(
     proc_root: &Path,
     mode: SnapshotMode,
     monotonic_ns: u64,
+    began: Instant,
 ) -> RouteReport {
-    let began = Instant::now();
     let mut routes = Vec::new();
     let mut dropped_routes = 0u64;
 
@@ -650,6 +650,27 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
         assert_eq!(
             partial.populate_into(&mut target),
             Err(NetworkError::RouteSourceStatusMismatch)
+        );
+        assert_eq!(target.routes_status().as_str(), "disabled");
+        assert_eq!(target.dropped_routes(), 0);
+    }
+
+    #[test]
+    fn collection_window_includes_delay_after_the_shared_start() {
+        let gap = std::time::Duration::from_secs(2);
+        let began = Instant::now() - gap;
+        let source = collect_routes_at(
+            Path::new("/nonexistent-lidb-clock-fixture"),
+            SnapshotMode::Fixture,
+            123,
+            began,
+        );
+        assert!(source.collection_duration_ns >= crate::duration_ns(gap));
+        let mut target =
+            NetworkReport::new(123, crate::duration_ns(gap) - 1, SnapshotMode::Fixture);
+        assert_eq!(
+            source.populate_into(&mut target),
+            Err(NetworkError::ReportContextMismatch)
         );
         assert_eq!(target.routes_status().as_str(), "disabled");
         assert_eq!(target.dropped_routes(), 0);

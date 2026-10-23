@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Active roadmap delivery | Integrated P0/P1 baseline; proposed P2 networking slices |
-| Status | Core and CPU/Memory tab integrated; PRs #35/#45 guidance/lifecycle and #46/#48 networking remain under review; issue #49 report-integrity follow-up in progress |
+| Status | Core and CPU/Memory tab integrated; PRs #35/#45 guidance/lifecycle and #46/#48 networking remain under review; report-integrity [PR #51](https://github.com/hami9/LiDB/pull/51) is under review |
 | Application code present | YES: retained core/history/protocol, collector and `apps/lidash` |
 | Collector / terminal / headless runnable | YES, tested as unprivileged UID 1000 |
 | Observations | CPU, memory, swap, load, uptime, interface/disk counters and rates; optional PSI; route candidate adds IPv4/IPv6 records with independent availability |
@@ -15,7 +15,7 @@
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
 | Release state | Prerelease [v0.2.0](https://github.com/hami9/LiDB/releases/tag/v0.2.0) exists; this task publishes nothing; stable compatibility and production performance unclaimed |
 | Review / tests | See the factual [worklog](WORKLOG.md), scoped task evidence and PR checks |
-| Current next action | Resume report-integrity [issue #49](worklogs/issue-49.md), then [parser follow-up #50](https://github.com/hami9/LiDB/issues/50) before routing completeness claims; preserve other owners' candidates |
+| Current next action | Inspect current head/review/checks on [PR #51](https://github.com/hami9/LiDB/pull/51) and resume any requested fix from [issue #49 evidence](worklogs/issue-49.md); [parser follow-up #50](https://github.com/hami9/LiDB/issues/50) is the next unclaimed repair before routing completeness claims |
 | Remaining limits | IPv6 source selectors/route flags and temporary parser bounds; namespace capture, cross-collector clock identity and synchronous read deadlines; wider compatibility, measured overhead and release hardening |
 | Parallel candidate boundaries | This route branch does not include PR #45's 5s/100ms TUI lifecycle change or PR #35's installed-skill guidance; inspect those actual stacks before integration |
 | Persistent continuation | Canonical [queue on PR #45's branch](https://github.com/hami9/LiDB/blob/agent/codex/collector-shutdown/.AGENTS/ANTIGRAVITY.md); shared [github-style](https://github.com/hami9/LiDB/blob/agent/codex/agent-handoff/.agents/skills/github-style/SKILL.md) read/applied |

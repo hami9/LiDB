@@ -89,10 +89,12 @@ impl LinuxCollector {
     /// Collects IPv4 and IPv6 routing table entries from the configured procfs root.
     #[must_use]
     pub fn routes(&self) -> RouteReport {
+        let began = Instant::now();
         route::collect_routes_at(
             &self.proc_root,
             self.mode,
-            duration_ns(self.started.elapsed()),
+            duration_ns(began.duration_since(self.started)),
+            began,
         )
     }
 
