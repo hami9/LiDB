@@ -2,7 +2,7 @@
 
 - Owner: Codex coordinator, working alone in `.worktrees/codex/route-report`, branch `agent/codex/route-report`.
 - Base: new clean worktree from main `842f877`, explicitly fast-forwarded to Antigravity PR #48 candidate `87531e0c28aced618c51011349cab72f7ccbe560` (depends on PR #46 `c271518`). No other owner's branch/worktree changed. Primary main and Codex PR #35/#45 are preserved.
-- Status: `in_progress`; focused report-integrity follow-up before extending networking.
+- Status: `under_review`, [PR #51](https://github.com/hami9/LiDB/pull/51), explicitly targeting Antigravity #48. Inspect exact current-head checks and review before integration.
 - Owned scope: collector RouteReport/clock plumbing, CLI report rendering/tests, minimal NetworkReport omission accounting/error contracts, docs/ADR and coordinator evidence. Source reader, parser semantics, dependency/CI configuration, interfaces and sockets are outside this slice.
 
 ## Acceptance
@@ -30,6 +30,14 @@ Source review found route CLI JSON missing mode/schema/timestamps/source IDs; te
 - Final formatter/Clippy/link/whitespace and remote exact-head checks remain to be recorded. Clippy caught a non-octal permission literal in the new fixture test; changed `0` to `0o0`, with no lint suppression.
 
 Final local checkpoint: formatter, warnings-as-errors locked workspace Clippy, all 77 Rust tests, 142 local Markdown links and `git diff --check` passed (exit 0). Permission-denied fixture executed under UID 1000; the injected collector start offset makes the shared-clock regression deterministic without sleeps. Remote exact-head CI/review is pending at this checkpoint; its actual results will be recorded on the delivery PR and issue #49.
+
+## Independent review and final delivery checkpoint
+
+At pinned runtime `73ea3a2`, separate read-only agent source review found a collection-window gap: timestamp was captured before calling the route reader, whose duration timer started later. Descheduling between them could understate the window and admit an insufficient conversion target. Capture one `Instant`, derive its collector-local offset and pass that same start through for duration. A deterministic backdated-start regression checks that an injected gap is included and a shorter destination is rejected; no sleep/performance claim. Review found no other blocker in checked state/text/omission logic and is rechecking this correction. This is separate agent review, not human approval.
+
+After correction, locked warnings-as-errors Clippy and all **78 Rust tests** passed (27 Core, 2 protocol, 30 collector, 19 app). The earlier 77-case results are historical. Initial runtime `73ea3a2` passed native x86_64/aarch64 [CI](https://github.com/hami9/LiDB/actions/runs/39944505505); that is not substituted for the corrected final head. Final exact-head results/run URLs are recorded in [PR #51](https://github.com/hami9/LiDB/pull/51) and issue #49, and must be checked anew at session startup.
+
+The canonical queue on our separate PR #45 branch now records Antigravity #46/#48 and Codex #51 as `under_review`, with reproduced parser repair #50 next. Its documentation-only refresh preserves lifecycle runtime and has its own head checks. Other owners' branches and main remain untouched; no merge/tag/release performed. Resume requested #51 fixes in this owned worktree; otherwise claim #50 with a new isolated branch, preserving report fixes and serial schema ownership. Do not duplicate AG-02/03 or overwrite the separate #35/#45 guidance/lifecycle stack during future integration.
 
 ## Review axes / handoff
 
