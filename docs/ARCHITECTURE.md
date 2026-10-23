@@ -20,7 +20,7 @@ The CLI owns presentation and lifecycle. The `lidb-collect` Linux collector owns
 
 ## Sources and semantics
 
-The baseline uses a standard collection thread and a bounded latest-snapshot slot, rather than a required async runtime. Size-bounded synchronous reads do not imply a hard read or shutdown deadline. [ADR-022](DECISIONS.md#adr-022--implemented-core-boundaries-and-abi-validation-2026-10-12) and the [architecture review](ARCHITECTURE_REVIEW.md) record actual boundaries, verified ABI fixes and remaining lifecycle work.
+The baseline uses a standard collection thread and a bounded latest-snapshot slot, rather than a required async runtime. The interactive worker rejects batches taking 5 seconds and allows a 100ms joining grace after restoring the terminal. Cancellation suppresses later publication; a shutdown timeout permanently closes worker admission in that process, bounding abandoned workers to one. Size bounds and these lifecycle limits cannot cancel an arbitrary synchronous kernel read. Headless snapshot/doctor still have no read deadline. [ADR-023](DECISIONS.md#adr-023--bounded-interactive-collector-lifecycle-2026-10-16) and the [architecture review](ARCHITECTURE_REVIEW.md) record the exact policy and remaining OS limits.
 
 | Host observation | Source | Interpretation |
 | --- | --- | --- |

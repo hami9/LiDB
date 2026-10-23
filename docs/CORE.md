@@ -49,6 +49,8 @@ Each of nine source files is limited to 1 MiB. Interface and disk sources accept
 
 The application stores no persistent history, launches no shell command or connectivity probe, opens no listener and makes no outbound network request. It reads no packet contents, credentials, process environments or process arguments. An explicit custom procfs directory is fixture input; use a trusted, static directory, since the collector does not provide a sandbox for concurrent adversarial directory replacement.
 
+The TUI rejects a collection batch taking 5 seconds, independently of refresh interval or pause, and exits 2 after terminal restoration. Quit/cancel allows a 100ms userspace joining grace; an unfinished worker is detached with `io::ErrorKind::TimedOut`. Admission stays closed after a shutdown timeout, so repeated starts cannot accumulate blocked workers. A previously admitted batch may finish remaining reads but cannot publish or start a new batch. Neither this policy nor byte bounds cancel an arbitrary kernel read; headless snapshot/doctor still have no read deadline. See [ADR-023](DECISIONS.md#adr-023--bounded-interactive-collector-lifecycle-2026-10-16).
+
 ## Validation and remaining work
 
 Fixture tests validate malformed/oversized input, permission/missing states, exact counters and reset behavior. A real Linux smoke test validates readable standard procfs sources. CLI and terminal tests establish output and lifecycle behavior separately. TestBackend fixtures are not live-host measurements or a performance benchmark. Native architecture CI and local test evidence belong to [agent state](../.AGENTS/STATE.md) and the [worklog](../.AGENTS/WORKLOG.md).
