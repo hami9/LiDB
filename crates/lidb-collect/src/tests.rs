@@ -569,12 +569,30 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n",
 fn live_linux_smoke_reads_real_routes() {
     let collector = LinuxCollector::new("/proc");
     let routes = collector.routes();
+    assert_eq!(routes.mode, SnapshotMode::Live);
+    assert_eq!(routes.schema_version, "0.1");
+    assert_eq!(routes.clock_source, "collector_monotonic");
+    assert_eq!(routes.v4_source, "procfs/net/route");
+    assert_eq!(routes.v6_source, "procfs/net/ipv6_route");
     assert!(matches!(
         routes.consolidated_status(),
         lidb_core::network::SourceAvailability::Available
             | lidb_core::network::SourceAvailability::Unsupported(_)
             | lidb_core::network::SourceAvailability::PermissionDenied(_)
     ));
+}
+
+#[test]
+fn routes_and_snapshots_use_one_collector_clock() {
+    let mut collector = LinuxCollector::new("/nonexistent-lidb-fixture");
+    collector.started = Instant::now() - std::time::Duration::from_secs(1);
+    let before = collector.sample();
+    let routes = collector.routes();
+    let after = collector.sample();
+    assert_eq!(routes.mode, SnapshotMode::Fixture);
+    assert!(before.monotonic_ns() <= routes.monotonic_ns);
+    assert!(routes.monotonic_ns <= after.monotonic_ns());
+    assert!(routes.collection_duration_ns <= after.monotonic_ns() - routes.monotonic_ns);
 }
 
 #[test]

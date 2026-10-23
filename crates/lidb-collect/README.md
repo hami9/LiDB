@@ -90,9 +90,31 @@ a wall-clock deadline for an unresponsive filesystem.
 
 `collector.routes()` or `lidb_collect::route::collect_routes` parses IPv4 (`/proc/net/route`) and IPv6 (`/proc/net/ipv6_route`) into structured `RouteRecord` entries.
 
+The generated `RouteReport` uses route-only JSON schema `0.1`, retains live/fixture
+mode, stable `procfs/net/route`/`procfs/net/ipv6_route` source IDs, independent family
+availability, collector-local batch start/duration and omission accounting.
+`LinuxCollector::routes()` uses the same clock as that collector's snapshots;
+standalone `collect_routes` starts a new single-call clock domain at zero.
+Neither timestamps nor matching mode prove two independently created collectors
+share a clock domain. No namespace identity or cross-run correlation is implied.
+
+`populate_into` now returns `Result<(), NetworkError>`. It preserves upstream
+omissions as well as destination capacity drops and rejects known mode/time/window
+or asserted-namespace mismatches before modifying the destination. Distinct family
+statuses cannot be represented by `NetworkReport`'s single route status, so this
+conversion rejects them; retain the original report with both family states.
+Callers remain responsible for a common collector clock domain. Each successful
+call appends its records/counts; it is not an idempotent merge.
+
 - IPv4 parses little-endian hex destinations and netmasks, calculating CIDR prefix lengths (`0..=32`) and gateways. Non-contiguous netmasks are rejected.
 - IPv6 parses 32-hex destinations, 2-hex prefix lengths (`0..=128`), and next-hop gateways.
 - Enforces `MAX_NETWORK_ROUTES = 1024` table bounds. Excess routes beyond the capacity limit are dropped and accounted for in `dropped_routes`.
+
+This bound currently applies to final retained output, not temporary parser
+allocation. Source reads remain capped at 1 MiB and have no read deadline.
+Selector/flag semantics and bounded temporary parsing are tracked separately;
+the current procfs report is not a complete forwarding-policy or connectivity
+diagnosis. Endpoint/route metadata may identify local infrastructure.
 - Returns a `RouteReport` containing independent `v4_status` and `v6_status` (`SourceAvailability`) and a `consolidated_status()`.
 - Supports populating into `lidb_core::network::NetworkReport`.
 

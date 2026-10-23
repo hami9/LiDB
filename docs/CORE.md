@@ -37,6 +37,11 @@ The visible procfs view determines coverage in containers and namespaces. These 
 
 ## Network inventory contracts
 
+The initial `NetworkReport` marks each uncollected source `disabled` with reason
+`source not collected`. Collectors explicitly set availability after a read;
+an untouched empty vector is not evidence of a successful empty table. Adding a
+record does not itself claim that a source read succeeded.
+
 Network interfaces, routes, and socket connections represent structured inventory distinct from numeric counter time-series. The pure `lidb_core::network` module defines bounded, versioned inventory records and reports (`NetworkReport`, schema `0.1`) without filesystem, OS-specific, or network dependencies:
 
 | Record type | Description | Capacity bound | Key invariants |
