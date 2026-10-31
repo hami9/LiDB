@@ -71,11 +71,16 @@ pub fn routes_text(report: &lidb_collect::RouteReport) -> String {
                 Some(metric) => format!(" metric {metric}"),
                 None => String::new(),
             };
+            let src_text = match (route.source_prefix(), route.source_prefix_len()) {
+                (Some(src), Some(len)) => format!(" from {src}/{len}"),
+                _ => String::new(),
+            };
             let _ = writeln!(
                 out,
-                "{}/{} dev {}{}{}",
+                "{}/{}{} dev {}{}{}",
                 route.destination(),
                 route.prefix_len(),
+                src_text,
                 route.interface(),
                 gw_text,
                 metric_text

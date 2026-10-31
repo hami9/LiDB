@@ -47,7 +47,7 @@ Network interfaces, routes, and socket connections represent structured inventor
 | Record type | Description | Capacity bound | Key invariants |
 | --- | --- | --- | --- |
 | `InterfaceRecord` | Host interface name, operational state (`up`, `down`, `unknown`), optional ifindex, MTU, speed (Mbps), MAC address, and flags | 64 entries | Name and MAC length bounded; ASCII control characters forbidden |
-| `RouteRecord` | Routing entry destination, prefix length, outgoing interface, optional gateway, metric, and scope | 1,024 entries | IPv4 prefix in `0..=32`, IPv6 prefix in `0..=128`; destination and gateway address families must match |
+| `RouteRecord` | Routing entry destination, prefix length, outgoing interface, optional gateway, metric, flags, and source prefix selector (SADR) | 1,024 entries | IPv4 prefix in `0..=32`, IPv6 prefix in `0..=128`; destination, gateway, and source prefix address families must match |
 | `SocketRecord` | Socket protocol (`tcp`, `udp`), state (`listen`, `established`, etc.), local endpoint, optional remote endpoint, inode, and owning PID/process name | 2,048 entries | Local and remote endpoint address families must match |
 
 ### Source availability and empty states

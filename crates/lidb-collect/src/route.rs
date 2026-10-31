@@ -5,7 +5,7 @@
 //! bounds, rejects ASCII control characters, and differentiates empty tables from
 //! failed sources.
 
-use crate::read;
+use crate::{read, MAX_SOURCE_BYTES};
 use lidb_core::network::{
     NetworkError, NetworkReport, RouteRecord, SourceAvailability, MAX_INTERFACE_NAME_CHARS,
     MAX_NETWORK_ROUTES,
@@ -146,30 +146,105 @@ fn parse_ipv6_hex(hex: &str) -> Result<Ipv6Addr, &'static str> {
     Ok(Ipv6Addr::from(octets))
 }
 
+/// Parsed routes from a routing table source, containing retained records and omission count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedRoutes {
+    /// Parsed routing records, bounded by [`MAX_NETWORK_ROUTES`].
+    pub routes: Vec<RouteRecord>,
+    /// Number of valid route entries dropped because [`MAX_NETWORK_ROUTES`] capacity was reached.
+    pub dropped_routes: u64,
+}
+
+impl ParsedRoutes {
+    /// Creates a new `ParsedRoutes` container.
+    #[must_use]
+    pub fn new(routes: Vec<RouteRecord>, dropped_routes: u64) -> Self {
+        Self {
+            routes,
+            dropped_routes,
+        }
+    }
+
+    /// Consumes the container and returns the inner route vector.
+    #[must_use]
+    pub fn into_routes(self) -> Vec<RouteRecord> {
+        self.routes
+    }
+}
+
+impl std::ops::Deref for ParsedRoutes {
+    type Target = [RouteRecord];
+
+    fn deref(&self) -> &Self::Target {
+        &self.routes
+    }
+}
+
+impl IntoIterator for ParsedRoutes {
+    type Item = RouteRecord;
+    type IntoIter = std::vec::IntoIter<RouteRecord>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.routes.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ParsedRoutes {
+    type Item = &'a RouteRecord;
+    type IntoIter = std::slice::Iter<'a, RouteRecord>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.routes.iter()
+    }
+}
+
 /// Parses IPv4 routing table content from Linux `/proc/net/route`.
 ///
 /// Columns expected:
 /// `Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT`
-pub fn parse_v4_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailability> {
+pub fn parse_v4_routes(text: &str) -> Result<ParsedRoutes, SourceAvailability> {
+    if text.len() > MAX_SOURCE_BYTES {
+        return Err(SourceAvailability::Error(
+            "route source exceeds maximum byte limit".into(),
+        ));
+    }
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+    {
+        return Err(SourceAvailability::Error(
+            "route source contains unexpected control characters".into(),
+        ));
+    }
+
     let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
     let Some(first_line) = lines.next() else {
         // Empty file is a legitimate empty table
-        return Ok(Vec::new());
+        return Ok(ParsedRoutes::new(Vec::new(), 0));
     };
 
     let first_is_header = first_line.starts_with("Iface") || first_line.starts_with("iface");
-    let data_lines: Vec<&str> = if first_is_header {
-        if !first_line.contains("Destination") || !first_line.contains("Mask") {
+    let first_data_line = if first_is_header {
+        if !first_line.contains("Destination")
+            || !first_line.contains("Mask")
+            || !first_line.contains("Flags")
+        {
             return Err(SourceAvailability::Error(
                 "route header is malformed".into(),
             ));
         }
-        lines.collect()
+        None
     } else {
-        std::iter::once(first_line).chain(lines).collect()
+        Some(first_line)
     };
 
-    let mut routes = Vec::new();
+    let data_lines = first_data_line.into_iter().chain(lines);
+
+    let mut routes = Vec::with_capacity(MAX_NETWORK_ROUTES.min(16));
+    let mut seen = std::collections::BTreeSet::new();
+    let mut dropped_routes = 0u64;
+    let mut last_overflow: Option<RouteRecord> = None;
+
     for line in data_lines {
         let cols: Vec<&str> = line.split_whitespace().collect();
         if cols.len() < 8 {
@@ -212,6 +287,10 @@ pub fn parse_v4_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
             None
         };
 
+        let flags_hex = cols[3];
+        let flags = u32::from_str_radix(flags_hex, 16)
+            .map_err(|_| SourceAvailability::Error("invalid hex in route flags".into()))?;
+
         let metric = cols[6]
             .parse::<u32>()
             .map_err(|_| SourceAvailability::Error("invalid metric in route".into()))?;
@@ -240,7 +319,8 @@ pub fn parse_v4_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
 
         let mut record = RouteRecord::new(dest_ip, prefix_len, iface)
             .map_err(|err| SourceAvailability::Error(err.to_string()))?
-            .with_metric(metric);
+            .with_metric(metric)
+            .with_flags(flags);
 
         if let Some(gw) = gateway {
             record = record
@@ -248,23 +328,53 @@ pub fn parse_v4_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
                 .map_err(|err| SourceAvailability::Error(err.to_string()))?;
         }
 
-        if routes.iter().any(|existing| existing == &record) {
+        if seen.contains(&record) {
             return Err(SourceAvailability::Error(
                 "source contains duplicate route".into(),
             ));
         }
-        routes.push(record);
+
+        if routes.len() < MAX_NETWORK_ROUTES {
+            seen.insert(record.clone());
+            routes.push(record);
+        } else {
+            if last_overflow.as_ref() == Some(&record) {
+                return Err(SourceAvailability::Error(
+                    "source contains duplicate route".into(),
+                ));
+            }
+            last_overflow = Some(record);
+            dropped_routes = dropped_routes.saturating_add(1);
+        }
     }
 
-    Ok(routes)
+    Ok(ParsedRoutes::new(routes, dropped_routes))
 }
 
 /// Parses IPv6 routing table content from Linux `/proc/net/ipv6_route`.
 ///
 /// Columns expected (space-separated, 10 fields):
 /// `dest_ip dest_prefix src_ip src_prefix next_hop metric refcnt use flags iface`
-pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailability> {
-    let mut routes = Vec::new();
+pub fn parse_v6_routes(text: &str) -> Result<ParsedRoutes, SourceAvailability> {
+    if text.len() > MAX_SOURCE_BYTES {
+        return Err(SourceAvailability::Error(
+            "route source exceeds maximum byte limit".into(),
+        ));
+    }
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+    {
+        return Err(SourceAvailability::Error(
+            "route source contains unexpected control characters".into(),
+        ));
+    }
+
+    let mut routes = Vec::with_capacity(MAX_NETWORK_ROUTES.min(16));
+    let mut seen = std::collections::BTreeSet::new();
+    let mut dropped_routes = 0u64;
+    let mut last_overflow: Option<RouteRecord> = None;
+
     for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
         let cols: Vec<&str> = line.split_whitespace().collect();
         if cols.len() < 10 {
@@ -284,6 +394,17 @@ pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
             ));
         }
 
+        let src_ip = parse_ipv6_hex(cols[2])
+            .map_err(|_| SourceAvailability::Error("invalid ipv6 source hex".into()))?;
+
+        let src_prefix = u8::from_str_radix(cols[3], 16)
+            .map_err(|_| SourceAvailability::Error("invalid ipv6 source prefix hex".into()))?;
+        if src_prefix > 128 {
+            return Err(SourceAvailability::Error(
+                "ipv6 source prefix length exceeds 128 bits".into(),
+            ));
+        }
+
         let next_hop = parse_ipv6_hex(cols[4])
             .map_err(|_| SourceAvailability::Error("invalid ipv6 next hop hex".into()))?;
         let gateway = if next_hop.is_unspecified() {
@@ -294,6 +415,9 @@ pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
 
         let metric = u32::from_str_radix(cols[5], 16)
             .map_err(|_| SourceAvailability::Error("invalid ipv6 metric hex".into()))?;
+
+        let flags = u32::from_str_radix(cols[8], 16)
+            .map_err(|_| SourceAvailability::Error("invalid ipv6 route flags hex".into()))?;
 
         let iface = cols[9];
         if iface.is_empty()
@@ -307,7 +431,8 @@ pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
 
         let mut record = RouteRecord::new(IpAddr::V6(dest_ip), prefix_len, iface)
             .map_err(|err| SourceAvailability::Error(err.to_string()))?
-            .with_metric(metric);
+            .with_metric(metric)
+            .with_flags(flags);
 
         if let Some(gw) = gateway {
             record = record
@@ -315,15 +440,33 @@ pub fn parse_v6_routes(text: &str) -> Result<Vec<RouteRecord>, SourceAvailabilit
                 .map_err(|err| SourceAvailability::Error(err.to_string()))?;
         }
 
-        if routes.iter().any(|existing| existing == &record) {
+        if src_prefix > 0 || !src_ip.is_unspecified() {
+            record = record
+                .with_source_prefix(IpAddr::V6(src_ip), src_prefix)
+                .map_err(|err| SourceAvailability::Error(err.to_string()))?;
+        }
+
+        if seen.contains(&record) {
             return Err(SourceAvailability::Error(
                 "source contains duplicate route".into(),
             ));
         }
-        routes.push(record);
+
+        if routes.len() < MAX_NETWORK_ROUTES {
+            seen.insert(record.clone());
+            routes.push(record);
+        } else {
+            if last_overflow.as_ref() == Some(&record) {
+                return Err(SourceAvailability::Error(
+                    "source contains duplicate route".into(),
+                ));
+            }
+            last_overflow = Some(record);
+            dropped_routes = dropped_routes.saturating_add(1);
+        }
     }
 
-    Ok(routes)
+    Ok(ParsedRoutes::new(routes, dropped_routes))
 }
 
 /// Collects all IPv4 and IPv6 routing table entries from the specified procfs root.
@@ -349,8 +492,9 @@ pub(crate) fn collect_routes_at(
     // IPv4 routes collection
     let v4_status = match read::source(proc_root, "net/route", mode) {
         Ok(text) => match parse_v4_routes(&text) {
-            Ok(v4_records) => {
-                for record in v4_records {
+            Ok(v4_parsed) => {
+                dropped_routes = dropped_routes.saturating_add(v4_parsed.dropped_routes);
+                for record in v4_parsed.routes {
                     if routes.len() < MAX_NETWORK_ROUTES {
                         routes.push(record);
                     } else {
@@ -367,8 +511,9 @@ pub(crate) fn collect_routes_at(
     // IPv6 routes collection
     let v6_status = match read::source(proc_root, "net/ipv6_route", mode) {
         Ok(text) => match parse_v6_routes(&text) {
-            Ok(v6_records) => {
-                for record in v6_records {
+            Ok(v6_parsed) => {
+                dropped_routes = dropped_routes.saturating_add(v6_parsed.dropped_routes);
+                for record in v6_parsed.routes {
                     if routes.len() < MAX_NETWORK_ROUTES {
                         routes.push(record);
                     } else {
@@ -430,9 +575,11 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
             IpAddr::V4(Ipv4Addr::new(192, 168, 1, 0))
         );
         assert_eq!(subnet_rt.prefix_len(), 24);
+        assert_eq!(default_rt.flags(), Some(3));
         assert_eq!(subnet_rt.gateway(), None);
         assert_eq!(subnet_rt.interface(), "eth0");
         assert_eq!(subnet_rt.metric(), Some(100));
+        assert_eq!(subnet_rt.flags(), Some(1));
     }
 
     #[test]
@@ -505,10 +652,12 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
             subnet_rt.destination(),
             IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0x0001, 0, 0, 0, 0, 0))
         );
+        assert_eq!(default_rt.flags(), Some(3));
         assert_eq!(subnet_rt.prefix_len(), 64);
         assert_eq!(subnet_rt.gateway(), None);
         assert_eq!(subnet_rt.metric(), Some(1024));
         assert_eq!(subnet_rt.interface(), "eth0");
+        assert_eq!(subnet_rt.flags(), Some(1));
     }
 
     #[test]
@@ -674,5 +823,239 @@ eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
         );
         assert_eq!(target.routes_status().as_str(), "disabled");
         assert_eq!(target.dropped_routes(), 0);
+    }
+    #[test]
+    fn parse_v6_routes_source_specific_sadr_variants() {
+        let fixture = "\
+20010db8000000000000000000000000 20 20010db8000100000000000000000000 40 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n\
+20010db8000000000000000000000000 20 20010db8000200000000000000000000 40 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n\
+";
+        let parsed = parse_v6_routes(fixture).expect("distinct SADR routes succeed");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed.dropped_routes, 0);
+
+        let r1 = &parsed[0];
+        assert_eq!(
+            r1.destination(),
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0))
+        );
+        assert_eq!(r1.prefix_len(), 32);
+        assert_eq!(
+            r1.source_prefix(),
+            Some(IpAddr::V6(Ipv6Addr::new(
+                0x2001, 0x0db8, 0x0001, 0, 0, 0, 0, 0
+            )))
+        );
+        assert_eq!(r1.source_prefix_len(), Some(64));
+        assert_eq!(r1.flags(), Some(1));
+
+        let r2 = &parsed[1];
+        assert_eq!(
+            r2.destination(),
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0))
+        );
+        assert_eq!(r2.prefix_len(), 32);
+        assert_eq!(
+            r2.source_prefix(),
+            Some(IpAddr::V6(Ipv6Addr::new(
+                0x2001, 0x0db8, 0x0002, 0, 0, 0, 0, 0
+            )))
+        );
+        assert_eq!(r2.source_prefix_len(), Some(64));
+        assert_eq!(r2.flags(), Some(1));
+    }
+
+    #[test]
+    fn parse_v6_routes_flags_and_reject_routes() {
+        let fixture = "\
+20010db8000100000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n\
+20010db8000100000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 02000001 eth0\n\
+";
+        let parsed = parse_v6_routes(fixture).expect("routes differing in flags succeed");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].flags(), Some(0x00000001));
+        assert_eq!(parsed[1].flags(), Some(0x02000001));
+    }
+
+    #[test]
+    fn parse_v4_routes_flags_and_reject_routes() {
+        let fixture = "\
+Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
+eth0\t0001A8C0\t00000000\t0201\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
+";
+        let parsed = parse_v4_routes(fixture).expect("v4 routes differing in flags succeed");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].flags(), Some(0x0001));
+        assert_eq!(parsed[1].flags(), Some(0x0201));
+    }
+
+    #[test]
+    fn parse_v6_routes_rejects_malformed_source_and_flags() {
+        // Bad source IP hex
+        let bad_src_ip = "20010db8000000000000000000000000 20 20010db800010000000000000000000Z 40 00000000000000000000000000000000 00000400 0 0 00000001 eth0\n";
+        assert!(matches!(
+            parse_v6_routes(bad_src_ip),
+            Err(SourceAvailability::Error(msg)) if msg.contains("invalid ipv6 source hex")
+        ));
+
+        // Bad source prefix hex
+        let bad_src_prefix_hex = "20010db8000000000000000000000000 20 20010db8000100000000000000000000 ZZ 00000000000000000000000000000000 00000400 0 0 00000001 eth0\n";
+        assert!(matches!(
+            parse_v6_routes(bad_src_prefix_hex),
+            Err(SourceAvailability::Error(msg)) if msg.contains("invalid ipv6 source prefix hex")
+        ));
+
+        // Source prefix > 128 (0x81 = 129)
+        let bad_src_prefix_len = "20010db8000000000000000000000000 20 20010db8000100000000000000000000 81 00000000000000000000000000000000 00000400 0 0 00000001 eth0\n";
+        assert!(matches!(
+            parse_v6_routes(bad_src_prefix_len),
+            Err(SourceAvailability::Error(msg)) if msg.contains("prefix length exceeds 128")
+        ));
+
+        // Bad flags hex
+        let bad_flags = "20010db8000000000000000000000000 20 20010db8000100000000000000000000 40 00000000000000000000000000000000 00000400 0 0 ZZZZZZZZ eth0\n";
+        assert!(matches!(
+            parse_v6_routes(bad_flags),
+            Err(SourceAvailability::Error(msg)) if msg.contains("invalid ipv6 route flags hex")
+        ));
+    }
+
+    #[test]
+    fn parse_v4_routes_rejects_malformed_flags() {
+        let bad_flags = "\
+Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+eth0\t0001A8C0\t00000000\tZZZZ\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
+";
+        assert!(matches!(
+            parse_v4_routes(bad_flags),
+            Err(SourceAvailability::Error(msg)) if msg.contains("invalid hex in route flags")
+        ));
+    }
+
+    #[test]
+    fn parse_routes_rejects_huge_input_and_control_chars() {
+        let oversized = "x".repeat(MAX_SOURCE_BYTES + 1);
+        assert!(matches!(
+            parse_v4_routes(&oversized),
+            Err(SourceAvailability::Error(msg)) if msg.contains("maximum byte limit")
+        ));
+        assert!(matches!(
+            parse_v6_routes(&oversized),
+            Err(SourceAvailability::Error(msg)) if msg.contains("maximum byte limit")
+        ));
+
+        let control_chars = "Iface\tDestination\x1b\tGateway\n";
+        assert!(matches!(
+            parse_v4_routes(control_chars),
+            Err(SourceAvailability::Error(msg)) if msg.contains("unexpected control characters")
+        ));
+        assert!(matches!(
+            parse_v6_routes(control_chars),
+            Err(SourceAvailability::Error(msg)) if msg.contains("unexpected control characters")
+        ));
+    }
+
+    #[test]
+    fn parse_routes_bounded_retention_and_overflow() {
+        // Generate 1030 valid IPv4 routes (1024 retained + 6 dropped)
+        let mut v4_fixture = String::from(
+            "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n",
+        );
+        for i in 0..1030u32 {
+            let b1 = (i / 256) as u8;
+            let b2 = (i % 256) as u8;
+            let dest_u32 = u32::from_le_bytes([10, b1, b2, 0]);
+            v4_fixture.push_str(&format!(
+                "eth0\t{dest_u32:08X}\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n"
+            ));
+        }
+        let v4_parsed = parse_v4_routes(&v4_fixture).expect("1030 v4 routes parsed cleanly");
+        assert_eq!(v4_parsed.len(), MAX_NETWORK_ROUTES);
+        assert_eq!(v4_parsed.dropped_routes, 6);
+
+        // Generate 1030 valid IPv6 routes (1024 retained + 6 dropped)
+        let mut v6_fixture = String::new();
+        for i in 0..1030u32 {
+            v6_fixture.push_str(&format!(
+                "20010db8{i:08x}0000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n"
+            ));
+        }
+        let v6_parsed = parse_v6_routes(&v6_fixture).expect("1030 v6 routes parsed cleanly");
+        assert_eq!(v6_parsed.len(), MAX_NETWORK_ROUTES);
+        assert_eq!(v6_parsed.dropped_routes, 6);
+    }
+
+    #[test]
+    fn parse_routes_overflow_with_malformed_tail() {
+        // 1024 valid routes followed by a malformed line in the overflow tail
+        let mut v4_fixture = String::from(
+            "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n",
+        );
+        for i in 0..1024u32 {
+            let b1 = (i / 256) as u8;
+            let b2 = (i % 256) as u8;
+            let dest_u32 = u32::from_le_bytes([10, b1, b2, 0]);
+            v4_fixture.push_str(&format!(
+                "eth0\t{dest_u32:08X}\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n"
+            ));
+        }
+        v4_fixture.push_str("eth0\tbroken_hex\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n");
+        assert!(matches!(
+            parse_v4_routes(&v4_fixture),
+            Err(SourceAvailability::Error(msg)) if msg.contains("destination must be 8 hex digits")
+        ));
+
+        let mut v6_fixture = String::new();
+        for i in 0..1024u32 {
+            v6_fixture.push_str(&format!(
+                "20010db8{i:08x}0000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n"
+            ));
+        }
+        v6_fixture.push_str("malformed line lacks columns\n");
+        assert!(matches!(
+            parse_v6_routes(&v6_fixture),
+            Err(SourceAvailability::Error(msg)) if msg.contains("ipv6 route line lacks required fields")
+        ));
+    }
+
+    #[test]
+    fn parse_routes_overflow_with_duplicate() {
+        // 1024 valid routes followed by a line duplicating the first route
+        let mut v4_fixture = String::from(
+            "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n",
+        );
+        for i in 0..1024u32 {
+            let b1 = (i / 256) as u8;
+            let b2 = (i % 256) as u8;
+            let dest_u32 = u32::from_le_bytes([10, b1, b2, 0]);
+            v4_fixture.push_str(&format!(
+                "eth0\t{dest_u32:08X}\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n"
+            ));
+        }
+        // Duplicate the first route (i = 0)
+        let dup_u32 = u32::from_le_bytes([10, 0, 0, 0]);
+        v4_fixture.push_str(&format!(
+            "eth0\t{dup_u32:08X}\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n"
+        ));
+        assert!(matches!(
+            parse_v4_routes(&v4_fixture),
+            Err(SourceAvailability::Error(msg)) if msg.contains("duplicate")
+        ));
+
+        // Two identical overflow lines
+        let mut v6_fixture = String::new();
+        for i in 0..1024u32 {
+            v6_fixture.push_str(&format!(
+                "20010db8{i:08x}0000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n"
+            ));
+        }
+        let overflow_line = "20010db8ffffffff0000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n";
+        v6_fixture.push_str(overflow_line);
+        v6_fixture.push_str(overflow_line);
+        assert!(matches!(
+            parse_v6_routes(&v6_fixture),
+            Err(SourceAvailability::Error(msg)) if msg.contains("duplicate")
+        ));
     }
 }

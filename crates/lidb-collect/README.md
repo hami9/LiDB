@@ -106,15 +106,11 @@ conversion rejects them; retain the original report with both family states.
 Callers remain responsible for a common collector clock domain. Each successful
 call appends its records/counts; it is not an idempotent merge.
 
-- IPv4 parses little-endian hex destinations and netmasks, calculating CIDR prefix lengths (`0..=32`) and gateways. Non-contiguous netmasks are rejected.
-- IPv6 parses 32-hex destinations, 2-hex prefix lengths (`0..=128`), and next-hop gateways.
-- Enforces `MAX_NETWORK_ROUTES = 1024` table bounds. Excess routes beyond the capacity limit are dropped and accounted for in `dropped_routes`.
-
-This bound currently applies to final retained output, not temporary parser
-allocation. Source reads remain capped at 1 MiB and have no read deadline.
-Selector/flag semantics and bounded temporary parsing are tracked separately;
-the current procfs report is not a complete forwarding-policy or connectivity
-diagnosis. Endpoint/route metadata may identify local infrastructure.
+- IPv4 parses little-endian hex destinations and netmasks, calculating CIDR prefix lengths (`0..=32`), gateways, and route flags. Non-contiguous netmasks are rejected.
+- IPv6 parses 32-hex destinations, 2-hex prefix lengths (`0..=128`), source prefix selectors (cols 2 & 3: `src_ip`, `src_prefix` for SADR), route flags (col 8), and next-hop gateways.
+- Enforces `MAX_NETWORK_ROUTES = 1024` table bounds during both parsing and retention. Excess routes beyond capacity are dropped and tracked in `dropped_routes`, while malformed overflow tails are validated rather than silently dropped.
+- Public parser entry points enforce 1 MiB byte limits and reject unexpected ASCII control characters. Deduplication sets are bounded to `MAX_NETWORK_ROUTES`.
+- Source reads remain capped at 1 MiB and have no read deadline. The current procfs report is a point-in-time kernel view, not a complete forwarding-policy lookup or connectivity diagnosis. Endpoint/route metadata may identify local infrastructure.
 - Returns a `RouteReport` containing independent `v4_status` and `v6_status` (`SourceAvailability`) and a `consolidated_status()`.
 - Supports populating into `lidb_core::network::NetworkReport`.
 
