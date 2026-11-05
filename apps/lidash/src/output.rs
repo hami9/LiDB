@@ -184,6 +184,59 @@ pub fn interfaces_text(report: &lidb_collect::InterfaceReport) -> String {
     out
 }
 
+pub fn sockets_text(report: &lidb_collect::SocketReport) -> String {
+    let mut out = format!(
+        "LiDB {} sockets | collector_monotonic={}ns | collection={}ns | tcp4: {} | tcp6: {} | udp4: {} | udp6: {} | dropped={}\n",
+        mode_name(report.mode),
+        report.monotonic_ns,
+        report.collection_duration_ns,
+        report.tcp_v4_status.as_str(),
+        report.tcp_v6_status.as_str(),
+        report.udp_v4_status.as_str(),
+        report.udp_v6_status.as_str(),
+        report.dropped_sockets
+    );
+    for (source, status) in [
+        (report.tcp_v4_source, &report.tcp_v4_status),
+        (report.tcp_v6_source, &report.tcp_v6_status),
+        (report.udp_v4_source, &report.udp_v4_status),
+        (report.udp_v6_source, &report.udp_v6_status),
+    ] {
+        if let Some(reason) = status.reason() {
+            let _ = writeln!(out, "{source}: {} — {reason}", status.as_str());
+        }
+    }
+    if !report.sockets.is_empty() {
+        for socket in &report.sockets {
+            let remote_text = match (socket.remote_address(), socket.remote_port()) {
+                (Some(addr), Some(port)) => format!(" -> {addr}:{port}"),
+                _ => String::new(),
+            };
+            let ino_text = match socket.inode() {
+                Some(ino) => format!(" ino:{ino}"),
+                None => String::new(),
+            };
+            let _ = writeln!(
+                out,
+                "{:<4} {}:{}{:<16} state:{}{}",
+                socket.protocol().as_str(),
+                socket.local_address(),
+                socket.local_port(),
+                remote_text,
+                socket.state().as_str(),
+                ino_text
+            );
+        }
+    } else if !report.consolidated_status().is_available() {
+        let _ = writeln!(out, "sockets table unavailable");
+    } else if report.dropped_sockets == 0 {
+        let _ = writeln!(out, "no sockets observed");
+    } else {
+        let _ = writeln!(out, "no sockets retained; report has omissions");
+    }
+    out
+}
+
 #[derive(Serialize)]
 pub struct Failure<'a> {
     metric: &'a str,

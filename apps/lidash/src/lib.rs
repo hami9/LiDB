@@ -80,6 +80,16 @@ pub fn execute(config: Config, mut output: impl Write) -> Result<u8, io::Error> 
                 output.write_all(output::interfaces_text(&report).as_bytes())?;
             }
         }
+        Command::Sockets => {
+            let collector = collector(&config);
+            let report = collector.sockets();
+            if config.json {
+                serde_json::to_writer(&mut output, &report)?;
+                output.write_all(b"\n")?;
+            } else {
+                output.write_all(output::sockets_text(&report).as_bytes())?;
+            }
+        }
     }
     Ok(0)
 }

@@ -1,17 +1,18 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 pub const HELP: &str = "LiDashBoard — read-only Linux host monitor
-Usage: lidash [snapshot|doctor|routes|interfaces|tui] [OPTIONS]
+Usage: lidash [snapshot|doctor|routes|interfaces|sockets|tui] [OPTIONS]
 
 Commands:
   snapshot       Print one host snapshot (alias: status)
   doctor         Report observed source capabilities (alias: capabilities)
   routes         Print routing table entries (alias: route)
   interfaces     Print network interface metadata (alias: interface, iface)
+  sockets        Print TCP and UDP socket endpoints (alias: socket, sock)
   tui            Open the keyboard-driven terminal monitor
 
 Options:
-  --json                 JSON snapshot, doctor report, routing table, or interfaces; no terminal required
+  --json                 JSON snapshot, doctor report, routing table, interfaces, or sockets; no terminal required
   --interval-ms N        Sample interval, 250..60000 milliseconds
   --proc-root PATH       Read a fixture instead of /proc; output is labeled fixture
   --sys-root PATH        Read a fixture instead of /sys; output is labeled fixture
@@ -32,6 +33,7 @@ pub enum Command {
     Doctor,
     Routes,
     Interfaces,
+    Sockets,
     Tui,
     Help,
     Version,
@@ -72,6 +74,7 @@ impl Config {
                 Some("interfaces" | "interface" | "iface") => {
                     set_command(&mut command, Command::Interfaces)?
                 }
+                Some("sockets" | "socket" | "sock") => set_command(&mut command, Command::Sockets)?,
                 Some("tui") => set_command(&mut command, Command::Tui)?,
                 Some("--json") => json = true,
                 Some("--no-color") => {}
@@ -109,7 +112,7 @@ impl Config {
         });
         if command == Command::Tui && json {
             return Err(
-                "--json is supported by snapshot, doctor, routes, and interfaces; choose one of those commands"
+                "--json is supported by snapshot, doctor, routes, interfaces, and sockets; choose one of those commands"
                     .into(),
             );
         }
@@ -188,6 +191,15 @@ mod tests {
         assert_eq!(
             parse(&["iface", "--json"], false).unwrap().command,
             Command::Interfaces
+        );
+        assert_eq!(
+            parse(&["sockets"], false).unwrap().command,
+            Command::Sockets
+        );
+        assert_eq!(parse(&["socket"], false).unwrap().command, Command::Sockets);
+        assert_eq!(
+            parse(&["sock", "--json"], false).unwrap().command,
+            Command::Sockets
         );
         assert!(parse(&["tui", "--json"], true).is_err());
     }

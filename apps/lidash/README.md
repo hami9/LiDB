@@ -12,6 +12,7 @@ cargo run -p lidash -- snapshot --json
 cargo run -p lidash -- doctor --json
 cargo run -p lidash -- routes --json
 cargo run -p lidash -- interfaces --json
+cargo run -p lidash -- sockets --json
 cargo run -p lidash -- tui --interval-ms 1000 --no-color
 ```
 
@@ -85,6 +86,11 @@ Explicit `--sys-root PATH` or `--proc-root PATH` labels the output `fixture`. Te
 state, flags, MTU, speed, and hardware addresses cleanly. Missing, unknown, or negative
 virtual link speeds (such as loopback) are treated truthfully as `None` rather than errors.
 Disappearing interfaces during enumeration do not cause collection aborts.
+
+`sockets` explicitly reads TCP and UDP socket endpoints from `/proc/net/{tcp,tcp6,udp,udp6}`.
+Its socket-only JSON schema `0.1` reports protocol (`tcp`, `udp`), local and remote IP/port endpoints, connection state, and socket inode numbers.
+Output is bounded by `MAX_NETWORK_SOCKETS = 2048`, tracking omissions in `dropped_sockets`. Sockets collection is strictly read-only and non-privileged; it does not map sockets to PIDs or inspect process state.
+Explicit `--proc-root PATH` labels the output `fixture`. Text displays protocol, endpoints, connection state, and inode cleanly.
 
 ```bash
 cargo test -p lidash

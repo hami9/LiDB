@@ -12,9 +12,12 @@ mod parse;
 mod read;
 /// Bounded, read-only IPv4 and IPv6 route collection from Linux procfs.
 pub mod route;
+/// Bounded, read-only TCP and UDP socket collection from Linux procfs.
+pub mod socket;
 
 pub use interface::InterfaceReport;
 pub use route::RouteReport;
+pub use socket::SocketReport;
 
 use lidb_core::{MetricObservation, MetricState, MetricValue, Snapshot, SnapshotMode, Unit};
 use parse::{CpuCounters, TransferCounters};
@@ -124,6 +127,18 @@ impl LinuxCollector {
         interface::collect_interfaces_at(
             &self.proc_root,
             &self.sys_root,
+            self.mode,
+            duration_ns(began.duration_since(self.started)),
+            began,
+        )
+    }
+
+    /// Collects TCP and UDP socket endpoint observations from the configured procfs root.
+    #[must_use]
+    pub fn sockets(&self) -> SocketReport {
+        let began = Instant::now();
+        socket::collect_sockets_at(
+            &self.proc_root,
             self.mode,
             duration_ns(began.duration_since(self.started)),
             began,

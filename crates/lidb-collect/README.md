@@ -129,6 +129,21 @@ The generated `InterfaceReport` uses schema `0.1`, retains live/fixture mode, co
 - Disappearing interfaces during iteration are handled gracefully without aborting the batch.
 - Supports atomic population into `NetworkReport` via `populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError>`.
 
+## Socket collection
+
+`collector.sockets()` or `lidb_collect::socket::collect_sockets` parses TCP and UDP socket tables from `/proc/net/tcp`, `/proc/net/tcp6`, `/proc/net/udp`, and `/proc/net/udp6` into structured `SocketRecord` entries.
+
+The generated `SocketReport` uses socket-only JSON schema `0.1`, retains live/fixture mode, stable source identifiers (`procfs/net/tcp`, `procfs/net/tcp6`, `procfs/net/udp`, `procfs/net/udp6`), independent source availability statuses, collector-local monotonic timestamp, collection duration, and omission accounting (`dropped_sockets`).
+
+- Privacy Boundary: Socket observation is strictly metadata-only. It never inspects `/proc/<pid>` or maps sockets to process IDs.
+- IPv4 parses little-endian 32-bit hex addresses, 16-bit hex ports, connection states, and socket inodes.
+- IPv6 parses four 32-bit words in host byte order, decoding them back to network octets via `.to_le_bytes()`.
+- Unconnected endpoints (e.g. `0.0.0.0:0` or `:::0` on listening/unconnected sockets) leave `remote_address` and `remote_port` as `None`.
+- Connection states are decoded into standard `SocketState` (`listen`, `established`, `time_wait`, `closed`, etc.).
+- Enforces `MAX_NETWORK_SOCKETS = 2048` table bounds. Excess sockets beyond capacity are dropped and tracked in `dropped_sockets`, while malformed overflow tails are validated rather than silently dropped.
+- Empty tables return `SourceAvailability::Available` with zero records, distinguishing empty sockets from missing or permission-denied files.
+- Supports atomic population into `NetworkReport` via `populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError>`.
+
 ## Fixtures and validation
 
 The exact `/proc` root selects live mode. Other explicit roots select fixture

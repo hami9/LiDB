@@ -448,7 +448,7 @@ impl RouteRecord {
 }
 
 /// Transport protocol for socket observations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SocketProtocol {
     /// Transmission Control Protocol.
@@ -457,8 +457,25 @@ pub enum SocketProtocol {
     Udp,
 }
 
+impl SocketProtocol {
+    /// Stable string representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tcp => "tcp",
+            Self::Udp => "udp",
+        }
+    }
+}
+
+impl fmt::Display for SocketProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Finite socket connection state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SocketState {
     /// Active connection established.
@@ -487,8 +504,54 @@ pub enum SocketState {
     Unknown,
 }
 
+impl SocketState {
+    /// Converts a standard Linux kernel TCP state constant into a [`SocketState`].
+    #[must_use]
+    pub const fn from_linux_state(st: u8) -> Self {
+        match st {
+            1 => Self::Established,
+            2 => Self::SynSent,
+            3 => Self::SynRecv,
+            4 => Self::FinWait1,
+            5 => Self::FinWait2,
+            6 => Self::TimeWait,
+            7 => Self::Closed,
+            8 => Self::CloseWait,
+            9 => Self::LastAck,
+            10 => Self::Listen,
+            11 => Self::Closing,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Stable string representation matching Linux naming.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Established => "established",
+            Self::SynSent => "syn_sent",
+            Self::SynRecv => "syn_recv",
+            Self::FinWait1 => "fin_wait1",
+            Self::FinWait2 => "fin_wait2",
+            Self::TimeWait => "time_wait",
+            Self::Closed => "closed",
+            Self::CloseWait => "close_wait",
+            Self::LastAck => "last_ack",
+            Self::Listen => "listen",
+            Self::Closing => "closing",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for SocketState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// An observed socket endpoint record.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct SocketRecord {
     protocol: SocketProtocol,
     local_address: IpAddr,
