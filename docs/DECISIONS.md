@@ -89,3 +89,23 @@ Rust 1.85 is the selected minimum toolchain for the runnable foundation. Record 
 **Alternatives:** Treating SADR routes or reject routes as unsupported would losslessly fail valid Linux configurations. Silently dropping excess lines without syntax validation would permit corrupt data sources to pass undetected when tables exceed 1,024 entries.
 
 **Migration / limits:** `RouteRecord` gains additive fields and accessors. Public parser functions `parse_v4_routes` and `parse_v6_routes` return `Result<ParsedRoutes, SourceAvailability>`, where `ParsedRoutes` dereferences to `[RouteRecord]` and implements `IntoIterator`. Actual evidence is recorded in [issue #50](../.AGENTS/worklogs/issue-50.md).
+
+## ADR-027 — read-only network interface metadata and namespace collection (2026-11-06)
+
+**Status:** implemented proposal in issue #53 (Task AG-04), explicitly stacked on PR #52 (`agent/antigravity/issue-50-routes`).
+
+**Context:** Operators need read-only network interface metadata (index, MTU, operational state, MAC address, link speed, decoded flags) and best-effort network namespace context without requiring netlink, root privileges, or external network tools (`ip link`, `ifconfig`). Linux exposes interface attributes in `/sys/class/net/<iface>/` and namespace descriptors in `/proc/self/ns/net`. Collection must remain size-bounded, truthful when devices lack speed or disappear during iteration, and strictly protected against fixture directory traversal and symlink escapes.
+
+**Decision:**
+1. Implement `lidb-collect::interface` module collecting interface metadata from `/sys/class/net` and best-effort namespace identity from `/proc/self/ns/net`.
+2. Map `operstate` strings to `InterfaceOperState` with standard fallback to `Unknown`. Parse link speed in Mbps from `speed`, treating missing, negative (`-1` on loopback or disconnected ethernet), or unsupported speed as `None` without collection error.
+3. Decode standard Linux interface flags from `<linux/if.h>` (`UP`, `BROADCAST`, `LOOPBACK`, `RUNNING`, `MULTICAST`, etc.).
+4. Detect namespace identity from `/proc/self/ns/net` via stat inode or `net:[<inode>]` target into `NetworkNamespace`.
+5. Enforce `MAX_NETWORK_INTERFACES = 64` capacity limits, tracking excess devices in `dropped_interfaces`. Handle disappearing interfaces during iteration gracefully without aborting the batch.
+6. Enforce strict symlink security: live sysfs symlinks are verified to remain within sysfs, and fixture-mode symlinks escaping the fixture root are rejected.
+7. Expose `InterfaceReport` (schema `0.1`) with `populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError>` matching the route report contract.
+8. Add CLI `interfaces` command (aliases: `interface`, `iface`) and `--json` format to `apps/lidash`.
+
+**Alternatives:** Shelling out to `ip link` introduces subprocess execution, shell injection risks, and external dependencies. Loosening fixture symlink checks would allow path traversal vulnerabilities.
+
+**Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is in [issue #53](../.AGENTS/worklogs/antigravity-ag-04.md).

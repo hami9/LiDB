@@ -11,6 +11,7 @@ cargo run -p lidash -- snapshot
 cargo run -p lidash -- snapshot --json
 cargo run -p lidash -- doctor --json
 cargo run -p lidash -- routes --json
+cargo run -p lidash -- interfaces --json
 cargo run -p lidash -- tui --interval-ms 1000 --no-color
 ```
 
@@ -75,6 +76,15 @@ deadline. The procfs view is neither a complete policy-routing lookup nor proof
 of host-wide visibility in a container. Namespace identity is not captured yet.
 Route selector/flag semantics and temporary parser retention remain a separately
 tracked follow-up before routing completeness is claimed.
+
+`interfaces` explicitly reads network interface metadata from sysfs (`/sys/class/net`)
+and best-effort network namespace context from `/proc/self/ns/net`.
+Its interface-only JSON schema `0.1` reports interface index, MTU, operational state,
+MAC address, link speed in Mbps, decoded flags, and namespace identity (`NetworkNamespace`).
+Explicit `--sys-root PATH` or `--proc-root PATH` labels the output `fixture`. Text displays
+state, flags, MTU, speed, and hardware addresses cleanly. Missing, unknown, or negative
+virtual link speeds (such as loopback) are treated truthfully as `None` rather than errors.
+Disappearing interfaces during enumeration do not cause collection aborts.
 
 ```bash
 cargo test -p lidash

@@ -114,6 +114,21 @@ call appends its records/counts; it is not an idempotent merge.
 - Returns a `RouteReport` containing independent `v4_status` and `v6_status` (`SourceAvailability`) and a `consolidated_status()`.
 - Supports populating into `lidb_core::network::NetworkReport`.
 
+## Interface metadata and namespace collection
+
+`collector.interfaces()` or `lidb_collect::interface::collect_interfaces` collects network interface metadata from `/sys/class/net` and best-effort network namespace context from `/proc/self/ns/net`.
+
+The generated `InterfaceReport` uses schema `0.1`, retains live/fixture mode, collector-local monotonic timestamp, collection duration, status (`SourceAvailability`), namespace identity (`NetworkNamespace`), interface records, and omission accounting (`dropped_interfaces`).
+
+- Reads interface indices (`ifindex`), MTU (`mtu`), operational states (`operstate` mapped to `InterfaceOperState`), MAC addresses (`address`), optional link speed (`speed`), and interface flags (`flags`).
+- Decodes standard Linux interface flags (e.g. `UP`, `BROADCAST`, `LOOPBACK`, `RUNNING`, `MULTICAST`) from hex values.
+- Safely treats missing, negative (e.g. `-1` on loopback or disconnected ethernet), or unsupported speed as `None` without collection errors.
+- Enforces `MAX_NETWORK_INTERFACES = 64` bounds. Excess interfaces beyond capacity are dropped and tracked in `dropped_interfaces`.
+- Enforces strict path safety: live sysfs symlinks are verified to remain within sysfs, and fixture-mode symlinks escaping the fixture root are rejected.
+- Captures network namespace context best-effort from `/proc/self/ns/net` via stat inode or link target `net:[<inode>]`.
+- Disappearing interfaces during iteration are handled gracefully without aborting the batch.
+- Supports atomic population into `NetworkReport` via `populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError>`.
+
 ## Fixtures and validation
 
 The exact `/proc` root selects live mode. Other explicit roots select fixture

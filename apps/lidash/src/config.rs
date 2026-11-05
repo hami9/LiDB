@@ -1,18 +1,20 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 pub const HELP: &str = "LiDashBoard — read-only Linux host monitor
-Usage: lidash [snapshot|doctor|routes|tui] [OPTIONS]
+Usage: lidash [snapshot|doctor|routes|interfaces|tui] [OPTIONS]
 
 Commands:
   snapshot       Print one host snapshot (alias: status)
   doctor         Report observed source capabilities (alias: capabilities)
   routes         Print routing table entries (alias: route)
+  interfaces     Print network interface metadata (alias: interface, iface)
   tui            Open the keyboard-driven terminal monitor
 
 Options:
-  --json                 JSON snapshot, doctor report, or routing table; no terminal required
+  --json                 JSON snapshot, doctor report, routing table, or interfaces; no terminal required
   --interval-ms N        Sample interval, 250..60000 milliseconds
   --proc-root PATH       Read a fixture instead of /proc; output is labeled fixture
+  --sys-root PATH        Read a fixture instead of /sys; output is labeled fixture
   --no-color             Monochrome output (also the default)
   -h, --help             Print help
   -V, --version          Print version
@@ -29,6 +31,7 @@ pub enum Command {
     Snapshot,
     Doctor,
     Routes,
+    Interfaces,
     Tui,
     Help,
     Version,
@@ -40,7 +43,8 @@ pub struct Config {
     pub json: bool,
     pub interval: Duration,
     pub proc_root: PathBuf,
-    // Explicit --proc-root /proc is still a fixture request.
+    pub sys_root: PathBuf,
+    // Explicit --proc-root or --sys-root is a fixture request.
     pub fixture: bool,
 }
 
@@ -54,6 +58,7 @@ impl Config {
         let mut json = false;
         let mut interval = None;
         let mut proc_root = PathBuf::from("/proc");
+        let mut sys_root: Option<PathBuf> = None;
         let mut fixture = false;
         while let Some(arg) = args.next() {
             match arg.to_str() {
@@ -64,6 +69,9 @@ impl Config {
                 Some("snapshot" | "status") => set_command(&mut command, Command::Snapshot)?,
                 Some("doctor" | "capabilities") => set_command(&mut command, Command::Doctor)?,
                 Some("routes" | "route") => set_command(&mut command, Command::Routes)?,
+                Some("interfaces" | "interface" | "iface") => {
+                    set_command(&mut command, Command::Interfaces)?
+                }
                 Some("tui") => set_command(&mut command, Command::Tui)?,
                 Some("--json") => json = true,
                 Some("--no-color") => {}
@@ -83,6 +91,14 @@ impl Config {
                     }
                     fixture = true;
                 }
+                Some("--sys-root") => {
+                    let path: PathBuf = args.next().ok_or("--sys-root requires a path")?.into();
+                    if path.as_os_str().is_empty() {
+                        return Err("--sys-root requires a nonempty path".into());
+                    }
+                    sys_root = Some(path);
+                    fixture = true;
+                }
                 _ => return Err(format!("unknown argument: {}", arg.to_string_lossy())),
             }
         }
@@ -93,10 +109,21 @@ impl Config {
         });
         if command == Command::Tui && json {
             return Err(
-                "--json is supported by snapshot, doctor, and routes; choose one of those commands"
+                "--json is supported by snapshot, doctor, routes, and interfaces; choose one of those commands"
                     .into(),
             );
         }
+        let sys_root = sys_root.unwrap_or_else(|| {
+            if fixture {
+                if proc_root.join("sys").is_dir() {
+                    proc_root.join("sys")
+                } else {
+                    proc_root.clone()
+                }
+            } else {
+                PathBuf::from("/sys")
+            }
+        });
         Ok(Self {
             command,
             json,
@@ -106,6 +133,7 @@ impl Config {
                 250
             })),
             proc_root,
+            sys_root,
             fixture,
         })
     }
@@ -116,6 +144,7 @@ impl Config {
             json: false,
             interval: Duration::from_millis(250),
             proc_root: "/proc".into(),
+            sys_root: "/sys".into(),
             fixture: false,
         }
     }
@@ -147,6 +176,18 @@ mod tests {
         assert_eq!(
             parse(&["routes", "--json"], false).unwrap().command,
             Command::Routes
+        );
+        assert_eq!(
+            parse(&["interfaces"], false).unwrap().command,
+            Command::Interfaces
+        );
+        assert_eq!(
+            parse(&["interface"], false).unwrap().command,
+            Command::Interfaces
+        );
+        assert_eq!(
+            parse(&["iface", "--json"], false).unwrap().command,
+            Command::Interfaces
         );
         assert!(parse(&["tui", "--json"], true).is_err());
     }

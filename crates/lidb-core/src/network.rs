@@ -105,7 +105,7 @@ impl NetworkNamespace {
 }
 
 /// Operational state of a network interface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterfaceOperState {
     /// Interface is operational and ready to send/receive packets.
@@ -124,8 +124,45 @@ pub enum InterfaceOperState {
     NotPresent,
 }
 
+impl InterfaceOperState {
+    /// Parses Linux sysfs `operstate` text into an [`InterfaceOperState`].
+    #[must_use]
+    pub fn parse_operstate(s: &str) -> Option<Self> {
+        match s.trim() {
+            "up" => Some(Self::Up),
+            "down" => Some(Self::Down),
+            "unknown" => Some(Self::Unknown),
+            "testing" => Some(Self::Testing),
+            "dormant" => Some(Self::Dormant),
+            "lowerlayerdown" => Some(Self::LowerLayerDown),
+            "notpresent" => Some(Self::NotPresent),
+            _ => None,
+        }
+    }
+
+    /// Stable string representation matching sysfs naming.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Up => "up",
+            Self::Down => "down",
+            Self::Unknown => "unknown",
+            Self::Testing => "testing",
+            Self::Dormant => "dormant",
+            Self::LowerLayerDown => "lowerlayerdown",
+            Self::NotPresent => "notpresent",
+        }
+    }
+}
+
+impl fmt::Display for InterfaceOperState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Metadata and attributes of an individual network interface.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct InterfaceRecord {
     name: String,
     ifindex: Option<u32>,
@@ -713,6 +750,11 @@ impl NetworkReport {
         self
     }
 
+    /// Replaces or sets the network namespace identity.
+    pub fn set_namespace(&mut self, namespace: Option<NetworkNamespace>) {
+        self.namespace = namespace;
+    }
+
     /// Replaces the measurement duration after collection finishes.
     pub fn set_collection_duration_ns(&mut self, duration_ns: u64) {
         self.collection_duration_ns = duration_ns;
@@ -721,6 +763,11 @@ impl NetworkReport {
     /// Sets the source availability status for interfaces.
     pub fn set_interfaces_status(&mut self, status: SourceAvailability) {
         self.interfaces_status = status;
+    }
+
+    /// Preserve upstream omissions in addition to this report's own capacity drops.
+    pub fn record_dropped_interfaces(&mut self, count: u64) {
+        self.dropped_interfaces = self.dropped_interfaces.saturating_add(count);
     }
 
     /// Sets the source availability status for routes.
@@ -736,6 +783,11 @@ impl NetworkReport {
     /// Sets the source availability status for sockets.
     pub fn set_sockets_status(&mut self, status: SourceAvailability) {
         self.sockets_status = status;
+    }
+
+    /// Preserve upstream omissions in addition to this report's own capacity drops.
+    pub fn record_dropped_sockets(&mut self, count: u64) {
+        self.dropped_sockets = self.dropped_sockets.saturating_add(count);
     }
 
     /// Appends an interface record, enforcing capacity limits.
