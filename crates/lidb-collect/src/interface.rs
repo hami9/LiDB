@@ -404,15 +404,17 @@ fn linux_collect_interfaces(
 fn resolve_class_net(sys_root: &Path) -> Result<PathBuf, SourceAvailability> {
     use std::fs;
 
-    let candidates = [
-        sys_root.join("class/net"),
-        sys_root.join("net"),
-        sys_root.to_path_buf(),
-    ];
-    for candidate in &candidates {
-        if let Ok(meta) = fs::symlink_metadata(candidate) {
+    let class_net = sys_root.join("class/net");
+    if let Ok(meta) = fs::symlink_metadata(&class_net) {
+        if meta.is_dir() {
+            return Ok(class_net);
+        }
+    }
+
+    if sys_root.ends_with("class/net") {
+        if let Ok(meta) = fs::symlink_metadata(sys_root) {
             if meta.is_dir() {
-                return Ok(candidate.clone());
+                return Ok(sys_root.to_path_buf());
             }
         }
     }
