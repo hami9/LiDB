@@ -17,6 +17,13 @@ impl CpuCounters {
 #[derive(Clone, Debug)]
 pub(crate) struct TransferCounters(pub(crate) [u64; 2]);
 
+#[derive(Clone, Debug)]
+pub(crate) struct NetworkCounters {
+    pub(crate) bytes: TransferCounters,
+    pub(crate) errors: [u64; 2],
+    pub(crate) drops: [u64; 2],
+}
+
 pub(crate) fn cpu(text: &str) -> Result<CpuCounters, State> {
     let mut aggregate = None;
     for line in text.lines() {
@@ -191,7 +198,7 @@ pub(crate) fn pressure(text: &str) -> Result<f64, State> {
     result.ok_or_else(|| error("pressure some avg10 is missing"))
 }
 
-pub(crate) fn network(text: &str) -> Result<BTreeMap<String, TransferCounters>, State> {
+pub(crate) fn network(text: &str) -> Result<BTreeMap<String, NetworkCounters>, State> {
     let mut lines = text.lines();
     let first = lines
         .next()
@@ -224,7 +231,11 @@ pub(crate) fn network(text: &str) -> Result<BTreeMap<String, TransferCounters>, 
         insert(
             &mut devices,
             &name,
-            TransferCounters([counters[0], counters[8]]),
+            NetworkCounters {
+                bytes: TransferCounters([counters[0], counters[8]]),
+                errors: [counters[2], counters[10]],
+                drops: [counters[3], counters[11]],
+            },
         )?;
     }
     Ok(devices)
@@ -258,11 +269,7 @@ pub(crate) fn disks(text: &str) -> Result<BTreeMap<String, TransferCounters>, St
     Ok(devices)
 }
 
-fn insert(
-    devices: &mut BTreeMap<String, TransferCounters>,
-    name: &str,
-    counters: TransferCounters,
-) -> Result<(), State> {
+fn insert<T>(devices: &mut BTreeMap<String, T>, name: &str, counters: T) -> Result<(), State> {
     if devices.len() >= MAX_DEVICES {
         return Err(error("source exceeds the device limit"));
     }
