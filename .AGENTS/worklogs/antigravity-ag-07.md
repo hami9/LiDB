@@ -2,10 +2,11 @@
 
 - Task ID: `AG-07`
 - Issue: [#59](https://github.com/hami9/LiDB/issues/59)
-- PR: (Pending creation)
+- PR: [#60](https://github.com/hami9/LiDB/pull/60)
 - Owner: `agent/antigravity/ag-07-export-history`
 - Worktree: `.worktrees/antigravity/ag-07-export-history`
 - Base commit: `0d08b49` (`agent/antigravity/ag-06-network-ui`, PR #58)
+- Head commit: `346e791`
 - Stacked PR base: `agent/antigravity/ag-06-network-ui`
 - Scope: `apps/lidash/src/config.rs`, `apps/lidash/src/output.rs`, `apps/lidash/src/lib.rs`, `apps/lidash/src/worker.rs`, `apps/lidash/src/tui.rs`, `apps/lidash/tests/cli.rs`, `apps/lidash/README.md`, `docs/DECISIONS.md`
 - Status: `ready_for_review`
