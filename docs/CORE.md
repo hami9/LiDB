@@ -37,12 +37,17 @@ The visible procfs view determines coverage in containers and namespaces. These 
 
 ## Network inventory contracts
 
+The initial `NetworkReport` marks each uncollected source `disabled` with reason
+`source not collected`. Collectors explicitly set availability after a read;
+an untouched empty vector is not evidence of a successful empty table. Adding a
+record does not itself claim that a source read succeeded.
+
 Network interfaces, routes, and socket connections represent structured inventory distinct from numeric counter time-series. The pure `lidb_core::network` module defines bounded, versioned inventory records and reports (`NetworkReport`, schema `0.1`) without filesystem, OS-specific, or network dependencies:
 
 | Record type | Description | Capacity bound | Key invariants |
 | --- | --- | --- | --- |
 | `InterfaceRecord` | Host interface name, operational state (`up`, `down`, `unknown`), optional ifindex, MTU, speed (Mbps), MAC address, and flags | 64 entries | Name and MAC length bounded; ASCII control characters forbidden |
-| `RouteRecord` | Routing entry destination, prefix length, outgoing interface, optional gateway, metric, and scope | 1,024 entries | IPv4 prefix in `0..=32`, IPv6 prefix in `0..=128`; destination and gateway address families must match |
+| `RouteRecord` | Routing entry destination, prefix length, outgoing interface, optional gateway, metric, flags, and source prefix selector (SADR) | 1,024 entries | IPv4 prefix in `0..=32`, IPv6 prefix in `0..=128`; destination, gateway, and source prefix address families must match |
 | `SocketRecord` | Socket protocol (`tcp`, `udp`), state (`listen`, `established`, etc.), local endpoint, optional remote endpoint, inode, and owning PID/process name | 2,048 entries | Local and remote endpoint address families must match |
 
 ### Source availability and empty states

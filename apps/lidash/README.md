@@ -10,6 +10,7 @@ cargo run -p lidash -- --help
 cargo run -p lidash -- snapshot
 cargo run -p lidash -- snapshot --json
 cargo run -p lidash -- doctor --json
+cargo run -p lidash -- routes --json
 cargo run -p lidash -- tui --interval-ms 1000 --no-color
 ```
 
@@ -58,6 +59,22 @@ and 2 for invalid arguments or runtime failure. The JSON `collection_status`
 collection availability; they do not diagnose host or subsystem health.
 Snapshot exits 0 even when some/all source readings are unavailable: callers
 must inspect its metric states. A closed output pipe is handled quietly.
+
+`routes` explicitly reads IPv4/IPv6 routing metadata in the selected procfs view.
+Its route-only JSON schema `0.1` includes `mode`, `clock_source`, `monotonic_ns`,
+`collection_duration_ns`, stable `v4_source`/`v6_source` IDs, independent source
+states, retained records and `dropped_routes`. Explicit `--proc-root /proc` stays
+`fixture`. Text shows each source's failure reason; an unavailable table is not
+reported as an observed empty table. Exit 0 means the report was written; inspect
+both source states and omissions, just as for snapshot. No connectivity is tested.
+
+Routes can identify local network infrastructure; save/share output deliberately.
+The timestamp shares the owning collector's clock with snapshots and cannot be
+compared across runs. Reads are sequential and synchronous, with no hard read
+deadline. The procfs view is neither a complete policy-routing lookup nor proof
+of host-wide visibility in a container. Namespace identity is not captured yet.
+Route selector/flag semantics and temporary parser retention remain a separately
+tracked follow-up before routing completeness is claimed.
 
 ```bash
 cargo test -p lidash

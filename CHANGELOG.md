@@ -4,6 +4,12 @@ All notable changes will be documented here, following [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Route report integrity
+
+- Preserve live/fixture provenance, schema, source IDs and collector-local batch timing in route JSON; show independent source failure reasons and distinguish failed reads from observed empty tables in text.
+- Preserve upstream omission counts when converting route reports; reject known context mismatch or lossy family-state collapse. Mark uncollected network tables explicitly disabled instead of available.
+- Keep snapshot JSON 0.1 unchanged; document the pre-stable route API migration and remaining parser/namespace/read-deadline limits.
+
 ### Linux Core
 
 - Add versioned host snapshots with exact counters, source timestamps, explicit availability and bounded memory.

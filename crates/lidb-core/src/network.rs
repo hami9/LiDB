@@ -33,7 +33,7 @@ pub const MAX_MAC_ADDRESS_CHARS: usize = 32;
 pub const MAX_EXPLANATION_CHARS: usize = 512;
 
 /// Network address family.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AddressFamily {
     /// IPv4 (32-bit addresses, prefix 0..=32).
@@ -237,7 +237,7 @@ impl InterfaceRecord {
 }
 
 /// A structured routing table entry.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct RouteRecord {
     destination: IpAddr,
     prefix_len: u8,
@@ -245,6 +245,9 @@ pub struct RouteRecord {
     interface: String,
     metric: Option<u32>,
     family: AddressFamily,
+    source_prefix: Option<IpAddr>,
+    source_prefix_len: Option<u8>,
+    flags: Option<u32>,
 }
 
 impl RouteRecord {
@@ -285,6 +288,9 @@ impl RouteRecord {
             interface,
             metric: None,
             family,
+            source_prefix: None,
+            source_prefix_len: None,
+            flags: None,
         })
     }
 
@@ -305,6 +311,47 @@ impl RouteRecord {
     #[must_use]
     pub const fn with_metric(mut self, metric: u32) -> Self {
         self.metric = Some(metric);
+        self
+    }
+
+    /// Attaches an optional source prefix selector (for source-specific routing / SADR).
+    pub fn with_source_prefix(
+        mut self,
+        source: IpAddr,
+        prefix_len: u8,
+    ) -> Result<Self, NetworkError> {
+        let source_family = match source {
+            IpAddr::V4(_) => {
+                if prefix_len > 32 {
+                    return Err(NetworkError::InvalidPrefixLen {
+                        family: AddressFamily::Ipv4,
+                        prefix_len,
+                    });
+                }
+                AddressFamily::Ipv4
+            }
+            IpAddr::V6(_) => {
+                if prefix_len > 128 {
+                    return Err(NetworkError::InvalidPrefixLen {
+                        family: AddressFamily::Ipv6,
+                        prefix_len,
+                    });
+                }
+                AddressFamily::Ipv6
+            }
+        };
+        if source_family != self.family {
+            return Err(NetworkError::AddressFamilyMismatch);
+        }
+        self.source_prefix = Some(source);
+        self.source_prefix_len = Some(prefix_len);
+        Ok(self)
+    }
+
+    /// Attaches kernel route flags.
+    #[must_use]
+    pub const fn with_flags(mut self, flags: u32) -> Self {
+        self.flags = Some(flags);
         self
     }
 
@@ -342,6 +389,24 @@ impl RouteRecord {
     #[must_use]
     pub const fn family(&self) -> AddressFamily {
         self.family
+    }
+
+    /// Source prefix IP address for source-specific routing (SADR), or `None`.
+    #[must_use]
+    pub const fn source_prefix(&self) -> Option<IpAddr> {
+        self.source_prefix
+    }
+
+    /// Source prefix length in bits, or `None`.
+    #[must_use]
+    pub const fn source_prefix_len(&self) -> Option<u8> {
+        self.source_prefix_len
+    }
+
+    /// Kernel route flags, or `None`.
+    #[must_use]
+    pub const fn flags(&self) -> Option<u32> {
+        self.flags
     }
 }
 
@@ -619,7 +684,7 @@ pub struct NetworkReport {
 }
 
 impl NetworkReport {
-    /// Creates an initial network report; all sources default to `Available`.
+    /// Creates a report with uncollected sources explicitly `Disabled`.
     #[must_use]
     pub fn new(monotonic_ns: u64, collection_duration_ns: u64, mode: SnapshotMode) -> Self {
         Self {
@@ -629,9 +694,9 @@ impl NetworkReport {
             collection_duration_ns,
             mode,
             namespace: None,
-            interfaces_status: SourceAvailability::Available,
-            routes_status: SourceAvailability::Available,
-            sockets_status: SourceAvailability::Available,
+            interfaces_status: SourceAvailability::Disabled("source not collected".into()),
+            routes_status: SourceAvailability::Disabled("source not collected".into()),
+            sockets_status: SourceAvailability::Disabled("source not collected".into()),
             interfaces: Vec::new(),
             routes: Vec::new(),
             sockets: Vec::new(),
@@ -661,6 +726,11 @@ impl NetworkReport {
     /// Sets the source availability status for routes.
     pub fn set_routes_status(&mut self, status: SourceAvailability) {
         self.routes_status = status;
+    }
+
+    /// Preserve upstream omissions in addition to this report's own capacity drops.
+    pub fn record_dropped_routes(&mut self, count: u64) {
+        self.dropped_routes = self.dropped_routes.saturating_add(count);
     }
 
     /// Sets the source availability status for sockets.
@@ -800,6 +870,10 @@ impl NetworkReport {
 /// Errors returned when validating or constructing network records.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetworkError {
+    /// An imported report's known mode, batch window or namespace does not match.
+    ReportContextMismatch,
+    /// Independent route-family states cannot fit one status without losing evidence.
+    RouteSourceStatusMismatch,
     /// A table capacity limit was exceeded.
     Capacity(&'static str),
     /// An identifier string was empty.
@@ -829,6 +903,10 @@ pub enum NetworkError {
 impl fmt::Display for NetworkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ReportContextMismatch => f.write_str("network report context mismatch"),
+            Self::RouteSourceStatusMismatch => {
+                f.write_str("independent route source states must be retained")
+            }
             Self::Capacity(table) => write!(f, "network report table capacity exceeded: {table}"),
             Self::EmptyIdentifier(field) => write!(f, "network field must not be empty: {field}"),
             Self::StringTooLong { field, max } => {
@@ -860,6 +938,27 @@ impl Error for NetworkError {}
 mod tests {
     use super::*;
     use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn uncollected_tables_are_not_successful_empty_tables() {
+        let mut report = NetworkReport::new(0, 0, SnapshotMode::Fixture);
+        for status in [
+            report.interfaces_status(),
+            report.routes_status(),
+            report.sockets_status(),
+        ] {
+            assert_eq!(status.as_str(), "disabled");
+            assert_eq!(status.reason(), Some("source not collected"));
+        }
+        report.record_dropped_routes(u64::MAX);
+        report.record_dropped_routes(1);
+        assert_eq!(report.dropped_routes(), u64::MAX);
+        assert_eq!(report.dropped_records(), u64::MAX);
+        assert_eq!(
+            serde_json::to_value(report).unwrap()["dropped_routes"].as_u64(),
+            Some(u64::MAX)
+        );
+    }
 
     #[test]
     fn address_family_names_and_display() {
@@ -1104,5 +1203,94 @@ mod tests {
         assert!(json.contains("\"local_port\":22"));
         assert!(json.contains("\"state\":\"listen\""));
         assert!(json.contains("\"dropped_interfaces\":0"));
+    }
+
+    #[test]
+    fn route_record_source_prefix_and_flags() {
+        use std::net::{Ipv4Addr, Ipv6Addr};
+
+        let v6_dest = IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0));
+        let v6_src = IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 1, 0, 0, 0, 0, 0));
+        let v4_dest = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 0));
+        let v4_src = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0));
+
+        // Valid IPv6 SADR route
+        let route = RouteRecord::new(v6_dest, 32, "eth0")
+            .unwrap()
+            .with_source_prefix(v6_src, 64)
+            .unwrap()
+            .with_flags(0x00000001);
+
+        assert_eq!(route.destination(), v6_dest);
+        assert_eq!(route.prefix_len(), 32);
+        assert_eq!(route.source_prefix(), Some(v6_src));
+        assert_eq!(route.source_prefix_len(), Some(64));
+        assert_eq!(route.flags(), Some(1));
+
+        // Source prefix family mismatch rejected
+        let mismatch = RouteRecord::new(v6_dest, 32, "eth0")
+            .unwrap()
+            .with_source_prefix(v4_src, 24);
+        assert_eq!(mismatch, Err(NetworkError::AddressFamilyMismatch));
+
+        let mismatch_v4 = RouteRecord::new(v4_dest, 24, "eth0")
+            .unwrap()
+            .with_source_prefix(v6_src, 64);
+        assert_eq!(mismatch_v4, Err(NetworkError::AddressFamilyMismatch));
+
+        // Invalid source prefix lengths rejected
+        let v4_bad_len = RouteRecord::new(v4_dest, 24, "eth0")
+            .unwrap()
+            .with_source_prefix(v4_src, 33);
+        assert_eq!(
+            v4_bad_len,
+            Err(NetworkError::InvalidPrefixLen {
+                family: AddressFamily::Ipv4,
+                prefix_len: 33,
+            })
+        );
+
+        let v6_bad_len = RouteRecord::new(v6_dest, 32, "eth0")
+            .unwrap()
+            .with_source_prefix(v6_src, 129);
+        assert_eq!(
+            v6_bad_len,
+            Err(NetworkError::InvalidPrefixLen {
+                family: AddressFamily::Ipv6,
+                prefix_len: 129,
+            })
+        );
+    }
+
+    #[test]
+    fn route_record_ordering_and_hashing() {
+        use std::collections::BTreeSet;
+        use std::net::Ipv6Addr;
+
+        let v6_dest = IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0));
+        let v6_src1 = IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 1, 0, 0, 0, 0, 0));
+        let v6_src2 = IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 2, 0, 0, 0, 0, 0));
+
+        let r1 = RouteRecord::new(v6_dest, 32, "eth0")
+            .unwrap()
+            .with_source_prefix(v6_src1, 64)
+            .unwrap()
+            .with_flags(1);
+
+        let r2 = RouteRecord::new(v6_dest, 32, "eth0")
+            .unwrap()
+            .with_source_prefix(v6_src2, 64)
+            .unwrap()
+            .with_flags(1);
+
+        // Different source prefixes must NOT be equal and must order cleanly
+        assert_ne!(r1, r2);
+        assert!(r1 < r2);
+
+        let mut set = BTreeSet::new();
+        assert!(set.insert(r1.clone()));
+        assert!(set.insert(r2.clone()));
+        assert!(!set.insert(r1.clone())); // Duplicate rejected
+        assert_eq!(set.len(), 2);
     }
 }
