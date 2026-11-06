@@ -413,33 +413,48 @@ fn sockets_command_reads_fixture_sockets() {
   sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n\
    0: 0100007F:0035 00000000:0000 07 00000000:00000000 00:00000000 00000000     0        0 23456 2 0000000000000000 0\n\
 ";
+    let tcp6_fixture = "\
+  sl  local_address                         rem_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
+   0: 00000000000000000000000001000000:0050 00000000000000000000000001000000:01BB 01 00000000:00000000 00:00000000 00000000     0        0 34567 1 0000000000000000 100 0 0 10 0\n\
+";
     fs::write(net_dir.join("tcp"), tcp_fixture).unwrap();
     fs::write(net_dir.join("udp"), udp_fixture).unwrap();
+    fs::write(net_dir.join("tcp6"), tcp6_fixture).unwrap();
 
     let output = fixture.run(&["sockets", "--json"]);
     assert!(output.status.success());
     let data = json(&output);
     assert_eq!(data["tcp_v4_status"]["status"], "available");
+    assert_eq!(data["tcp_v6_status"]["status"], "available");
     assert_eq!(data["udp_v4_status"]["status"], "available");
     assert_eq!(data["mode"], "fixture");
     assert_eq!(data["schema_version"], "0.1");
 
     let sockets = data["sockets"].as_array().unwrap();
-    assert_eq!(sockets.len(), 2);
+    assert_eq!(sockets.len(), 3);
     assert_eq!(sockets[0]["protocol"], "tcp");
     assert_eq!(sockets[0]["local_port"], 80);
     assert_eq!(sockets[0]["state"], "listen");
     assert_eq!(sockets[0]["inode"], 12345);
 
-    assert_eq!(sockets[1]["protocol"], "udp");
-    assert_eq!(sockets[1]["local_address"], "127.0.0.1");
-    assert_eq!(sockets[1]["local_port"], 53);
-    assert_eq!(sockets[1]["inode"], 23456);
+    assert_eq!(sockets[1]["protocol"], "tcp");
+    assert_eq!(sockets[1]["local_address"], "::1");
+    assert_eq!(sockets[1]["local_port"], 80);
+    assert_eq!(sockets[1]["remote_address"], "::1");
+    assert_eq!(sockets[1]["remote_port"], 443);
+    assert_eq!(sockets[1]["inode"], 34567);
+
+    assert_eq!(sockets[2]["protocol"], "udp");
+    assert_eq!(sockets[2]["local_address"], "127.0.0.1");
+    assert_eq!(sockets[2]["local_port"], 53);
+    assert_eq!(sockets[2]["inode"], 23456);
 
     let text = String::from_utf8(fixture.run(&["sockets"]).stdout).unwrap();
     assert!(text.contains("LiDB fixture sockets"));
     assert!(text.contains("tcp  0.0.0.0:80"));
     assert!(text.contains("state:listen ino:12345"));
+    assert!(text.contains("tcp  [::1]:80 -> [::1]:443"));
+    assert!(text.contains("state:established ino:34567"));
     assert!(text.contains("udp  127.0.0.1:53"));
     assert!(text.contains("state:closed ino:23456"));
 }

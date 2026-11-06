@@ -184,6 +184,13 @@ pub fn interfaces_text(report: &lidb_collect::InterfaceReport) -> String {
     out
 }
 
+fn format_socket_endpoint(addr: std::net::IpAddr, port: u16) -> String {
+    match addr {
+        std::net::IpAddr::V4(v4) => format!("{v4}:{port}"),
+        std::net::IpAddr::V6(v6) => format!("[{v6}]:{port}"),
+    }
+}
+
 pub fn sockets_text(report: &lidb_collect::SocketReport) -> String {
     let mut out = format!(
         "LiDB {} sockets | collector_monotonic={}ns | collection={}ns | tcp4: {} | tcp6: {} | udp4: {} | udp6: {} | dropped={}\n",
@@ -209,7 +216,7 @@ pub fn sockets_text(report: &lidb_collect::SocketReport) -> String {
     if !report.sockets.is_empty() {
         for socket in &report.sockets {
             let remote_text = match (socket.remote_address(), socket.remote_port()) {
-                (Some(addr), Some(port)) => format!(" -> {addr}:{port}"),
+                (Some(addr), Some(port)) => format!(" -> {}", format_socket_endpoint(addr, port)),
                 _ => String::new(),
             };
             let ino_text = match socket.inode() {
@@ -218,10 +225,9 @@ pub fn sockets_text(report: &lidb_collect::SocketReport) -> String {
             };
             let _ = writeln!(
                 out,
-                "{:<4} {}:{}{:<16} state:{}{}",
+                "{:<4} {}{:<16} state:{}{}",
                 socket.protocol().as_str(),
-                socket.local_address(),
-                socket.local_port(),
+                format_socket_endpoint(socket.local_address(), socket.local_port()),
                 remote_text,
                 socket.state().as_str(),
                 ino_text
