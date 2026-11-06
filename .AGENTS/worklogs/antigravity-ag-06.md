@@ -2,10 +2,11 @@
 
 - Task ID: `AG-06`
 - Issue: [#57](https://github.com/hami9/LiDB/issues/57)
-- PR: Pending
+- PR: [#58](https://github.com/hami9/LiDB/pull/58)
 - Owner: `agent/antigravity/ag-06-network-ui`
 - Worktree: `.worktrees/antigravity/ag-06-network-ui`
 - Base commit: `2cddeee` (`agent/antigravity/ag-05-sockets`, PR #56)
+- Head commit: `91f2d27`
 - Stacked PR base: `agent/antigravity/ag-05-sockets`
 - Scope: `crates/lidb-collect/src/lib.rs`, `crates/lidb-collect/src/tests.rs`, `crates/lidb-collect/README.md`, `crates/lidb-core/src/network.rs`, `apps/lidash/src/config.rs`, `apps/lidash/src/output.rs`, `apps/lidash/src/lib.rs`, `apps/lidash/src/worker.rs`, `apps/lidash/src/tui.rs`, `apps/lidash/tests/cli.rs`, `apps/lidash/README.md`, `docs/DECISIONS.md`
 - Status: `ready_for_review`
@@ -63,3 +64,19 @@
 
 6. **Testing (`crates/lidb-collect/src/tests.rs`, `apps/lidash/src/tui.rs`, `apps/lidash/tests/cli.rs`)**:
    - Added unit and integration tests across collector, TUI, and CLI binary.
+
+## Verification
+
+- `cargo fmt --all -- --check`: PASS
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+- `cargo test --workspace --locked --all-targets`: PASS (99 tests passed)
+- `python scripts/check_docs.py`: PASS (140 local Markdown links checked)
+- GitHub Actions CI (Run [#42227574362](https://github.com/hami9/LiDB/actions/runs/42227574362)):
+  - `CI Gate`: PASS
+  - `Rust (x86_64)`: PASS
+  - `Rust (aarch64)`: PASS
+  - `Worktree Windows smoke`: PASS
+  - `CodeQL (Rust & Actions)`: PASS
+  - `Docs and policy`: PASS
+  - `markdown-links`: PASS
+
