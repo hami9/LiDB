@@ -109,3 +109,25 @@ Rust 1.85 is the selected minimum toolchain for the runnable foundation. Record 
 **Alternatives:** Shelling out to `ip link` introduces subprocess execution, shell injection risks, and external dependencies. Loosening fixture symlink checks would allow path traversal vulnerabilities.
 
 **Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is in [issue #53](../.AGENTS/worklogs/antigravity-ag-04.md).
+
+## ADR-028 — read-only TCP and UDP socket observations (2026-11-06)
+
+**Status:** implemented proposal in issue #55 (Task AG-05), explicitly stacked on PR #54 (`agent/antigravity/ag-04-interfaces`).
+
+**Context:** Operators need read-only network socket visibility (protocol, local and remote endpoints, connection states, and socket inodes) across IPv4 and IPv6 without requiring netlink, root privileges, or external network tools (`ss`, `netstat`). Linux exposes TCP and UDP sockets in `/proc/net/{tcp,tcp6,udp,udp6}`. Socket collection must remain strictly bounded, truthful when sources fail or are denied, and respectful of operator privacy boundaries (no socket-to-PID mapping or process environment inspection).
+
+**Decision:**
+1. Implement `lidb-collect::socket` module parsing `/proc/net/tcp`, `/proc/net/tcp6`, `/proc/net/udp`, and `/proc/net/udp6` into structured `SocketRecord` entries.
+2. Parse IPv4 addresses from 8-hex little-endian procfs representations into `IpAddr::V4`.
+3. Parse IPv6 addresses from four 32-bit words formatted in host byte order, converting them to canonical network octets via `.to_le_bytes()`.
+4. Parse connection states via standard Linux TCP state mappings into `SocketState`.
+5. Map unconnected endpoints (`0.0.0.0:0` or `:::0`) to `remote_address: None` and `remote_port: None`.
+6. Enforce strict privacy: socket collection reads only metadata from procfs network tables; it never inspects `/proc/<pid>` or attempts to correlate sockets to PIDs.
+7. Enforce `MAX_NETWORK_SOCKETS = 2048` capacity bounds, tracking excess records in `dropped_sockets`. Validate malformed overflow records even when capacity is exceeded.
+8. Distinguish empty tables (`Available` with 0 records) from missing or permission-denied sources.
+9. Expose `SocketReport` (schema `0.1`) with `populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError>`.
+10. Add CLI `sockets` command (aliases: `socket`, `sock`) and `--json` format to `apps/lidash`.
+
+**Alternatives:** Shelling out to `ss` or `lsof` requires external binaries and privileges, and scanning `/proc/<pid>/fd` violates privacy constraints and risks high overhead.
+
+**Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is recorded in [issue #55](../.AGENTS/worklogs/antigravity-ag-05.md).

@@ -583,6 +583,49 @@ fn live_linux_smoke_reads_real_routes() {
 }
 
 #[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn live_linux_smoke_reads_real_sockets() {
+    let collector = LinuxCollector::new("/proc");
+    let sockets = collector.sockets();
+    assert_eq!(sockets.mode, SnapshotMode::Live);
+    assert_eq!(sockets.schema_version, "0.1");
+    assert_eq!(sockets.clock_source, "collector_monotonic");
+    assert_eq!(sockets.tcp_v4_source, "procfs/net/tcp");
+    assert_eq!(sockets.tcp_v6_source, "procfs/net/tcp6");
+    assert_eq!(sockets.udp_v4_source, "procfs/net/udp");
+    assert_eq!(sockets.udp_v6_source, "procfs/net/udp6");
+    assert!(matches!(
+        sockets.consolidated_status(),
+        lidb_core::network::SourceAvailability::Available
+            | lidb_core::network::SourceAvailability::Unsupported(_)
+            | lidb_core::network::SourceAvailability::PermissionDenied(_)
+    ));
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn live_linux_smoke_reads_real_interfaces() {
+    let collector = LinuxCollector::new("/proc");
+    let ifaces = collector.interfaces();
+    assert_eq!(ifaces.mode, SnapshotMode::Live);
+    assert_eq!(ifaces.schema_version, "0.1");
+    assert_eq!(ifaces.clock_source, "collector_monotonic");
+    assert_eq!(ifaces.source, "sysfs/class/net");
+    assert!(matches!(
+        ifaces.status,
+        lidb_core::network::SourceAvailability::Available
+            | lidb_core::network::SourceAvailability::Unsupported(_)
+            | lidb_core::network::SourceAvailability::PermissionDenied(_)
+    ));
+}
+
+#[test]
 fn routes_and_snapshots_use_one_collector_clock() {
     let mut collector = LinuxCollector::new("/nonexistent-lidb-fixture");
     collector.started = Instant::now() - std::time::Duration::from_secs(1);
@@ -593,6 +636,32 @@ fn routes_and_snapshots_use_one_collector_clock() {
     assert!(before.monotonic_ns() <= routes.monotonic_ns);
     assert!(routes.monotonic_ns <= after.monotonic_ns());
     assert!(routes.collection_duration_ns <= after.monotonic_ns() - routes.monotonic_ns);
+}
+
+#[test]
+fn sockets_and_snapshots_use_one_collector_clock() {
+    let mut collector = LinuxCollector::new("/nonexistent-lidb-fixture");
+    collector.started = Instant::now() - std::time::Duration::from_secs(1);
+    let before = collector.sample();
+    let sockets = collector.sockets();
+    let after = collector.sample();
+    assert_eq!(sockets.mode, SnapshotMode::Fixture);
+    assert!(before.monotonic_ns() <= sockets.monotonic_ns);
+    assert!(sockets.monotonic_ns <= after.monotonic_ns());
+    assert!(sockets.collection_duration_ns <= after.monotonic_ns() - sockets.monotonic_ns);
+}
+
+#[test]
+fn interfaces_and_snapshots_use_one_collector_clock() {
+    let mut collector = LinuxCollector::new("/nonexistent-lidb-fixture");
+    collector.started = Instant::now() - std::time::Duration::from_secs(1);
+    let before = collector.sample();
+    let ifaces = collector.interfaces();
+    let after = collector.sample();
+    assert_eq!(ifaces.mode, SnapshotMode::Fixture);
+    assert!(before.monotonic_ns() <= ifaces.monotonic_ns);
+    assert!(ifaces.monotonic_ns <= after.monotonic_ns());
+    assert!(ifaces.collection_duration_ns <= after.monotonic_ns() - ifaces.monotonic_ns);
 }
 
 #[test]
@@ -610,6 +679,16 @@ fn other_platforms_report_unsupported_without_reading_fixtures() {
     let routes = collector.routes();
     assert!(matches!(
         routes.consolidated_status(),
+        lidb_core::network::SourceAvailability::Unsupported(_)
+    ));
+    let sockets = collector.sockets();
+    assert!(matches!(
+        sockets.consolidated_status(),
+        lidb_core::network::SourceAvailability::Unsupported(_)
+    ));
+    let ifaces = collector.interfaces();
+    assert!(matches!(
+        ifaces.status,
         lidb_core::network::SourceAvailability::Unsupported(_)
     ));
 }

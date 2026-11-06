@@ -379,3 +379,116 @@ fn interfaces_empty_missing_and_denied_sources_are_distinct() {
         assert_eq!(json(&denied)["status"]["status"], "permission_denied");
     }
 }
+
+#[test]
+fn sockets_command_runs_cleanly_on_all_platforms() {
+    let output = binary(&["sockets", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["schema_version"], "0.1");
+    assert!(data.get("tcp_v4_status").is_some());
+    assert!(data.get("tcp_v6_status").is_some());
+    assert!(data.get("udp_v4_status").is_some());
+    assert!(data.get("udp_v6_status").is_some());
+    assert!(data.get("sockets").is_some());
+    assert!(data.get("dropped_sockets").is_some());
+    assert_eq!(data["mode"], "live");
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn sockets_command_reads_fixture_sockets() {
+    let fixture = Fixture::new();
+    let net_dir = fixture.0.join("net");
+    fs::create_dir_all(&net_dir).unwrap();
+
+    let tcp_fixture = "\
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
+   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 12345 1 0000000000000000 100 0 0 10 0\n\
+";
+    let udp_fixture = "\
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n\
+   0: 0100007F:0035 00000000:0000 07 00000000:00000000 00:00000000 00000000     0        0 23456 2 0000000000000000 0\n\
+";
+    let tcp6_fixture = "\
+  sl  local_address                         rem_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
+   0: 00000000000000000000000001000000:0050 00000000000000000000000001000000:01BB 01 00000000:00000000 00:00000000 00000000     0        0 34567 1 0000000000000000 100 0 0 10 0\n\
+";
+    fs::write(net_dir.join("tcp"), tcp_fixture).unwrap();
+    fs::write(net_dir.join("udp"), udp_fixture).unwrap();
+    fs::write(net_dir.join("tcp6"), tcp6_fixture).unwrap();
+
+    let output = fixture.run(&["sockets", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["tcp_v4_status"]["status"], "available");
+    assert_eq!(data["tcp_v6_status"]["status"], "available");
+    assert_eq!(data["udp_v4_status"]["status"], "available");
+    assert_eq!(data["mode"], "fixture");
+    assert_eq!(data["schema_version"], "0.1");
+
+    let sockets = data["sockets"].as_array().unwrap();
+    assert_eq!(sockets.len(), 3);
+    assert_eq!(sockets[0]["protocol"], "tcp");
+    assert_eq!(sockets[0]["local_port"], 80);
+    assert_eq!(sockets[0]["state"], "listen");
+    assert_eq!(sockets[0]["inode"], 12345);
+
+    assert_eq!(sockets[1]["protocol"], "tcp");
+    assert_eq!(sockets[1]["local_address"], "::1");
+    assert_eq!(sockets[1]["local_port"], 80);
+    assert_eq!(sockets[1]["remote_address"], "::1");
+    assert_eq!(sockets[1]["remote_port"], 443);
+    assert_eq!(sockets[1]["inode"], 34567);
+
+    assert_eq!(sockets[2]["protocol"], "udp");
+    assert_eq!(sockets[2]["local_address"], "127.0.0.1");
+    assert_eq!(sockets[2]["local_port"], 53);
+    assert_eq!(sockets[2]["inode"], 23456);
+
+    let text = String::from_utf8(fixture.run(&["sockets"]).stdout).unwrap();
+    assert!(text.contains("LiDB fixture sockets"));
+    assert!(text.contains("tcp  0.0.0.0:80"));
+    assert!(text.contains("state:listen ino:12345"));
+    assert!(text.contains("tcp  [::1]:80 -> [::1]:443"));
+    assert!(text.contains("state:established ino:34567"));
+    assert!(text.contains("udp  127.0.0.1:53"));
+    assert!(text.contains("state:closed ino:23456"));
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn sockets_empty_missing_and_denied_sources_are_distinct() {
+    let fixture = Fixture::new();
+    let text = String::from_utf8(fixture.run(&["sockets"]).stdout).unwrap();
+    assert!(text.contains("sockets table unavailable"));
+
+    let net_dir = fixture.0.join("net");
+    fs::create_dir_all(&net_dir).unwrap();
+    fs::write(net_dir.join("tcp"), "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n").unwrap();
+    fs::write(net_dir.join("tcp6"), "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n").unwrap();
+    fs::write(net_dir.join("udp"), "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n").unwrap();
+    fs::write(net_dir.join("udp6"), "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n").unwrap();
+
+    let empty = String::from_utf8(fixture.run(&["sockets"]).stdout).unwrap();
+    assert!(empty.contains("no sockets observed"));
+    assert!(!empty.contains("sockets table unavailable"));
+
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let tcp_path = net_dir.join("tcp");
+    if fs::metadata(&tcp_path).unwrap().uid() != 0 {
+        fs::set_permissions(&tcp_path, fs::Permissions::from_mode(0o0)).unwrap();
+        let denied = fixture.run(&["sockets", "--json"]);
+        fs::set_permissions(&tcp_path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(
+            json(&denied)["tcp_v4_status"]["status"],
+            "permission_denied"
+        );
+    }
+}
