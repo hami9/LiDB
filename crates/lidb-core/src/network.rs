@@ -764,7 +764,7 @@ impl SourceAvailability {
 }
 
 /// A versioned, bounded report of structured Linux network state.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NetworkReport {
     schema_version: &'static str,
     clock_source: &'static str,

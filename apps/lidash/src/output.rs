@@ -184,7 +184,7 @@ pub fn interfaces_text(report: &lidb_collect::InterfaceReport) -> String {
     out
 }
 
-fn format_socket_endpoint(addr: std::net::IpAddr, port: u16) -> String {
+pub(crate) fn format_socket_endpoint(addr: std::net::IpAddr, port: u16) -> String {
     match addr {
         std::net::IpAddr::V4(v4) => format!("{v4}:{port}"),
         std::net::IpAddr::V6(v6) => format!("[{v6}]:{port}"),
@@ -240,6 +240,146 @@ pub fn sockets_text(report: &lidb_collect::SocketReport) -> String {
     } else {
         let _ = writeln!(out, "no sockets retained; report has omissions");
     }
+    out
+}
+
+pub fn network_text(report: &lidb_core::network::NetworkReport) -> String {
+    let ns_text = match report.namespace() {
+        Some(ns) => match ns.inode() {
+            Some(ino) => format!(" | ns: {}[{ino}]", ns.name()),
+            None => format!(" | ns: {}", ns.name()),
+        },
+        None => String::new(),
+    };
+    let mut out = format!(
+        "LiDB {} network | collector_monotonic={}ns | collection={}ns | ifaces: {} | routes: {} | sockets: {}{} | dropped={}\n",
+        mode_name(report.mode()),
+        report.monotonic_ns(),
+        report.collection_duration_ns(),
+        report.interfaces_status().as_str(),
+        report.routes_status().as_str(),
+        report.sockets_status().as_str(),
+        ns_text,
+        report.dropped_records()
+    );
+
+    for (label, status) in [
+        ("interfaces", report.interfaces_status()),
+        ("routes", report.routes_status()),
+        ("sockets", report.sockets_status()),
+    ] {
+        if let Some(reason) = status.reason() {
+            let _ = writeln!(out, "{label}: {} — {reason}", status.as_str());
+        }
+    }
+
+    out.push_str("\n--- Interfaces ---\n");
+    if !report.interfaces().is_empty() {
+        for iface in report.interfaces() {
+            let idx_text = match iface.ifindex() {
+                Some(idx) => format!("{idx}: "),
+                None => String::new(),
+            };
+            let mtu_text = match iface.mtu() {
+                Some(mtu) => format!(" mtu {mtu}"),
+                None => String::new(),
+            };
+            let speed_text = match iface.speed_mbps() {
+                Some(speed) => format!(" speed {speed}Mbps"),
+                None => String::new(),
+            };
+            let mac_text = match iface.mac_address() {
+                Some(mac) => format!(" link/ether {mac}"),
+                None => String::new(),
+            };
+            let flags_text = if !iface.flags().is_empty() {
+                format!(" <{}>", iface.flags().join(","))
+            } else {
+                String::new()
+            };
+            let _ = writeln!(
+                out,
+                "{}{}: state {}{}{}{}{}",
+                idx_text,
+                iface.name(),
+                iface.oper_state().as_str(),
+                flags_text,
+                mtu_text,
+                speed_text,
+                mac_text
+            );
+        }
+    } else if !report.interfaces_status().is_available() {
+        let _ = writeln!(out, "interfaces table unavailable");
+    } else if report.dropped_interfaces() == 0 {
+        let _ = writeln!(out, "no network interfaces observed");
+    } else {
+        let _ = writeln!(out, "no network interfaces retained; report has omissions");
+    }
+
+    out.push_str("\n--- Routes ---\n");
+    if !report.routes().is_empty() {
+        for route in report.routes() {
+            let gw_text = match route.gateway() {
+                Some(gw) => format!(" via {gw}"),
+                None => String::new(),
+            };
+            let metric_text = match route.metric() {
+                Some(metric) => format!(" metric {metric}"),
+                None => String::new(),
+            };
+            let src_text = match (route.source_prefix(), route.source_prefix_len()) {
+                (Some(src), Some(len)) => format!(" from {src}/{len}"),
+                _ => String::new(),
+            };
+            let _ = writeln!(
+                out,
+                "{}/{}{} dev {}{}{}",
+                route.destination(),
+                route.prefix_len(),
+                src_text,
+                route.interface(),
+                gw_text,
+                metric_text
+            );
+        }
+    } else if !report.routes_status().is_available() {
+        let _ = writeln!(out, "routing table unavailable");
+    } else if report.dropped_routes() == 0 {
+        let _ = writeln!(out, "no routing entries observed");
+    } else {
+        let _ = writeln!(out, "no routing entries retained; report has omissions");
+    }
+
+    out.push_str("\n--- Sockets ---\n");
+    if !report.sockets().is_empty() {
+        for socket in report.sockets() {
+            let remote_text = match (socket.remote_address(), socket.remote_port()) {
+                (Some(addr), Some(port)) => format!(" -> {}", format_socket_endpoint(addr, port)),
+                _ => String::new(),
+            };
+            let ino_text = match socket.inode() {
+                Some(ino) => format!(" ino:{ino}"),
+                None => String::new(),
+            };
+            let _ = writeln!(
+                out,
+                "{:<4} {}{:<16} state:{}{}",
+                socket.protocol().as_str(),
+                format_socket_endpoint(socket.local_address(), socket.local_port()),
+                remote_text,
+                socket.state().as_str(),
+                ino_text
+            );
+        }
+    } else if !report.sockets_status().is_available() {
+        let _ = writeln!(out, "sockets table unavailable");
+    } else if report.dropped_sockets() == 0 {
+        let _ = writeln!(out, "no sockets observed");
+    } else {
+        let _ = writeln!(out, "no sockets retained; report has omissions");
+    }
+
     out
 }
 

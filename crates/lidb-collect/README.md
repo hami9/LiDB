@@ -144,6 +144,12 @@ The generated `SocketReport` uses socket-only JSON schema `0.1`, retains live/fi
 - Empty tables return `SourceAvailability::Available` with zero records, distinguishing empty sockets from missing or permission-denied files.
 - Supports atomic population into `NetworkReport` via `populate_into(&self, report: &mut NetworkReport) -> Result<(), NetworkError>`.
 
+## Unified network collection
+
+`collector.network()` unifies interface metadata, network namespace identity, IPv4 and IPv6 routing tables, and TCP/UDP socket observations into a single `NetworkReport`.
+
+The generated `NetworkReport` uses network schema `0.1`, retains live/fixture mode, namespace attribution, individual source availability states (`interfaces_status`, `routes_status`, `sockets_status`), unified collector-local monotonic timestamp, collection duration, and table-specific omission counters (`dropped_interfaces`, `dropped_routes`, `dropped_sockets`).
+
 ## Fixtures and validation
 
 The exact `/proc` root selects live mode. Other explicit roots select fixture

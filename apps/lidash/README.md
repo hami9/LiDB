@@ -13,6 +13,7 @@ cargo run -p lidash -- doctor --json
 cargo run -p lidash -- routes --json
 cargo run -p lidash -- interfaces --json
 cargo run -p lidash -- sockets --json
+cargo run -p lidash -- network --json
 cargo run -p lidash -- tui --interval-ms 1000 --no-color
 ```
 
@@ -36,8 +37,8 @@ in JSON. Source timestamps use one collector-local monotonic clock and cannot be
 compared between different runs or hosts.
 
 The TUI is monochrome by default, accepts `--no-color`, and adapts to narrow
-windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, or `Left`/`Right` switches
-between the full metric list and the CPU & Memory overview tab; `Space` pauses
+windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, `3`, or `Left`/`Right` switches
+between the full metric list (`1: Metrics`), the CPU & Memory overview tab (`2: CPU/Mem`), and the Network overview tab (`3: Network`); `Space` pauses
 displayed readings; `?` or `h` toggles help; Enter opens the full details of the
 first visible metric on the Metrics tab. `Up`/`Down` or `j`/`k` scroll metrics, PageUp/PageDown scroll ten
 metrics or scroll wrapped text while help/details are open,

@@ -16,6 +16,7 @@ pub mod route;
 pub mod socket;
 
 pub use interface::InterfaceReport;
+pub use lidb_core::network::NetworkReport;
 pub use route::RouteReport;
 pub use socket::SocketReport;
 
@@ -143,6 +144,47 @@ impl LinuxCollector {
             duration_ns(began.duration_since(self.started)),
             began,
         )
+    }
+
+    /// Collects a unified report of network interfaces, routing tables, and socket endpoints.
+    ///
+    /// Sub-collections share the same collector-local monotonic timestamp and are
+    /// bounded according to core network limits.
+    #[must_use]
+    pub fn network(&self) -> NetworkReport {
+        let began = Instant::now();
+        let monotonic_ns = duration_ns(began.duration_since(self.started));
+        let routes = route::collect_routes_at(&self.proc_root, self.mode, monotonic_ns, began);
+        let interfaces = interface::collect_interfaces_at(
+            &self.proc_root,
+            &self.sys_root,
+            self.mode,
+            monotonic_ns,
+            began,
+        );
+        let sockets = socket::collect_sockets_at(&self.proc_root, self.mode, monotonic_ns, began);
+        let duration = duration_ns(began.elapsed());
+
+        let mut report = NetworkReport::new(monotonic_ns, duration, self.mode);
+
+        // Populate routes first while report namespace is None.
+        if let Err(lidb_core::network::NetworkError::RouteSourceStatusMismatch) =
+            routes.populate_into(&mut report)
+        {
+            report.set_routes_status(routes.consolidated_status());
+            report.record_dropped_routes(routes.dropped_routes);
+            for route in &routes.routes {
+                let _ = report.push_route(route.clone());
+            }
+        }
+
+        // Interfaces populate interface records and set report namespace.
+        let _ = interfaces.populate_into(&mut report);
+
+        // Sockets populate socket records.
+        let _ = sockets.populate_into(&mut report);
+
+        report
     }
 
     fn sample_at(&mut self, timestamp: u64) -> Snapshot {

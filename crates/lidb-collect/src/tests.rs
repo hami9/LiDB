@@ -665,6 +665,52 @@ fn interfaces_and_snapshots_use_one_collector_clock() {
 }
 
 #[test]
+fn network_and_snapshots_use_one_collector_clock() {
+    let mut collector = LinuxCollector::new("/nonexistent-lidb-fixture");
+    collector.started = Instant::now() - std::time::Duration::from_secs(1);
+    let before = collector.sample();
+    let net = collector.network();
+    let after = collector.sample();
+    assert_eq!(net.mode(), SnapshotMode::Fixture);
+    assert_eq!(net.schema_version(), "0.1");
+    assert_eq!(net.clock_source(), "collector_monotonic");
+    assert!(before.monotonic_ns() <= net.monotonic_ns());
+    assert!(net.monotonic_ns() <= after.monotonic_ns());
+    assert!(net.collection_duration_ns() <= after.monotonic_ns() - net.monotonic_ns());
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn live_linux_smoke_reads_real_network() {
+    let collector = LinuxCollector::new("/proc");
+    let net = collector.network();
+    assert_eq!(net.mode(), SnapshotMode::Live);
+    assert_eq!(net.schema_version(), "0.1");
+    assert_eq!(net.clock_source(), "collector_monotonic");
+    assert!(matches!(
+        net.interfaces_status(),
+        lidb_core::network::SourceAvailability::Available
+            | lidb_core::network::SourceAvailability::Unsupported(_)
+            | lidb_core::network::SourceAvailability::PermissionDenied(_)
+    ));
+    assert!(matches!(
+        net.routes_status(),
+        lidb_core::network::SourceAvailability::Available
+            | lidb_core::network::SourceAvailability::Unsupported(_)
+            | lidb_core::network::SourceAvailability::PermissionDenied(_)
+    ));
+    assert!(matches!(
+        net.sockets_status(),
+        lidb_core::network::SourceAvailability::Available
+            | lidb_core::network::SourceAvailability::Unsupported(_)
+            | lidb_core::network::SourceAvailability::PermissionDenied(_)
+    ));
+}
+
+#[test]
 #[cfg(not(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
@@ -689,6 +735,19 @@ fn other_platforms_report_unsupported_without_reading_fixtures() {
     let ifaces = collector.interfaces();
     assert!(matches!(
         ifaces.status,
+        lidb_core::network::SourceAvailability::Unsupported(_)
+    ));
+    let net = collector.network();
+    assert!(matches!(
+        net.routes_status(),
+        lidb_core::network::SourceAvailability::Unsupported(_)
+    ));
+    assert!(matches!(
+        net.interfaces_status(),
+        lidb_core::network::SourceAvailability::Unsupported(_)
+    ));
+    assert!(matches!(
+        net.sockets_status(),
         lidb_core::network::SourceAvailability::Unsupported(_)
     ));
 }
