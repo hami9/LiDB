@@ -254,9 +254,15 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, Left/Right: switch between 1:Metrics, 2:CPU/Mem, and 3:Network tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        let help_body = if area.width >= 96 {
+            format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
+        } else {
+            HELP_TEXT.to_string()
+        };
         draw_text(
             frame,
-            "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, Left/Right: switch between 1:Metrics, 2:CPU/Mem, and 3:Network tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            &help_body,
             " Help ",
             &mut view.text_scroll,
             layout[1],
@@ -1068,6 +1074,8 @@ mod tests {
         assert!(render(120, 30, &mut view).contains("PAUSED"));
         view.help = true;
         assert!(render(70, 30, &mut view).contains("sampling continues"));
+        assert!(render(120, 30, &mut view).contains("8888888b"));
+        assert!(!render(70, 30, &mut view).contains("8888888b"));
         for (width, height) in [(0, 0), (1, 1), (20, 4), (35, 7), (120, 30)] {
             let _ = render(width, height, &mut view);
         }

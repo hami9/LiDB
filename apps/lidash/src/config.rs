@@ -1,6 +1,24 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
-pub const HELP: &str = "LiDashBoard — read-only Linux host monitor
+pub const ASCII_LOGO: &str = r#"888      d8b 8888888b.                 888     888888b.                                    888
+888      Y8P 888  "Y88b                888     888  "88b                                   888
+888          888    888                888     888  .88P                                   888
+888      888 888    888  8888b.   .d8888b  88888b.  8888888K.   .d88b.   8888b.  888d888  .d88888
+888      888 888    888      "88b 88K      888 "88b 888  "Y88b d88""88b      "88b 888P"   d88" 888
+888      888 888    888 .d888888 "Y8888b. 888  888 888    888 888  888 .d888888 888     888  888
+888      888 888  .d88P 888  888      X88 888  888 888   d88P Y88..88P 888  888 888     Y88b 888
+88888888 888 8888888P"  "Y888888  88888P' 888  888 8888888P"   "Y88P"  "Y888888 888      "Y88888"#;
+
+pub const HELP: &str = r#"888      d8b 8888888b.                 888     888888b.                                    888
+888      Y8P 888  "Y88b                888     888  "88b                                   888
+888          888    888                888     888  .88P                                   888
+888      888 888    888  8888b.   .d8888b  88888b.  8888888K.   .d88b.   8888b.  888d888  .d88888
+888      888 888    888      "88b 88K      888 "88b 888  "Y88b d88""88b      "88b 888P"   d88" 888
+888      888 888    888 .d888888 "Y8888b. 888  888 888    888 888  888 .d888888 888     888  888
+888      888 888  .d88P 888  888      X88 888  888 888   d88P Y88..88P 888  888 888     Y88b 888
+88888888 888 8888888P"  "Y888888  88888P' 888  888 8888888P"   "Y88P"  "Y888888 888      "Y88888
+
+LiDashBoard — read-only Linux host monitor
 Usage: lidash [snapshot|doctor|routes|interfaces|sockets|network|export|tui] [OPTIONS]
 
 Commands:
@@ -28,7 +46,7 @@ Snapshot/doctor take two samples (default 250ms); TUI defaults to 1000ms.
 Doctor is read-only. Exit: 0 usable (possibly degraded), 1 no available metrics,
 2 invalid arguments or runtime failure. Snapshot preserves unavailable states.
 TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/3/Left/Right tabs, Space pause, [ / ] history, ?/h help, Enter detail, Up/Down scroll.
-";
+"#;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
