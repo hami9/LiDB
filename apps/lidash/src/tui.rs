@@ -9,7 +9,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use lidb_core::{MetricObservation, MetricState, MetricValue, Snapshot};
+use lidb_core::{MetricObservation, MetricState, MetricValue, NetworkReport, Snapshot};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout, Rect},

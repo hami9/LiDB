@@ -260,7 +260,10 @@ mod tests {
     use lidb_core::SnapshotMode;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    fn start(sample: impl FnMut() -> Snapshot + Send + 'static, interval: Duration) -> Worker {
+    fn start(
+        sample: impl FnMut() -> (Snapshot, Option<NetworkReport>) + Send + 'static,
+        interval: Duration,
+    ) -> Worker {
         Worker::start_with_admission(sample, interval, Arc::new(AtomicBool::new(false))).unwrap()
     }
 
@@ -293,7 +296,7 @@ mod tests {
                 sampled.fetch_add(1, Ordering::SeqCst);
                 let _ = entered.send(());
                 let _ = blocked.recv();
-                Snapshot::new(0, 0, SnapshotMode::Fixture)
+                (Snapshot::new(0, 0, SnapshotMode::Fixture), None)
             },
             Duration::from_secs(60),
             Arc::clone(&active),
@@ -301,7 +304,7 @@ mod tests {
         .unwrap();
         started.recv_timeout(Duration::from_secs(2)).unwrap();
         let duplicate = Worker::start_with_admission(
-            || Snapshot::new(0, 0, SnapshotMode::Fixture),
+            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None),
             Duration::from_secs(60),
             Arc::clone(&active),
         );
@@ -327,7 +330,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         // Even after the detached thread returns, no replacement may be started.
         let restart = Worker::start_with_admission(
-            || Snapshot::new(0, 0, SnapshotMode::Fixture),
+            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None),
             Duration::from_secs(60),
             active,
         );
@@ -348,7 +351,7 @@ mod tests {
                 let _keep_until_worker_exit = &finished;
                 entered.send(()).unwrap();
                 let _ = blocked.recv_timeout(Duration::from_secs(2));
-                Snapshot::new(99, 0, SnapshotMode::Fixture)
+                (Snapshot::new(99, 0, SnapshotMode::Fixture), None)
             },
             Duration::from_secs(60),
         );
@@ -357,6 +360,7 @@ mod tests {
             let mut slot = worker.latest.lock().unwrap();
             slot.update = Some(Update {
                 snapshot: Snapshot::new(1, 0, SnapshotMode::Fixture),
+                network: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             });
@@ -406,7 +410,7 @@ mod tests {
             move || {
                 let _keep_until_worker_exit = &guard;
                 let _ = sampled.send(());
-                Snapshot::new(0, 0, SnapshotMode::Fixture)
+                (Snapshot::new(0, 0, SnapshotMode::Fixture), None)
             },
             Duration::from_secs(60),
         );
@@ -444,7 +448,7 @@ mod tests {
         }
         assert_eq!(worker.shutdown().unwrap_err().kind(), io::ErrorKind::Other);
         let mut replacement = Worker::start_with_admission(
-            || Snapshot::new(0, 0, SnapshotMode::Fixture),
+            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None),
             Duration::from_secs(60),
             active,
         )
