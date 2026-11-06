@@ -114,6 +114,76 @@ pub fn routes_text(report: &lidb_collect::RouteReport) -> String {
     out
 }
 
+pub fn interfaces_text(report: &lidb_collect::InterfaceReport) -> String {
+    let ns_text = match &report.namespace {
+        Some(ns) => match ns.inode() {
+            Some(ino) => format!(" | ns: {}[{ino}]", ns.name()),
+            None => format!(" | ns: {}", ns.name()),
+        },
+        None => String::new(),
+    };
+    let mut out = format!(
+        "LiDB {} interfaces | collector_monotonic={}ns | collection={}ns | status: {}{} | dropped={}\n",
+        mode_name(report.mode),
+        report.monotonic_ns,
+        report.collection_duration_ns,
+        report.status.as_str(),
+        ns_text,
+        report.dropped_interfaces
+    );
+    if let Some(reason) = report.status.reason() {
+        let _ = writeln!(
+            out,
+            "{}: {} — {reason}",
+            report.source,
+            report.status.as_str()
+        );
+    }
+    if !report.interfaces.is_empty() {
+        for iface in &report.interfaces {
+            let idx_text = match iface.ifindex() {
+                Some(idx) => format!("{idx}: "),
+                None => String::new(),
+            };
+            let mtu_text = match iface.mtu() {
+                Some(mtu) => format!(" mtu {mtu}"),
+                None => String::new(),
+            };
+            let speed_text = match iface.speed_mbps() {
+                Some(speed) => format!(" speed {speed}Mbps"),
+                None => String::new(),
+            };
+            let mac_text = match iface.mac_address() {
+                Some(mac) => format!(" link/ether {mac}"),
+                None => String::new(),
+            };
+            let flags_text = if !iface.flags().is_empty() {
+                format!(" <{}>", iface.flags().join(","))
+            } else {
+                String::new()
+            };
+            let _ = writeln!(
+                out,
+                "{}{}: state {}{}{}{}{}",
+                idx_text,
+                iface.name(),
+                iface.oper_state().as_str(),
+                flags_text,
+                mtu_text,
+                speed_text,
+                mac_text
+            );
+        }
+    } else if !report.status.is_available() {
+        let _ = writeln!(out, "interfaces table unavailable");
+    } else if report.dropped_interfaces == 0 {
+        let _ = writeln!(out, "no network interfaces observed");
+    } else {
+        let _ = writeln!(out, "no network interfaces retained; report has omissions");
+    }
+    out
+}
+
 #[derive(Serialize)]
 pub struct Failure<'a> {
     metric: &'a str,

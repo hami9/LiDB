@@ -301,3 +301,81 @@ fn routes_empty_failed_and_partial_sources_are_distinct() {
         assert_eq!(json(&denied)["v4_status"]["status"], "permission_denied");
     }
 }
+
+#[test]
+fn interfaces_command_runs_cleanly_on_all_platforms() {
+    let output = binary(&["interfaces", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert!(data.get("schema_version").is_some());
+    assert!(data.get("status").is_some());
+    assert!(data.get("interfaces").is_some());
+    assert!(data.get("dropped_interfaces").is_some());
+    assert_eq!(data["mode"], "live");
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn interfaces_command_reads_fixture_interfaces() {
+    let fixture = Fixture::new();
+    let sys_net = fixture.0.join("sys/class/net");
+    fs::create_dir_all(sys_net.join("eth0")).unwrap();
+    fs::write(sys_net.join("eth0/ifindex"), "2\n").unwrap();
+    fs::write(sys_net.join("eth0/mtu"), "1500\n").unwrap();
+    fs::write(sys_net.join("eth0/operstate"), "up\n").unwrap();
+    fs::write(sys_net.join("eth0/address"), "52:54:00:12:34:56\n").unwrap();
+    fs::write(sys_net.join("eth0/speed"), "1000\n").unwrap();
+    fs::write(sys_net.join("eth0/flags"), "0x1003\n").unwrap();
+
+    let output = fixture.run(&["interfaces", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["status"]["status"], "available");
+    assert_eq!(data["mode"], "fixture");
+    assert_eq!(data["schema_version"], "0.1");
+    let ifaces = data["interfaces"].as_array().unwrap();
+    assert_eq!(ifaces.len(), 1);
+    assert_eq!(ifaces[0]["name"], "eth0");
+    assert_eq!(ifaces[0]["ifindex"], 2);
+    assert_eq!(ifaces[0]["mtu"], 1500);
+    assert_eq!(ifaces[0]["oper_state"], "up");
+    assert_eq!(ifaces[0]["mac_address"], "52:54:00:12:34:56");
+    assert_eq!(ifaces[0]["speed_mbps"], 1000);
+    let flags = ifaces[0]["flags"].as_array().unwrap();
+    assert!(flags.iter().any(|f| f == "UP"));
+    assert!(flags.iter().any(|f| f == "BROADCAST"));
+    assert!(flags.iter().any(|f| f == "MULTICAST"));
+
+    let text = String::from_utf8(fixture.run(&["interfaces"]).stdout).unwrap();
+    assert!(text.contains("LiDB fixture interfaces"));
+    assert!(text.contains("2: eth0: state up <UP,BROADCAST,MULTICAST> mtu 1500 speed 1000Mbps link/ether 52:54:00:12:34:56"));
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn interfaces_empty_missing_and_denied_sources_are_distinct() {
+    let fixture = Fixture::new();
+    let text = String::from_utf8(fixture.run(&["interfaces"]).stdout).unwrap();
+    assert!(text.contains("interfaces table unavailable"));
+    assert!(text.contains("sysfs network class directory is not present"));
+
+    let sys_net = fixture.0.join("sys/class/net");
+    fs::create_dir_all(&sys_net).unwrap();
+    let empty = String::from_utf8(fixture.run(&["interfaces"]).stdout).unwrap();
+    assert!(empty.contains("no network interfaces observed"));
+    assert!(!empty.contains("unavailable"));
+
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    if fs::metadata(&sys_net).unwrap().uid() != 0 {
+        fs::set_permissions(&sys_net, fs::Permissions::from_mode(0o0)).unwrap();
+        let denied = fixture.run(&["interfaces", "--json"]);
+        fs::set_permissions(&sys_net, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(json(&denied)["status"]["status"], "permission_denied");
+    }
+}

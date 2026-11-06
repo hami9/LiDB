@@ -14,7 +14,8 @@ use std::{
 };
 
 pub fn collector(config: &Config) -> LinuxCollector {
-    let collector = LinuxCollector::new(config.proc_root.clone());
+    let collector =
+        LinuxCollector::new(config.proc_root.clone()).with_sys_root(config.sys_root.clone());
     if config.fixture {
         collector.with_fixture_mode()
     } else {
@@ -67,6 +68,16 @@ pub fn execute(config: Config, mut output: impl Write) -> Result<u8, io::Error> 
                 output.write_all(b"\n")?;
             } else {
                 output.write_all(output::routes_text(&report).as_bytes())?;
+            }
+        }
+        Command::Interfaces => {
+            let collector = collector(&config);
+            let report = collector.interfaces();
+            if config.json {
+                serde_json::to_writer(&mut output, &report)?;
+                output.write_all(b"\n")?;
+            } else {
+                output.write_all(output::interfaces_text(&report).as_bytes())?;
             }
         }
     }

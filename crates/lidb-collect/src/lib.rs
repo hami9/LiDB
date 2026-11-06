@@ -6,11 +6,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+/// Bounded, read-only network interface metadata and namespace collection from Linux sysfs and procfs.
+pub mod interface;
 mod parse;
 mod read;
 /// Bounded, read-only IPv4 and IPv6 route collection from Linux procfs.
 pub mod route;
 
+pub use interface::InterfaceReport;
 pub use route::RouteReport;
 
 use lidb_core::{MetricObservation, MetricState, MetricValue, Snapshot, SnapshotMode, Unit};
@@ -34,6 +37,7 @@ pub const MAX_DEVICES: usize = 64;
 /// Linux x86_64 and aarch64. Other targets report `unsupported` without reads.
 pub struct LinuxCollector {
     proc_root: PathBuf,
+    sys_root: PathBuf,
     mode: SnapshotMode,
     started: Instant,
     previous_cpu: Option<(u64, CpuCounters)>,
@@ -51,14 +55,29 @@ impl LinuxCollector {
         } else {
             SnapshotMode::Fixture
         };
+        let sys_root = if mode == SnapshotMode::Live {
+            PathBuf::from("/sys")
+        } else if proc_root.join("sys").is_dir() {
+            proc_root.join("sys")
+        } else {
+            proc_root.clone()
+        };
         Self {
             proc_root,
+            sys_root,
             mode,
             started: Instant::now(),
             previous_cpu: None,
             previous_network: None,
             previous_disk: None,
         }
+    }
+
+    /// Selects an explicit sysfs root path for fixtures.
+    #[must_use]
+    pub fn with_sys_root(mut self, sys_root: impl Into<PathBuf>) -> Self {
+        self.sys_root = sys_root.into();
+        self
     }
 
     /// Label this collector's output as fixture data even for `/proc`.
@@ -92,6 +111,19 @@ impl LinuxCollector {
         let began = Instant::now();
         route::collect_routes_at(
             &self.proc_root,
+            self.mode,
+            duration_ns(began.duration_since(self.started)),
+            began,
+        )
+    }
+
+    /// Collects network interface metadata and namespace context from the configured sysfs/procfs roots.
+    #[must_use]
+    pub fn interfaces(&self) -> InterfaceReport {
+        let began = Instant::now();
+        interface::collect_interfaces_at(
+            &self.proc_root,
+            &self.sys_root,
             self.mode,
             duration_ns(began.duration_since(self.started)),
             began,
