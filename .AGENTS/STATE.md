@@ -13,7 +13,7 @@
 | Privacy constraints | Strict read-only procfs/sysfs; zero packet payloads, zero decrypted TLS, zero environment variables, zero process arguments, zero secrets (Rule R07) |
 | Native architecture evidence | Native x86_64 and aarch64 CI passed on all PRs; CodeQL Actions/Rust clean; all 103 workspace tests pass |
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
-| Release state | Tags up to `v0.4.0` published; release planner indicates `v0.5.0` (minor bump) on next release |
+| Release state | Clean patch-only release versioning (0.0.1+): initial release planned as v0.0.1 |
 | Review / tests | 103 unit & integration tests passing (`cargo test --workspace --locked --all-targets`), zero Clippy warnings, 147 Markdown links verified |
 | Current next action | Phase 4 (Optional deeper instrumentation / eBPF) or Phase 5 (Release hardening & packaging) scoping |
 | Remaining limits | Bounded history ring buffer capped at 120 samples (~700 KB RAM); route cache bounded at 2048 records; socket tables bounded at 2048 entries |

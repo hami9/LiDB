@@ -47,8 +47,7 @@ def commit_bump(message: str) -> str:
     match = HEADER_RE.match(header)
     if BREAKING_RE.search(message) or (match and match.group("breaking")):
         return "major"
-    if match and match.group("type").lower() == "feat":
-        return "minor"
+    # Every routine update (feat, fix, docs, chore, etc.) strictly increments patch: 0.0.1+
     return "patch"
 
 
@@ -63,7 +62,7 @@ def increment(previous: tuple[int, int, int], bump: str) -> tuple[int, int, int]
     if bump == "minor":
         return major, minor + 1, 0
     if bump == "patch":
-        return major, minor, patch + 1
+        return 0, 0, patch + 1
     if bump == "none":
         return previous
     raise ValueError(f"Unknown bump {bump!r}")
@@ -114,7 +113,7 @@ def render_notes(messages: list[str], plan: dict) -> str:
         classification = commit_bump(message)
         if classification in groups:
             groups[classification].append(title)
-    headings = {"major": "Breaking changes", "minor": "Features", "patch": "Fixes, maintenance and documentation"}
+    headings = {"major": "Breaking changes", "minor": "Major features", "patch": "Updates and improvements"}
     chunks = [
         f"# LiDB {plan['tag']}",
         "",

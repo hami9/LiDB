@@ -14,15 +14,15 @@
 
 ## Version calculation
 
-The user-facing mental model is `0.0.0 + 1 → 0.0.1` (PATCH), `0.0.0 + 0.1.0 → 0.1.0` (MINOR), `0.0.0 + 1.0.0 → 1.0.0` (MAJOR). **Do not use `0.0.0+1` as a patch version:** in SemVer, `+1` is build metadata and does not change precedence.
+The user-facing mental model is `0.0.0 + 1 → 0.0.1` (PATCH), `0.0.0 + 0.1.0 → 0.1.0` (MINOR), `0.0.0 + 1.0.0 → 1.0.0` (MAJOR).
 
-The release planner takes the **highest** kind among non-merge commits since the newest reachable `vMAJOR.MINOR.PATCH` release tag:
+By maintainer policy, **every update strictly increments the patch version (`+0.0.1`)**: `v0.0.1 → v0.0.2 → ... → v0.0.10 → ... → v0.0.N`. Routine commits (including `feat:`, `fix:`, `docs:`, `chore:`, `perf:`) strictly advance the patch lane without resetting it.
 
-| PR title / merge commit | Bump | Example from `v0.2.4` |
+| PR title / merge commit | Bump | Result from `v0.0.9` |
 | --- | --- | --- |
-| `fix:`, `docs:`, `chore:`, `ci:`, `perf:`, nonstandard | PATCH | `v0.2.5` |
-| `feat:` or `feat(scope):` | MINOR | `v0.3.0` |
-| `feat!:`, `refactor(scope)!:`, `BREAKING CHANGE:` footer | MAJOR | `v1.0.0` |
+| `feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `perf:`, routine | PATCH (+0.0.1) | `v0.0.10` |
+| Explicit `Release-Bump: minor` commit trailer | MINOR | `v0.1.0` |
+| `feat!:`, `refactor(scope)!:`, `BREAKING CHANGE:` footer, or `Release-Bump: major` | MAJOR | `v1.0.0` |
 | Explicit `Release-Bump: major\|minor\|patch` commit trailer | Specified override for that commit | As declared |
 
 If multiple changes are merged between releases, the strongest bump wins. **One release per validated main state**, not necessarily one release per PR during a busy merge burst. Squash merges are strongly preferred so the Conventional Commit PR title becomes the release commit subject. No release is created on a PR or a fork. Immutable version tags are never rewritten. There is no live version file that agents must mutate to publish.
