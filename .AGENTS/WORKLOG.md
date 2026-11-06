@@ -114,3 +114,28 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - 147 local Markdown documentation links verified (`python scripts/check_docs.py`).
   - Native x86_64 and aarch64 GitHub Actions CI and CodeQL static analysis passed on every merged PR.
 
+## 2026-11-06 — Release Versioning Overhaul and PR #45 / PR #33 Integration
+
+- Actor: Antigravity.
+- Scope: Enforce patch-only (`0.0.1+`) release increments on every update, publish clean release series starting from `v0.0.1`, and rebase/integrate PR #45 and PR #33.
+- Release versioning overhaul ([PR #62](https://github.com/hami9/LiDB/pull/62), commit `195cefe`):
+  - Enforced patch-only (`0.0.1+`) version increments for all updates/merges to `main` in `scripts/release/version.py`.
+  - Added test coverage in `tests/ci/test_version.py` verifying increments such as `0.0.9 -> 0.0.10` and `0.0.34222420 -> 0.0.34222421`.
+  - Purged premature legacy tags/releases (`v0.1.0` through `v0.6.1`) after temporarily disabling tag deletion ruleset `24688794`, then re-enabled protection ruleset.
+  - Published first clean release: [**`LiDashBoard v0.0.1`**](https://github.com/hami9/LiDB/releases/tag/v0.0.1).
+- PR #45 Integration ([PR #45](https://github.com/hami9/LiDB/pull/45), commit `32f11d9`):
+  - Rebased `agent/codex/collector-shutdown` onto `main`. Resolved conflicts in `apps/lidash/src/tui.rs`, `apps/lidash/src/worker.rs`, and `docs/DECISIONS.md` (ADR-023). Aligned test samplers with `(Snapshot, Option<NetworkReport>)`.
+  - Passed all workspace tests, clippy, formatting, and CI tests.
+  - Retargeted base to `main`, passed all native CI / CodeQL checks, and squash-merged into `main` (`32f11d9`).
+  - Automatically closed Issue #43 and Issue #44.
+  - Automatic Release workflow built and published [**`LiDashBoard v0.0.2`**](https://github.com/hami9/LiDB/releases/tag/v0.0.2) with verified x86_64 and aarch64 binaries.
+- PR #33 Integration ([PR #33](https://github.com/hami9/LiDB/pull/33), commit `73ba20a`):
+  - Rebased `agent/codex/interface-errors` onto `main`. Resolved conflicts in `docs/CORE.md`.
+  - Passed all workspace tests, clippy, formatting, and CI tests.
+  - Passed all native CI / CodeQL checks on PR #33, and squash-merged into `main` (`73ba20a`).
+  - Automatically closed Issue #32.
+  - Automatic Release workflow built and published [**`LiDashBoard v0.0.3`**](https://github.com/hami9/LiDB/releases/tag/v0.0.3) with verified x86_64 and aarch64 binaries.
+- Cleaned up merged worktrees: `.worktrees/codex/collector-shutdown` and `.worktrees/codex/interface-errors`.
+- Workspace status: All 108 tests passing (`cargo test --workspace --locked --all-targets`), zero clippy warnings, 151 local Markdown links valid, 19 Python CI tests passing.
+
+
