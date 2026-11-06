@@ -89,3 +89,28 @@ Next action: review/integrate the tested public Core PR, then select one focused
 - Root alone owns implementation/schema/docs/central state, edited serially. No additional implementation agent was launched. The canonical continuation queue remains on the PR35/45 guidance stack; update it with observed AG02/03 ownership and issue49/50 instead of duplicating those tasks. Keep AG03 follow-ups and other candidates under_review until actual maintainer integration.
 
 - Issue #49 delivery/review checkpoint: PR #51 is open on our branch, targeting Antigravity #48. Independent read-only source review at 73ea3a2 found a gap between timestamp and duration timers; use one captured Instant for both, including scheduling gaps. A deterministic backdated-start test rejects a destination window shorter than that gap. Corrected local Clippy and all 78 Rust tests passed. Initial 73ea3a2 native CI passed; corrected exact-head evidence is separate and is recorded on PR #51/issue #49. The canonical queue was refreshed in our separate #45 branch with observed #46/#48/#51 ownership and planned parser issue #50. No other owner branch or main was edited, and no PR merged or release published.
+
+## 2026-11-06 — Phase 2 & Phase 3 Integration (Tasks AG-02 through AG-07)
+
+- Actor: Antigravity.
+- Scope: Sequential integration and squash merge of Phase 2 (Networking Diagnostics) and Phase 3 (Terminal & Evidence Usability) feature stack into `main`.
+- Merged pull requests:
+  - [PR #46](https://github.com/hami9/LiDB/pull/46) (`8ecef2f`): `feat(core): add typed network contracts and report` (Task AG-02).
+  - [PR #48](https://github.com/hami9/LiDB/pull/48) (`3f83bdb`): `feat(collector): read-only IPv4 and IPv6 route observations` (Task AG-03).
+  - [PR #52](https://github.com/hami9/LiDB/pull/52) (`f24e332`): `fix(routes): preserve IPv6 selectors and bound parser retention` (Task AG-03 follow-up).
+  - [PR #54](https://github.com/hami9/LiDB/pull/54) (`8bb7d6a`): `feat(collector): read-only interface metadata and network namespace identity` (Task AG-04).
+  - [PR #56](https://github.com/hami9/LiDB/pull/56) (`c3097cf`): `feat(collector): read-only TCP and UDP socket observations` (Task AG-05).
+  - [PR #58](https://github.com/hami9/LiDB/pull/58) (`552d11f`): `feat(network): unified network report and interactive TUI network dashboard` (Task AG-06).
+  - [PR #60](https://github.com/hami9/LiDB/pull/60) (`56e54bb`): `feat(cli): offline diagnostic evidence export, bounded history, and ascii banner` (Task AG-07).
+- Architecture decisions recorded:
+  - ADR-026: Linux Network Interface and Namespace Identity Collection (`docs/DECISIONS.md`).
+  - ADR-028: Linux TCP and UDP Socket Observation Collection (`docs/DECISIONS.md`).
+  - ADR-029: Unified Network Report and Interactive Terminal Dashboard Tab (`docs/DECISIONS.md`).
+  - ADR-030: Offline Diagnostic Evidence Export and Interactive TUI History Navigation (`docs/DECISIONS.md`).
+- Constraints & Verification:
+  - Strict compliance with non-root, read-only, metadata-only procfs/sysfs collection. Zero packet payloads, zero decrypted TLS, zero environment variables, zero process arguments, zero secrets (Rule R07).
+  - All 103 workspace tests pass (`cargo test --workspace --locked --all-targets`).
+  - Zero compiler or Clippy warnings (`cargo clippy --workspace --all-targets --locked -- -D warnings`).
+  - 147 local Markdown documentation links verified (`python scripts/check_docs.py`).
+  - Native x86_64 and aarch64 GitHub Actions CI and CodeQL static analysis passed on every merged PR.
+
