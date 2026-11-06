@@ -179,6 +179,7 @@ name = "lidb-collect"
 version = "0.1.0"
 dependencies = [
  "lidb-core",
+ "serde",
 ]
 
 [[package]]

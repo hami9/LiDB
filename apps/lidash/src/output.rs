@@ -43,6 +43,40 @@ pub fn snapshot_text(snapshot: &Snapshot) -> String {
     out
 }
 
+pub fn routes_text(report: &lidb_collect::RouteReport, mode: SnapshotMode) -> String {
+    let mut out = format!(
+        "LiDB {} routes | v4: {} | v6: {} | dropped={}\n",
+        mode_name(mode),
+        report.v4_status.as_str(),
+        report.v6_status.as_str(),
+        report.dropped_routes
+    );
+    if !report.routes.is_empty() {
+        for route in &report.routes {
+            let gw_text = match route.gateway() {
+                Some(gw) => format!(" via {gw}"),
+                None => String::new(),
+            };
+            let metric_text = match route.metric() {
+                Some(metric) => format!(" metric {metric}"),
+                None => String::new(),
+            };
+            let _ = writeln!(
+                out,
+                "{}/{} dev {}{}{}",
+                route.destination(),
+                route.prefix_len(),
+                route.interface(),
+                gw_text,
+                metric_text
+            );
+        }
+    } else {
+        let _ = writeln!(out, "no routing entries observed");
+    }
+    out
+}
+
 #[derive(Serialize)]
 pub struct Failure<'a> {
     metric: &'a str,

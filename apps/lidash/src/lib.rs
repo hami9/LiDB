@@ -59,6 +59,21 @@ pub fn execute(config: Config, mut output: impl Write) -> Result<u8, io::Error> 
                 output.write_all(output::snapshot_text(&snapshot).as_bytes())?;
             }
         }
+        Command::Routes => {
+            let collector = collector(&config);
+            let report = collector.routes();
+            let mode = if config.fixture {
+                lidb_core::SnapshotMode::Fixture
+            } else {
+                lidb_core::SnapshotMode::Live
+            };
+            if config.json {
+                serde_json::to_writer(&mut output, &report)?;
+                output.write_all(b"\n")?;
+            } else {
+                output.write_all(output::routes_text(&report, mode).as_bytes())?;
+            }
+        }
     }
     Ok(0)
 }

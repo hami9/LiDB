@@ -527,14 +527,71 @@ fn live_linux_smoke_reads_real_proc_and_batches_share_a_clock() {
 }
 
 #[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn fixture_route_collection_reads_v4_and_v6_tables() {
+    let fixture = Fixture::new();
+    fixture.baseline();
+    fixture.write(
+        "net/route",
+        "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n",
+    );
+    fixture.write(
+        "net/ipv6_route",
+        "20010db8000100000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000000 00000000 00000001 eth0\n",
+    );
+    let collector = LinuxCollector::new(&fixture.0);
+    let routes = collector.routes();
+    assert_eq!(
+        routes.v4_status,
+        lidb_core::network::SourceAvailability::Available
+    );
+    assert_eq!(
+        routes.v6_status,
+        lidb_core::network::SourceAvailability::Available
+    );
+    assert_eq!(
+        routes.consolidated_status(),
+        lidb_core::network::SourceAvailability::Available
+    );
+    assert_eq!(routes.routes.len(), 2);
+    assert_eq!(routes.dropped_routes, 0);
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn live_linux_smoke_reads_real_routes() {
+    let collector = LinuxCollector::new("/proc");
+    let routes = collector.routes();
+    assert!(matches!(
+        routes.consolidated_status(),
+        lidb_core::network::SourceAvailability::Available
+            | lidb_core::network::SourceAvailability::Unsupported(_)
+            | lidb_core::network::SourceAvailability::PermissionDenied(_)
+    ));
+}
+
+#[test]
 #[cfg(not(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
 )))]
 fn other_platforms_report_unsupported_without_reading_fixtures() {
-    let snapshot = LinuxCollector::new("/proc").sample();
+    let mut collector = LinuxCollector::new("/proc");
+    let snapshot = collector.sample();
     assert!(snapshot
         .metrics()
         .iter()
         .all(|metric| metric.state().name() == "unsupported"));
+    let routes = collector.routes();
+    assert!(matches!(
+        routes.consolidated_status(),
+        lidb_core::network::SourceAvailability::Unsupported(_)
+    ));
 }
