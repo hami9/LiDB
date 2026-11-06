@@ -131,3 +131,21 @@ Rust 1.85 is the selected minimum toolchain for the runnable foundation. Record 
 **Alternatives:** Shelling out to `ss` or `lsof` requires external binaries and privileges, and scanning `/proc/<pid>/fd` violates privacy constraints and risks high overhead.
 
 **Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is recorded in [issue #55](../.AGENTS/worklogs/antigravity-ag-05.md).
+
+## ADR-029 — unified network report collection and interactive terminal dashboard (2026-11-06)
+
+**Status:** implemented proposal in issue #57 (Task AG-06), explicitly stacked on socket PR #56, interface PR #54, and route PR #52; integration/phase acceptance pending.
+
+**Context:** Phase 2 introduced distinct network collection modules for routes (`lidb-collect::route`), interface metadata and namespace attribution (`lidb-collect::interface`), and socket endpoints (`lidb-collect::socket`). Operators require a unified collection entry point (`LinuxCollector::network`) that captures full host network diagnostics in a single coherent snapshot with a shared monotonic timestamp domain. Furthermore, terminal operators need interactive visibility into interfaces, routes, sockets, and namespace identity directly in `lidash` without navigating multiple standalone CLI invocations.
+
+**Decision:**
+1. Implement `LinuxCollector::network(&self) -> NetworkReport` in `lidb-collect`, populating interfaces, routes, and socket records into a consolidated `NetworkReport` (schema `0.1`).
+2. Share a single monotonic timestamp domain (`monotonic_ns`) across all three sub-collections within the unified network sample, measuring overall batch collection duration.
+3. Handle route population gracefully: if `populate_into` reports `RouteSourceStatusMismatch` due to unequal IPv4/IPv6 source states, preserve all observed routes and populate the report with the consolidated status rather than discarding routing data.
+4. Add the `network` command (alias: `net`) with `--json` format support to `apps/lidash`. Render structured textual summaries in `output::network_text` detailing active network namespace, interfaces, routing table entries, and socket states.
+5. In `apps/lidash::tui`, introduce `Tab::Network` (key '3' or Tab/Left/Right cycling). Render dedicated interface, route, and socket tables alongside namespace identity and source status indicators.
+6. Gracefully adapt the interactive TUI to narrow and small terminal viewports (`area.height <= 10`), rendering compact summaries without clipping or control character injection.
+
+**Alternatives:** Keeping routes, interfaces, and sockets exclusively as separate sub-commands forces operators to correlate timestamps manually and prevents unified interactive monitoring in the TUI.
+
+**Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is recorded in [issue #57](../.AGENTS/worklogs/antigravity-ag-06.md).

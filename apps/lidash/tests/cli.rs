@@ -492,3 +492,72 @@ fn sockets_empty_missing_and_denied_sources_are_distinct() {
         );
     }
 }
+
+#[test]
+fn network_command_runs_cleanly_on_all_platforms() {
+    let output = binary(&["network", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["schema_version"], "0.1");
+    assert_eq!(data["clock_source"], "collector_monotonic");
+    assert!(data.get("interfaces_status").is_some());
+    assert!(data.get("routes_status").is_some());
+    assert!(data.get("sockets_status").is_some());
+    assert!(data.get("interfaces").is_some());
+    assert!(data.get("routes").is_some());
+    assert!(data.get("sockets").is_some());
+    assert!(data.get("dropped_interfaces").is_some());
+    assert!(data.get("dropped_routes").is_some());
+    assert!(data.get("dropped_sockets").is_some());
+    assert_eq!(data["mode"], "live");
+
+    let text_output = binary(&["network"]);
+    assert!(text_output.status.success());
+    let text = String::from_utf8(text_output.stdout).unwrap();
+    assert!(text.contains("LiDB live network"));
+    assert!(text.contains("--- Interfaces ---"));
+    assert!(text.contains("--- Routes ---"));
+    assert!(text.contains("--- Sockets ---"));
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn network_command_reads_fixture_network() {
+    let fixture = Fixture::new();
+    let net_dir = fixture.0.join("net");
+    fs::create_dir_all(&net_dir).unwrap();
+
+    let dev_fixture = "\
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+  eth0:    1000      10    0    0    0     0          0         0     2000      20    0    0    0     0       0          0
+";
+    fs::write(net_dir.join("dev"), dev_fixture).unwrap();
+
+    let route_v4 = "\
+Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
+eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n\
+";
+    fs::write(net_dir.join("route"), route_v4).unwrap();
+
+    let tcp_fixture = "\
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
+   0: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 12345 1 0000000000000000 100 0 0 10 0\n\
+";
+    fs::write(net_dir.join("tcp"), tcp_fixture).unwrap();
+
+    let output = fixture.run(&["network", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["mode"], "fixture");
+    assert_eq!(data["schema_version"], "0.1");
+
+    let text = String::from_utf8(fixture.run(&["network"]).stdout).unwrap();
+    assert!(text.contains("LiDB fixture network"));
+    assert!(text.contains("--- Interfaces ---"));
+    assert!(text.contains("--- Routes ---"));
+    assert!(text.contains("--- Sockets ---"));
+}

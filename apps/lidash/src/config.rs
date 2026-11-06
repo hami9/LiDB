@@ -1,7 +1,7 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 pub const HELP: &str = "LiDashBoard — read-only Linux host monitor
-Usage: lidash [snapshot|doctor|routes|interfaces|sockets|tui] [OPTIONS]
+Usage: lidash [snapshot|doctor|routes|interfaces|sockets|network|tui] [OPTIONS]
 
 Commands:
   snapshot       Print one host snapshot (alias: status)
@@ -9,10 +9,11 @@ Commands:
   routes         Print routing table entries (alias: route)
   interfaces     Print network interface metadata (alias: interface, iface)
   sockets        Print TCP and UDP socket endpoints (alias: socket, sock)
+  network        Print network report (alias: net)
   tui            Open the keyboard-driven terminal monitor
 
 Options:
-  --json                 JSON snapshot, doctor report, routing table, interfaces, or sockets; no terminal required
+  --json                 JSON snapshot, doctor report, routing table, interfaces, sockets, or network; no terminal required
   --interval-ms N        Sample interval, 250..60000 milliseconds
   --proc-root PATH       Read a fixture instead of /proc; output is labeled fixture
   --sys-root PATH        Read a fixture instead of /sys; output is labeled fixture
@@ -24,7 +25,7 @@ Without a command: open TUI when stdin and stdout are terminals, otherwise snaps
 Snapshot/doctor take two samples (default 250ms); TUI defaults to 1000ms.
 Doctor is read-only. Exit: 0 usable (possibly degraded), 1 no available metrics,
 2 invalid arguments or runtime failure. Snapshot preserves unavailable states.
-TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/Left/Right tabs, Space pause, ?/h help, Enter detail, Up/Down scroll.
+TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/3/Left/Right tabs, Space pause, ?/h help, Enter detail, Up/Down scroll.
 ";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +35,7 @@ pub enum Command {
     Routes,
     Interfaces,
     Sockets,
+    Network,
     Tui,
     Help,
     Version,
@@ -75,6 +77,7 @@ impl Config {
                     set_command(&mut command, Command::Interfaces)?
                 }
                 Some("sockets" | "socket" | "sock") => set_command(&mut command, Command::Sockets)?,
+                Some("network" | "net") => set_command(&mut command, Command::Network)?,
                 Some("tui") => set_command(&mut command, Command::Tui)?,
                 Some("--json") => json = true,
                 Some("--no-color") => {}
@@ -112,7 +115,7 @@ impl Config {
         });
         if command == Command::Tui && json {
             return Err(
-                "--json is supported by snapshot, doctor, routes, interfaces, and sockets; choose one of those commands"
+                "--json is supported by snapshot, doctor, routes, interfaces, sockets, and network; choose one of those commands"
                     .into(),
             );
         }
@@ -200,6 +203,15 @@ mod tests {
         assert_eq!(
             parse(&["sock", "--json"], false).unwrap().command,
             Command::Sockets
+        );
+        assert_eq!(
+            parse(&["network"], false).unwrap().command,
+            Command::Network
+        );
+        assert_eq!(parse(&["net"], false).unwrap().command, Command::Network);
+        assert_eq!(
+            parse(&["net", "--json"], false).unwrap().command,
+            Command::Network
         );
         assert!(parse(&["tui", "--json"], true).is_err());
     }

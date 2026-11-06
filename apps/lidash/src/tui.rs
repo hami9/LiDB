@@ -35,25 +35,29 @@ pub enum Tab {
     Metrics = 0,
     /// Dedicated CPU utilization and memory overview dashboard.
     CpuMemory = 1,
+    /// Dedicated Network overview dashboard (interfaces, routes, sockets, namespace).
+    Network = 2,
 }
 
 impl Tab {
     /// All available tabs in presentation order.
-    pub const ALL: [Tab; 2] = [Tab::Metrics, Tab::CpuMemory];
+    pub const ALL: [Tab; 3] = [Tab::Metrics, Tab::CpuMemory, Tab::Network];
 
     /// Cycles forward to the next tab.
     pub fn next(&self) -> Self {
         match self {
             Self::Metrics => Self::CpuMemory,
-            Self::CpuMemory => Self::Metrics,
+            Self::CpuMemory => Self::Network,
+            Self::Network => Self::Metrics,
         }
     }
 
     /// Cycles backward to the previous tab.
     pub fn prev(&self) -> Self {
         match self {
-            Self::Metrics => Self::CpuMemory,
+            Self::Metrics => Self::Network,
             Self::CpuMemory => Self::Metrics,
+            Self::Network => Self::CpuMemory,
         }
     }
 }
@@ -148,14 +152,14 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let inner_header = header_block.inner(layout[0]);
     frame.render_widget(header_block, layout[0]);
 
-    if inner_header.width >= 58 {
+    if inner_header.width >= 68 {
         let header_layout =
-            Layout::horizontal([Constraint::Min(24), Constraint::Length(26)]).split(inner_header);
+            Layout::horizontal([Constraint::Min(24), Constraint::Length(39)]).split(inner_header);
         frame.render_widget(
             Paragraph::new(format!("{state} | {freshness}")),
             header_layout[0],
         );
-        let tabs = Tabs::new(vec!["1: Metrics", "2: CPU/Mem"])
+        let tabs = Tabs::new(vec!["1: Metrics", "2: CPU/Mem", "3: Network"])
             .select(view.tab as usize)
             .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED));
         frame.render_widget(tabs, header_layout[1]);
@@ -168,13 +172,13 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let shortcuts = if view.help || view.detail {
         "q quit | PgUp/PgDn scroll text"
     } else {
-        "q quit | Tab / 1-2 tab | Space pause | ? help | Enter detail | Up/Down scroll"
+        "q quit | Tab / 1-3 tab | Space pause | ? help | Enter detail | Up/Down scroll"
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
         draw_text(
             frame,
-            "q, Esc, Ctrl-C: quit\nTab, 1, 2, Left/Right: switch between 1:Metrics and 2:CPU/Mem tabs\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, Left/Right: switch between 1:Metrics, 2:CPU/Mem, and 3:Network tabs\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
             " Help ",
             &mut view.text_scroll,
             layout[1],
@@ -215,6 +219,10 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     }
     if view.tab == Tab::CpuMemory {
         draw_cpu_mem(frame, &update.snapshot, layout[1]);
+        return;
+    }
+    if view.tab == Tab::Network {
+        draw_network(frame, update.network.as_ref(), layout[1]);
         return;
     }
     if area.width >= 90 {
@@ -531,6 +539,200 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
     frame.render_widget(psi_load_paragraph, rows[3]);
 }
 
+/// Renders the dedicated Network overview dashboard tab.
+fn draw_network(
+    frame: &mut Frame<'_>,
+    network: Option<&lidb_core::network::NetworkReport>,
+    area: Rect,
+) {
+    let Some(report) = network else {
+        frame.render_widget(
+            Paragraph::new("Reading local procfs network tables; awaiting next sample.")
+                .block(Block::default().title(" Network ").borders(Borders::ALL)),
+            area,
+        );
+        return;
+    };
+
+    let ns_desc = match report.namespace() {
+        Some(ns) => match ns.inode() {
+            Some(ino) => format!("Namespace: {} (inode: {ino})", ns.name()),
+            None => format!("Namespace: {}", ns.name()),
+        },
+        None => "Namespace: default / not identified".to_owned(),
+    };
+
+    let summary_text = format!(
+        "{ns_desc} │ Ifaces: {} (dropped: {}) │ Routes: {} (dropped: {}) │ Sockets: {} (dropped: {})",
+        report.interfaces_status().as_str(),
+        report.dropped_interfaces(),
+        report.routes_status().as_str(),
+        report.dropped_routes(),
+        report.sockets_status().as_str(),
+        report.dropped_sockets(),
+    );
+
+    if area.height <= 10 {
+        let text = format!(
+            "Ifaces: {} ({}) │ Routes: {} ({})\nSockets: {} ({})\n{ns_desc}",
+            report.interfaces().len(),
+            report.interfaces_status().as_str(),
+            report.routes().len(),
+            report.routes_status().as_str(),
+            report.sockets().len(),
+            report.sockets_status().as_str(),
+        );
+        frame.render_widget(
+            Paragraph::new(text).wrap(Wrap { trim: true }).block(
+                Block::default()
+                    .title(" Network Overview ")
+                    .borders(Borders::ALL),
+            ),
+            area,
+        );
+        return;
+    }
+
+    let rows = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Percentage(45),
+        Constraint::Percentage(55),
+    ])
+    .split(area);
+
+    let summary_widget = Paragraph::new(summary_text).block(
+        Block::default()
+            .title(" Network Diagnostics Status ")
+            .borders(Borders::ALL),
+    );
+    frame.render_widget(summary_widget, rows[0]);
+
+    let iface_block = Block::default()
+        .title(format!(" Interfaces ({}) ", report.interfaces().len()))
+        .borders(Borders::ALL);
+
+    let iface_inner_height = rows[1].height.saturating_sub(2) as usize;
+    let iface_rows: Vec<Row> = report
+        .interfaces()
+        .iter()
+        .take(iface_inner_height.max(1))
+        .map(|iface| {
+            let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
+            let mac = iface.mac_address().map_or("-".into(), |m| m.to_string());
+            Row::new(vec![
+                iface.name().to_string(),
+                iface.oper_state().as_str().to_string(),
+                mtu,
+                mac,
+            ])
+        })
+        .collect();
+
+    let iface_table = Table::new(
+        iface_rows,
+        [
+            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(35),
+        ],
+    )
+    .header(
+        Row::new(["Name", "State", "MTU", "MAC"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .block(iface_block);
+
+    let route_block = Block::default()
+        .title(format!(" Routes ({}) ", report.routes().len()))
+        .borders(Borders::ALL);
+
+    let route_rows: Vec<Row> = report
+        .routes()
+        .iter()
+        .take(iface_inner_height.max(1))
+        .map(|route| {
+            let dst = format!("{}/{}", route.destination(), route.prefix_len());
+            let gw = route.gateway().map_or("-".into(), |g| g.to_string());
+            let iface = route.interface().to_string();
+            let metric = route.metric().map_or("-".into(), |m| m.to_string());
+            Row::new(vec![dst, gw, iface, metric])
+        })
+        .collect();
+
+    let route_table = Table::new(
+        route_rows,
+        [
+            Constraint::Percentage(40),
+            Constraint::Percentage(30),
+            Constraint::Percentage(18),
+            Constraint::Percentage(12),
+        ],
+    )
+    .header(
+        Row::new(["Destination", "Gateway", "Iface", "Metric"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .block(route_block);
+
+    if rows[1].width >= 80 {
+        let cols = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(rows[1]);
+        frame.render_widget(iface_table, cols[0]);
+        frame.render_widget(route_table, cols[1]);
+    } else {
+        let split_rows = Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(rows[1]);
+        frame.render_widget(iface_table, split_rows[0]);
+        frame.render_widget(route_table, split_rows[1]);
+    }
+
+    let socket_block = Block::default()
+        .title(format!(" Sockets ({}) ", report.sockets().len()))
+        .borders(Borders::ALL);
+
+    let sock_inner_height = rows[2].height.saturating_sub(2) as usize;
+    let sock_rows: Vec<Row> = report
+        .sockets()
+        .iter()
+        .take(sock_inner_height.max(1))
+        .map(|sock| {
+            let local =
+                crate::output::format_socket_endpoint(sock.local_address(), sock.local_port());
+            let remote = match (sock.remote_address(), sock.remote_port()) {
+                (Some(addr), Some(port)) => crate::output::format_socket_endpoint(addr, port),
+                _ => "*".to_owned(),
+            };
+            let ino = sock.inode().map_or("-".into(), |i| i.to_string());
+            Row::new(vec![
+                sock.protocol().as_str().to_string(),
+                local,
+                remote,
+                sock.state().as_str().to_string(),
+                ino,
+            ])
+        })
+        .collect();
+
+    let sock_table = Table::new(
+        sock_rows,
+        [
+            Constraint::Length(6),
+            Constraint::Percentage(32),
+            Constraint::Percentage(32),
+            Constraint::Percentage(18),
+            Constraint::Percentage(12),
+        ],
+    )
+    .header(
+        Row::new(["Proto", "Local", "Remote", "State", "Inode"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .block(socket_block);
+
+    frame.render_widget(sock_table, rows[2]);
+}
+
 struct TerminalGuard;
 impl TerminalGuard {
     fn enter() -> io::Result<Self> {
@@ -603,7 +805,14 @@ pub fn run(config: Config) -> io::Result<()> {
         previous(info);
     }));
     let mut collector = crate::collector(&config);
-    let mut worker = Worker::start(move || collector.sample(), config.interval)?;
+    let mut worker = Worker::start(
+        move || {
+            let snapshot = collector.sample();
+            let network = collector.network();
+            (snapshot, Some(network))
+        },
+        config.interval,
+    )?;
     let signals = SignalGuard::register()?;
     let guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -653,6 +862,9 @@ pub fn run(config: Config) -> io::Result<()> {
                     }
                     KeyCode::Char('2') => {
                         view.tab = Tab::CpuMemory;
+                    }
+                    KeyCode::Char('3') => {
+                        view.tab = Tab::Network;
                     }
                     KeyCode::Left if !view.help && !view.detail => {
                         view.tab = view.tab.prev();
@@ -722,6 +934,7 @@ mod tests {
         View {
             update: Some(Update {
                 snapshot,
+                network: None,
                 collected_at: Instant::now(),
                 skipped_updates: 3,
             }),
@@ -823,6 +1036,7 @@ mod tests {
         let mut view = View {
             update: Some(Update {
                 snapshot,
+                network: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             }),
@@ -899,6 +1113,7 @@ mod tests {
         let mut view = View {
             update: Some(Update {
                 snapshot,
+                network: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             }),
@@ -913,8 +1128,80 @@ mod tests {
     fn tab_navigation_cycles_correctly() {
         let tab = Tab::Metrics;
         assert_eq!(tab.next(), Tab::CpuMemory);
-        assert_eq!(tab.next().next(), Tab::Metrics);
-        assert_eq!(tab.prev(), Tab::CpuMemory);
-        assert_eq!(tab.prev().prev(), Tab::Metrics);
+        assert_eq!(tab.next().next(), Tab::Network);
+        assert_eq!(tab.next().next().next(), Tab::Metrics);
+        assert_eq!(tab.prev(), Tab::Network);
+        assert_eq!(tab.prev().prev(), Tab::CpuMemory);
+        assert_eq!(tab.prev().prev().prev(), Tab::Metrics);
+    }
+
+    #[test]
+    fn network_tab_renders_interfaces_routes_and_sockets() {
+        use lidb_core::network::{
+            InterfaceOperState, InterfaceRecord, NetworkNamespace, NetworkReport, RouteRecord,
+            SocketProtocol, SocketRecord, SocketState, SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_interfaces_status(SourceAvailability::Available);
+        net_report.set_routes_status(SourceAvailability::Available);
+        net_report.set_sockets_status(SourceAvailability::Available);
+        net_report.set_namespace(Some(
+            NetworkNamespace::new("host", Some(4026531992)).unwrap(),
+        ));
+
+        let iface = InterfaceRecord::new("eth0", InterfaceOperState::Up)
+            .unwrap()
+            .with_ifindex(2)
+            .with_mtu(1500)
+            .with_mac_address("00:15:5d:01:02:03")
+            .unwrap()
+            .with_flags(vec!["UP".into(), "BROADCAST".into(), "RUNNING".into()])
+            .unwrap();
+        net_report.push_interface(iface).unwrap();
+
+        let route = RouteRecord::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0, "eth0")
+            .unwrap()
+            .with_gateway(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)))
+            .unwrap();
+        net_report.push_route(route).unwrap();
+
+        let sock = SocketRecord::new(
+            SocketProtocol::Tcp,
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            80,
+            SocketState::Listen,
+        )
+        .with_inode(12345);
+        net_report.push_socket(sock).unwrap();
+
+        let mut view = View {
+            update: Some(Update {
+                snapshot: Snapshot::new(0, 0, SnapshotMode::Fixture),
+                network: Some(net_report),
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::Network,
+            fixture: true,
+            ..View::default()
+        };
+
+        for width in [120, 85, 50] {
+            let output = render(width, 30, &mut view);
+            assert!(output.contains("Network Diagnostics Status"));
+            assert!(output.contains("host"));
+            assert!(output.contains("4026531992"));
+            assert!(output.contains("eth0"));
+            assert!(output.contains("12345"));
+        }
+
+        // Test small screen
+        let small = render(40, 10, &mut view);
+        assert!(small.contains("Network Overview"));
+        assert!(small.contains("Ifaces: 1"));
+        assert!(small.contains("Routes: 1"));
+        assert!(small.contains("Sockets: 1"));
     }
 }

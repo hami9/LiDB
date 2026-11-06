@@ -1,3 +1,4 @@
+use lidb_core::network::NetworkReport;
 use lidb_core::Snapshot;
 use std::{
     io,
@@ -8,6 +9,7 @@ use std::{
 
 pub struct Update {
     pub snapshot: Snapshot,
+    pub network: Option<NetworkReport>,
     pub collected_at: Instant,
     pub skipped_updates: u64,
 }
@@ -27,7 +29,7 @@ pub struct Worker {
 
 impl Worker {
     pub fn start(
-        mut sample: impl FnMut() -> Snapshot + Send + 'static,
+        mut sample: impl FnMut() -> (Snapshot, Option<NetworkReport>) + Send + 'static,
         interval: Duration,
     ) -> io::Result<Self> {
         let latest = Arc::new(Mutex::new(Latest::default()));
@@ -37,7 +39,7 @@ impl Worker {
             .name("lidb-collector".into())
             .spawn(move || {
                 loop {
-                    let snapshot = sample();
+                    let (snapshot, network) = sample();
                     let collected_at = Instant::now();
                     let Ok(mut slot) = worker_latest.lock() else {
                         break;
@@ -47,6 +49,7 @@ impl Worker {
                     }
                     slot.update = Some(Update {
                         snapshot,
+                        network,
                         collected_at,
                         skipped_updates: slot.skipped_updates,
                     });
@@ -107,6 +110,7 @@ mod tests {
             latest: Arc::new(Mutex::new(Latest {
                 update: Some(Update {
                     snapshot: Snapshot::new(42, 0, SnapshotMode::Fixture),
+                    network: None,
                     collected_at: Instant::now(),
                     skipped_updates: 2,
                 }),
@@ -139,7 +143,7 @@ mod tests {
             move || {
                 let time = collect_counter.fetch_add(1, Ordering::SeqCst);
                 let _ = observed.send(time);
-                Snapshot::new(time, 0, SnapshotMode::Fixture)
+                (Snapshot::new(time, 0, SnapshotMode::Fixture), None)
             },
             Duration::from_millis(1),
         )
@@ -165,7 +169,7 @@ mod tests {
         let mut worker = Worker::start(
             move || {
                 let _ = started.send(());
-                Snapshot::new(0, 0, SnapshotMode::Fixture)
+                (Snapshot::new(0, 0, SnapshotMode::Fixture), None)
             },
             Duration::from_secs(60),
         )
