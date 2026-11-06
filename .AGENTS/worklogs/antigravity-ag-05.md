@@ -2,11 +2,13 @@
 
 - Task ID: `AG-05`
 - Issue: [#55](https://github.com/hami9/LiDB/issues/55)
+- PR: [#56](https://github.com/hami9/LiDB/pull/56)
 - Owner: `agent/antigravity/ag-05-sockets`
 - Worktree: `.worktrees/antigravity/ag-05-sockets`
 - Base commit: `8daf803` (`agent/antigravity/ag-04-interfaces`, PR #54)
+- Head commit: `abe3505`
 - Stacked PR base: `agent/antigravity/ag-04-interfaces`
-- Scope: `crates/lidb-collect/src/socket.rs`, `crates/lidb-collect/src/lib.rs`, `crates/lidb-collect/README.md`, `crates/lidb-core/src/network.rs`, `apps/lidash/src/config.rs`, `apps/lidash/src/output.rs`, `apps/lidash/src/lib.rs`, `apps/lidash/tests/cli.rs`, `docs/DECISIONS.md`
+- Scope: `crates/lidb-collect/src/socket.rs`, `crates/lidb-collect/src/lib.rs`, `crates/lidb-collect/src/tests.rs`, `crates/lidb-collect/README.md`, `crates/lidb-core/src/network.rs`, `apps/lidash/src/config.rs`, `apps/lidash/src/output.rs`, `apps/lidash/src/lib.rs`, `apps/lidash/tests/cli.rs`, `docs/DECISIONS.md`
 - Status: `ready_for_review`
 
 ## Acceptance criteria
@@ -74,6 +76,9 @@
 
 - `cargo fmt --manifest-path Cargo.toml --all -- --check`: PASSED
 - `cargo clippy --manifest-path Cargo.toml --workspace --all-targets --locked -- -D warnings`: PASSED
-- `cargo test --manifest-path Cargo.toml --workspace --locked --all-targets`: PASSED (94 tests)
-- `python scripts/check_docs.py`: PASSED
+- `cargo test --manifest-path Cargo.toml --workspace --locked --all-targets`: PASSED (96 tests passed)
+- `cargo test --manifest-path Cargo.toml --workspace --locked --doc`: PASSED
+- `python -m unittest discover -s tests/ci -p 'test_*.py' -v`: PASSED (18 tests passed)
+- `python scripts/check_docs.py`: PASSED (140 local Markdown links verified)
 - `git diff --check`: PASSED
+- GitHub Actions CI (run `42202168478`): PASSED all 10 checks including `CI Gate`, `Rust (x86_64)`, `Rust (aarch64)`, `Worktree Windows smoke`, `Docs and policy`, `CodeQL`, and `markdown-links`.
