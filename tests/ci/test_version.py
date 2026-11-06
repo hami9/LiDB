@@ -12,13 +12,18 @@ spec.loader.exec_module(version)
 
 class VersionTests(unittest.TestCase):
     def test_patch_default_and_fix(self):
+        self.assertEqual(version.commit_bump("feat(core): add CPU panel"), "patch")
         self.assertEqual(version.commit_bump("docs: update README"), "patch")
         self.assertEqual(version.commit_bump("fix(net): repair parser"), "patch")
         self.assertEqual(version.commit_bump("Merge pull request #7"), "patch")
 
     def test_minor_feature(self):
-        self.assertEqual(version.commit_bump("feat(core): add CPU panel"), "minor")
+        self.assertEqual(version.commit_bump("feat(core): add CPU panel\n\nRelease-Bump: minor"), "minor")
         self.assertEqual(version.increment((0, 0, 9), "minor"), (0, 1, 0))
+
+    def test_patch_increment_stays_in_patch_lane(self):
+        self.assertEqual(version.increment((0, 0, 9), "patch"), (0, 0, 10))
+        self.assertEqual(version.increment((0, 0, 34222420), "patch"), (0, 0, 34222421))
 
     def test_major_breaking(self):
         self.assertEqual(version.commit_bump("feat(core)!: redesign socket API"), "major")
@@ -32,13 +37,15 @@ class VersionTests(unittest.TestCase):
 
     def test_highest_wins(self):
         self.assertEqual(version.highest_bump(["fix: bug", "feat: new", "chore!: break"]), "major")
-        self.assertEqual(version.highest_bump(["docs: a", "feat: b"]), "minor")
+        self.assertEqual(version.highest_bump(["docs: a", "feat: b"]), "patch")
+        self.assertEqual(version.highest_bump(["docs: a", "feat: b\n\nRelease-Bump: minor"]), "minor")
 
     def test_version_zero_and_empty(self):
         self.assertEqual(version.build_plan([], None)["publish"], False)
         self.assertEqual(version.build_plan(["fix: bug"], None)["tag"], "v0.0.1")
-        self.assertEqual(version.build_plan(["feat: new"], "v0.3.8")["tag"], "v0.4.0")
-        self.assertEqual(version.build_plan(["feat!: breaking"], "v0.4.5")["tag"], "v1.0.0")
+        self.assertEqual(version.build_plan(["feat: new"], "v0.0.9")["tag"], "v0.0.10")
+        self.assertEqual(version.build_plan(["chore: update"], "v0.0.34222420")["tag"], "v0.0.34222421")
+        self.assertEqual(version.build_plan(["feat!: breaking"], "v0.0.45")["tag"], "v1.0.0")
 
     def test_tag_validation(self):
         self.assertEqual(version.parse_version("v1.2.3"), (1, 2, 3))
@@ -49,9 +56,8 @@ class VersionTests(unittest.TestCase):
     def test_release_notes(self):
         plan = version.build_plan(["feat: hello", "fix: bug"], None)
         notes = version.render_notes(["feat: hello", "fix: bug"], plan)
-        self.assertIn("Features", notes)
-        self.assertIn("Fixes", notes)
-        self.assertIn("v0.1.0", notes)
+        self.assertIn("Updates and improvements", notes)
+        self.assertIn("v0.0.1", notes)
 
 
 if __name__ == "__main__":
