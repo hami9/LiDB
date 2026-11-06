@@ -7,6 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone)]
 pub struct Update {
     pub snapshot: Snapshot,
     pub network: Option<NetworkReport>,

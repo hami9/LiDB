@@ -100,6 +100,45 @@ pub fn execute(config: Config, mut output: impl Write) -> Result<u8, io::Error> 
                 output.write_all(output::network_text(&report).as_bytes())?;
             }
         }
+        Command::Export => {
+            let mut collector = collector(&config);
+            let _ = collector.sample();
+            thread::sleep(config.interval);
+            let snapshot = collector.sample();
+            let doctor = output::DoctorReport::from_snapshot(&snapshot);
+            let network = collector.network();
+            let exit_code = doctor.exit_code();
+            let monotonic_ns = snapshot.monotonic_ns();
+            let collection_duration_ns = snapshot
+                .collection_duration_ns()
+                .saturating_add(network.collection_duration_ns());
+            let export = output::EvidenceExport::new(
+                &snapshot,
+                doctor,
+                &network,
+                monotonic_ns,
+                collection_duration_ns,
+            );
+
+            if let Some(ref path) = config.output_file {
+                let file = std::fs::File::create(path)?;
+                let mut writer = std::io::BufWriter::new(file);
+                if config.json {
+                    serde_json::to_writer(&mut writer, &export)?;
+                    writer.write_all(b"\n")?;
+                } else {
+                    writer.write_all(output::export_text(&export).as_bytes())?;
+                }
+                writer.flush()?;
+                writeln!(output, "Exported diagnostic evidence to {}", path.display())?;
+            } else if config.json {
+                serde_json::to_writer(&mut output, &export)?;
+                output.write_all(b"\n")?;
+            } else {
+                output.write_all(output::export_text(&export).as_bytes())?;
+            }
+            return Ok(exit_code);
+        }
     }
     Ok(0)
 }

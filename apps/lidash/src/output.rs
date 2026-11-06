@@ -1,4 +1,7 @@
-use lidb_core::{MetricObservation, MetricValue, Snapshot, SnapshotMode, SNAPSHOT_SCHEMA_VERSION};
+use lidb_core::{
+    network::NetworkReport, MetricObservation, MetricValue, Snapshot, SnapshotMode,
+    SNAPSHOT_SCHEMA_VERSION,
+};
 use serde::Serialize;
 use std::{collections::BTreeMap, fmt::Write};
 
@@ -383,32 +386,102 @@ pub fn network_text(report: &lidb_core::network::NetworkReport) -> String {
     out
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Failure<'a> {
-    metric: &'a str,
-    status: &'a str,
-    reason: &'a str,
+    pub metric: &'a str,
+    pub status: &'a str,
+    pub reason: &'a str,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SourceCapability<'a> {
-    source: &'a str,
-    status: &'a str,
-    available_metrics: usize,
-    unavailable_metrics: usize,
-    failures: Vec<Failure<'a>>,
+    pub source: &'a str,
+    pub status: &'a str,
+    pub available_metrics: usize,
+    pub unavailable_metrics: usize,
+    pub failures: Vec<Failure<'a>>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DoctorReport<'a> {
-    schema_version: &'static str,
-    mode: &'static str,
-    collection_status: &'static str,
-    usable: bool,
-    monotonic_ns: u64,
-    collection_duration_ns: u64,
-    dropped_metrics: u64,
-    capabilities: Vec<SourceCapability<'a>>,
+    pub schema_version: &'static str,
+    pub mode: &'static str,
+    pub collection_status: &'static str,
+    pub usable: bool,
+    pub monotonic_ns: u64,
+    pub collection_duration_ns: u64,
+    pub dropped_metrics: u64,
+    pub capabilities: Vec<SourceCapability<'a>>,
+}
+
+pub const EXPORT_SCHEMA_VERSION: &str = "0.1";
+pub const EXPORT_TYPE: &str = "offline_diagnostic_evidence";
+pub const EXPORT_CLOCK_SOURCE: &str = "collector_monotonic";
+pub const EXPORT_PRIVACY_DECLARATION: &str =
+    "LiDB offline diagnostic evidence bundle: non-root, read-only, metadata-only. Zero packet payloads, zero decrypted TLS, zero environment variables, zero process arguments, zero secrets.";
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EvidenceExport<'a> {
+    pub schema_version: &'static str,
+    pub export_type: &'static str,
+    pub clock_source: &'static str,
+    pub privacy_declaration: &'static str,
+    pub mode: &'static str,
+    pub monotonic_ns: u64,
+    pub collection_duration_ns: u64,
+    pub snapshot: &'a Snapshot,
+    pub doctor: DoctorReport<'a>,
+    pub network: &'a NetworkReport,
+}
+
+impl<'a> EvidenceExport<'a> {
+    pub fn new(
+        snapshot: &'a Snapshot,
+        doctor: DoctorReport<'a>,
+        network: &'a NetworkReport,
+        monotonic_ns: u64,
+        collection_duration_ns: u64,
+    ) -> Self {
+        Self {
+            schema_version: EXPORT_SCHEMA_VERSION,
+            export_type: EXPORT_TYPE,
+            clock_source: EXPORT_CLOCK_SOURCE,
+            privacy_declaration: EXPORT_PRIVACY_DECLARATION,
+            mode: mode_name(snapshot.mode()),
+            monotonic_ns,
+            collection_duration_ns,
+            snapshot,
+            doctor,
+            network,
+        }
+    }
+}
+
+pub fn export_text(export: &EvidenceExport<'_>) -> String {
+    format!(
+        "LiDB Diagnostic Evidence Bundle v{}\n\
+         ========================================\n\
+         Export Type: {}\n\
+         Mode: {}\n\
+         Collector Monotonic: {} ns\n\
+         Collection Duration: {} ns\n\
+         Privacy: {}\n\n\
+         --- [1/3] Host Metrics Snapshot ---\n\
+         {}\n\
+         --- [2/3] Source Doctor Report ---\n\
+         {}\n\
+         --- [3/3] Network Telemetry Report ---\n\
+         {}",
+        export.schema_version,
+        export.export_type,
+        export.mode,
+        export.monotonic_ns,
+        export.collection_duration_ns,
+        export.privacy_declaration,
+        snapshot_text(export.snapshot),
+        export.doctor.text(),
+        network_text(export.network),
+    )
 }
 
 impl<'a> DoctorReport<'a> {
@@ -539,5 +612,47 @@ mod tests {
         assert!(snapshot_text(&snapshot).contains("zero = 0 count"));
         let empty = Snapshot::new(0, 0, SnapshotMode::Live);
         assert_eq!(DoctorReport::from_snapshot(&empty).exit_code(), 1);
+    }
+
+    #[test]
+    fn evidence_export_formats_cleanly_with_privacy_declaration() {
+        let mut snapshot = Snapshot::new(100, 50, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "cpu.user",
+                    "procfs/stat",
+                    Unit::Percent,
+                    100,
+                    MetricState::Available(MetricValue::Number(12.5)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let doctor = DoctorReport::from_snapshot(&snapshot);
+        let network = NetworkReport::new(100, 25, SnapshotMode::Fixture);
+        let export = EvidenceExport::new(&snapshot, doctor, &network, 100, 75);
+
+        assert_eq!(export.schema_version, "0.1");
+        assert_eq!(export.export_type, "offline_diagnostic_evidence");
+        assert_eq!(export.clock_source, "collector_monotonic");
+        assert!(export.privacy_declaration.contains("Zero packet payloads"));
+        assert_eq!(export.mode, "fixture");
+        assert_eq!(export.monotonic_ns, 100);
+        assert_eq!(export.collection_duration_ns, 75);
+
+        let text = export_text(&export);
+        assert!(text.contains("LiDB Diagnostic Evidence Bundle v0.1"));
+        assert!(text.contains("Export Type: offline_diagnostic_evidence"));
+        assert!(text.contains("--- [1/3] Host Metrics Snapshot ---"));
+        assert!(text.contains("--- [2/3] Source Doctor Report ---"));
+        assert!(text.contains("--- [3/3] Network Telemetry Report ---"));
+        assert!(text.contains("cpu.user = 12.50 percent"));
+        assert!(text.contains("Zero packet payloads"));
+
+        let serialized = serde_json::to_string(&export).unwrap();
+        assert!(serialized.contains("\"schema_version\":\"0.1\""));
+        assert!(serialized.contains("\"export_type\":\"offline_diagnostic_evidence\""));
+        assert!(serialized.contains("Zero packet payloads"));
     }
 }
