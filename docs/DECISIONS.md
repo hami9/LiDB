@@ -149,3 +149,22 @@ Rust 1.85 is the selected minimum toolchain for the runnable foundation. Record 
 **Alternatives:** Keeping routes, interfaces, and sockets exclusively as separate sub-commands forces operators to correlate timestamps manually and prevents unified interactive monitoring in the TUI.
 
 **Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is recorded in [issue #57](../.AGENTS/worklogs/antigravity-ag-06.md).
+
+## ADR-030 — offline diagnostic evidence export and bounded terminal history (2026-11-06)
+
+**Status:** implemented proposal in issue #59 (Task AG-07), explicitly stacked on PR #58 (`agent/antigravity/ag-06-network-ui`); integration/phase acceptance pending.
+
+**Context:** Operators troubleshooting degraded Linux hosts or capturing support bundles require a consolidated, self-contained evidence export command that packages host metric observations, capability diagnosis (`doctor`), and full network telemetry into a structured JSON or human-readable format. Furthermore, when analyzing transient spikes or regressions in the interactive TUI, operators need time-travel history navigation through recent samples without infinite memory growth or unbounded retention.
+
+**Decision:**
+1. Implement the `export` command (alias: `bundle`) in `apps/lidash`, supporting `--output PATH` and `--json`.
+2. Package evidence into `EvidenceExport` (schema `0.1`, type `offline_diagnostic_evidence`) combining host snapshot, source doctor capabilities, and unified network report.
+3. Explicitly declare strict privacy boundaries in `EvidenceExport::privacy_declaration`: non-root, read-only, metadata-only; zero packet payloads, zero decrypted TLS, zero environment variables, zero process arguments, and zero secrets.
+4. If `--output PATH` is provided, stream output into a buffered file writer safely; otherwise write directly to stdout. Return exit code matching source capability usability (0 if usable/degraded, 1 if no metrics available).
+5. In `apps/lidash::tui`, implement an in-memory bounded ring buffer capped at `MAX_VIEW_HISTORY = 120` samples (~2 minutes of history at 1s intervals, ~700 KB RAM).
+6. Enable time-travel history inspection via `[` / `,` (step backward) and `]` / `.` (step forward), auto-pausing live updates.
+7. Display historical offset and sample age in the header bar (`PAUSED [-N/total]`), and snap back to live streaming immediately when `Space` unpauses.
+
+**Alternatives:** Ad-hoc shell scripting or piping multiple commands together introduces timestamp skews and lacks standard privacy declarations. Unbounded in-memory history risks OOM on constrained hosts.
+
+**Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is recorded in [issue #59](../.AGENTS/worklogs/antigravity-ag-07.md).

@@ -100,6 +100,8 @@ fn help_version_invalid_options_and_nonterminal_tui_have_defined_exits() {
         &["tui"],
         &["tui", "--json"],
         &["doctor", "snapshot"],
+        &["snapshot", "--output", "foo.txt"],
+        &["network", "--output", "foo.txt"],
     ] {
         let output = binary(args);
         assert_eq!(output.status.code(), Some(2), "{args:?}");
@@ -560,4 +562,119 @@ eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n\
     assert!(text.contains("--- Interfaces ---"));
     assert!(text.contains("--- Routes ---"));
     assert!(text.contains("--- Sockets ---"));
+}
+
+static EXPORT_TEMP_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[test]
+fn export_command_runs_cleanly_on_all_platforms() {
+    let output = binary(&["export", "--json", "--interval-ms", "250"]);
+    // Exit code 0 if metrics usable, 1 if unavailable (e.g. non-Linux without fixture)
+    let code = output.status.code().unwrap_or(-1);
+    assert!(code == 0 || code == 1, "unexpected exit code: {code}");
+    let data: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(data["schema_version"], "0.1");
+    assert_eq!(data["export_type"], "offline_diagnostic_evidence");
+    assert_eq!(data["clock_source"], "collector_monotonic");
+    assert!(data["privacy_declaration"]
+        .as_str()
+        .unwrap()
+        .contains("Zero packet payloads"));
+    assert_eq!(data["snapshot"]["schema_version"], "0.1");
+    assert_eq!(data["doctor"]["schema_version"], "0.1");
+    assert_eq!(data["network"]["schema_version"], "0.1");
+
+    let text_output = binary(&["export", "--interval-ms", "250"]);
+    let text_code = text_output.status.code().unwrap_or(-1);
+    assert!(text_code == 0 || text_code == 1);
+    let text = String::from_utf8(text_output.stdout).unwrap();
+    assert!(text.contains("LiDB Diagnostic Evidence Bundle v0.1"));
+    assert!(text.contains("Export Type: offline_diagnostic_evidence"));
+    assert!(text.contains("Zero packet payloads"));
+    assert!(text.contains("--- [1/3] Host Metrics Snapshot ---"));
+    assert!(text.contains("--- [2/3] Source Doctor Report ---"));
+    assert!(text.contains("--- [3/3] Network Telemetry Report ---"));
+}
+
+#[test]
+fn export_command_writes_to_output_file() {
+    let temp_json = std::env::temp_dir().join(format!(
+        "lidash-export-{}-{}.json",
+        std::process::id(),
+        EXPORT_TEMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let output = binary(&[
+        "export",
+        "--json",
+        "--output",
+        temp_json.to_str().unwrap(),
+        "--interval-ms",
+        "250",
+    ]);
+    let code = output.status.code().unwrap_or(-1);
+    assert!(code == 0 || code == 1);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Exported diagnostic evidence to"));
+    assert!(temp_json.exists());
+
+    let content = std::fs::read_to_string(&temp_json).unwrap();
+    let data: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(data["schema_version"], "0.1");
+    assert_eq!(data["export_type"], "offline_diagnostic_evidence");
+    assert_eq!(data["clock_source"], "collector_monotonic");
+    let _ = std::fs::remove_file(&temp_json);
+
+    let temp_txt = std::env::temp_dir().join(format!(
+        "lidash-export-{}-{}.txt",
+        std::process::id(),
+        EXPORT_TEMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let output_txt = binary(&[
+        "export",
+        "--output",
+        temp_txt.to_str().unwrap(),
+        "--interval-ms",
+        "250",
+    ]);
+    let code_txt = output_txt.status.code().unwrap_or(-1);
+    assert!(code_txt == 0 || code_txt == 1);
+    assert!(temp_txt.exists());
+    let txt_content = std::fs::read_to_string(&temp_txt).unwrap();
+    assert!(txt_content.contains("LiDB Diagnostic Evidence Bundle v0.1"));
+    let _ = std::fs::remove_file(&temp_txt);
+}
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn export_command_reads_fixture_evidence() {
+    let fixture = Fixture::new();
+    let net_dir = fixture.0.join("net");
+    fs::create_dir_all(&net_dir).unwrap();
+
+    let dev_fixture = "\
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+  eth0:    1000      10    0    0    0     0          0         0     2000      20    0    0    0     0       0          0
+";
+    fs::write(net_dir.join("dev"), dev_fixture).unwrap();
+
+    let output = fixture.run(&["export", "--json", "--interval-ms", "250"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["mode"], "fixture");
+    assert_eq!(data["schema_version"], "0.1");
+    assert_eq!(data["export_type"], "offline_diagnostic_evidence");
+    assert_eq!(data["doctor"]["usable"], true);
+    assert_eq!(data["doctor"]["mode"], "fixture");
+    assert_eq!(data["snapshot"]["mode"], "fixture");
+
+    let text = String::from_utf8(fixture.run(&["export", "--interval-ms", "250"]).stdout).unwrap();
+    assert!(text.contains("LiDB Diagnostic Evidence Bundle v0.1"));
+    assert!(text.contains("Mode: fixture"));
+    assert!(text.contains("--- [1/3] Host Metrics Snapshot ---"));
+    assert!(text.contains("--- [2/3] Source Doctor Report ---"));
+    assert!(text.contains("--- [3/3] Network Telemetry Report ---"));
 }

@@ -14,6 +14,7 @@ cargo run -p lidash -- routes --json
 cargo run -p lidash -- interfaces --json
 cargo run -p lidash -- sockets --json
 cargo run -p lidash -- network --json
+cargo run -p lidash -- export --json --output evidence.json
 cargo run -p lidash -- tui --interval-ms 1000 --no-color
 ```
 
@@ -92,6 +93,14 @@ Disappearing interfaces during enumeration do not cause collection aborts.
 Its socket-only JSON schema `0.1` reports protocol (`tcp`, `udp`), local and remote IP/port endpoints, connection state, and socket inode numbers.
 Output is bounded by `MAX_NETWORK_SOCKETS = 2048`, tracking omissions in `dropped_sockets`. Sockets collection is strictly read-only and non-privileged; it does not map sockets to PIDs or inspect process state.
 Explicit `--proc-root PATH` labels the output `fixture`. Text displays protocol, endpoints, connection state, and inode cleanly.
+
+`export` captures a unified offline diagnostic evidence bundle aggregating host metrics snapshot, source doctor capabilities, and network telemetry into a structured JSON or text report.
+Its export schema `0.1` embeds an explicit privacy declaration: non-root, read-only, metadata-only with zero packet payloads, zero decrypted TLS, zero process arguments, zero environments, and zero secrets.
+Use `--output PATH` to write directly to a destination file safely.
+
+The TUI maintains an in-memory bounded ring buffer of historical updates (`MAX_VIEW_HISTORY = 120` samples, ~2 minutes of history at 1s intervals).
+Press `[` or `,` to step backward in history (auto-pauses the live stream) and `]` or `.` to step forward.
+While navigating history, the header bar indicates historical position (`PAUSED [-N/total]`) and true sample age; press `Space` to resume live streaming and snap back to the latest sample.
 
 ```bash
 cargo test -p lidash

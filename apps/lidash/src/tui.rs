@@ -19,6 +19,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{
+    collections::VecDeque,
     io, panic,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -62,10 +63,15 @@ impl Tab {
     }
 }
 
+/// Maximum number of historical updates retained in memory for TUI time-travel inspection.
+pub const MAX_VIEW_HISTORY: usize = 120;
+
 /// In-memory interactive state for the terminal UI.
 #[derive(Default)]
 pub struct View {
     pub update: Option<Update>,
+    pub history: VecDeque<Update>,
+    pub history_cursor: Option<usize>,
     pub paused: bool,
     pub help: bool,
     pub detail: bool,
@@ -77,6 +83,59 @@ pub struct View {
 }
 
 impl View {
+    /// Pushes a new update into bounded history and updates current view if live.
+    pub fn push_update(&mut self, update: Update) {
+        if self.history.len() >= MAX_VIEW_HISTORY {
+            self.history.pop_front();
+        }
+        self.history.push_back(update.clone());
+        if !self.paused {
+            self.update = Some(update);
+            self.history_cursor = None;
+        }
+    }
+
+    /// Steps backward one historical update, pausing live stream if running.
+    pub fn step_history_back(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        self.paused = true;
+        let max_offset = self.history.len().saturating_sub(1);
+        let next_offset = match self.history_cursor {
+            None => 1.min(max_offset),
+            Some(curr) => curr.saturating_add(1).min(max_offset),
+        };
+        self.history_cursor = Some(next_offset);
+        let idx = self
+            .history
+            .len()
+            .saturating_sub(1)
+            .saturating_sub(next_offset);
+        if let Some(sample) = self.history.get(idx) {
+            self.update = Some(sample.clone());
+        }
+    }
+
+    /// Steps forward one historical update towards latest.
+    pub fn step_history_forward(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        if let Some(curr) = self.history_cursor {
+            let next_offset = curr.saturating_sub(1);
+            self.history_cursor = Some(next_offset);
+            let idx = self
+                .history
+                .len()
+                .saturating_sub(1)
+                .saturating_sub(next_offset);
+            if let Some(sample) = self.history.get(idx) {
+                self.update = Some(sample.clone());
+            }
+        }
+    }
+
     /// Adjusts table scroll position by a signed delta bounded to available metrics.
     fn scroll_by(&mut self, count: isize) {
         let max = self.update.as_ref().map_or(0, |update| {
@@ -133,19 +192,38 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     ])
     .split(area);
     view.text_page_size = layout[1].height.saturating_sub(2).max(1);
-    let state = if view.paused { "PAUSED" } else { "running" };
-    let freshness = view.update.as_ref().map_or_else(
-        || "awaiting first sample".into(),
-        |update| {
-            format!(
-                "age {:.1}s | read {:.1}ms | dropped {} | skipped {}",
-                update.collected_at.elapsed().as_secs_f64(),
-                update.snapshot.collection_duration_ns() as f64 / 1_000_000.0,
-                update.snapshot.dropped_metrics(),
-                update.skipped_updates
-            )
-        },
-    );
+    let (state, freshness) = if let Some(offset) = view.history_cursor {
+        let total = view.history.len();
+        let state_str = format!("PAUSED [-{offset}/{total}]");
+        let freshness_str = view.update.as_ref().map_or_else(
+            || "history empty".into(),
+            |update| {
+                format!(
+                    "age {:.1}s | read {:.1}ms | dropped {} | skipped {}",
+                    update.collected_at.elapsed().as_secs_f64(),
+                    update.snapshot.collection_duration_ns() as f64 / 1_000_000.0,
+                    update.snapshot.dropped_metrics(),
+                    update.skipped_updates
+                )
+            },
+        );
+        (state_str, freshness_str)
+    } else {
+        let state_str = if view.paused { "PAUSED" } else { "running" }.to_string();
+        let freshness_str = view.update.as_ref().map_or_else(
+            || "awaiting first sample".into(),
+            |update| {
+                format!(
+                    "age {:.1}s | read {:.1}ms | dropped {} | skipped {}",
+                    update.collected_at.elapsed().as_secs_f64(),
+                    update.snapshot.collection_duration_ns() as f64 / 1_000_000.0,
+                    update.snapshot.dropped_metrics(),
+                    update.skipped_updates
+                )
+            },
+        );
+        (state_str, freshness_str)
+    };
     let header_block = Block::default()
         .title(format!(" LiDB {mode} | read-only host metrics "))
         .borders(Borders::ALL);
@@ -172,13 +250,19 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let shortcuts = if view.help || view.detail {
         "q quit | PgUp/PgDn scroll text"
     } else {
-        "q quit | Tab / 1-3 tab | Space pause | ? help | Enter detail | Up/Down scroll"
+        "q quit | Tab / 1-3 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, Left/Right: switch between 1:Metrics, 2:CPU/Mem, and 3:Network tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        let help_body = if area.width >= 96 {
+            format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
+        } else {
+            HELP_TEXT.to_string()
+        };
         draw_text(
             frame,
-            "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, Left/Right: switch between 1:Metrics, 2:CPU/Mem, and 3:Network tabs\nSpace: pause displayed snapshot (sampling continues)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.",
+            &help_body,
             " Help ",
             &mut view.text_scroll,
             layout[1],
@@ -761,7 +845,7 @@ pub(crate) fn update_from_worker(view: &mut View, worker: &Worker) -> io::Result
     // snapshot immediately, even when the next sample is a minute away.
     if !view.paused {
         if let Some(update) = worker.take_latest()? {
-            view.update = Some(update);
+            view.push_update(update);
         }
     }
     Ok(())
@@ -840,7 +924,21 @@ pub fn run(config: Config) -> io::Result<()> {
                 }
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Char(' ') => view.paused = !view.paused,
+                    KeyCode::Char(' ') => {
+                        view.paused = !view.paused;
+                        if !view.paused {
+                            view.history_cursor = None;
+                            if let Some(latest) = view.history.back() {
+                                view.update = Some(latest.clone());
+                            }
+                        }
+                    }
+                    KeyCode::Char('[') | KeyCode::Char(',') => {
+                        view.step_history_back();
+                    }
+                    KeyCode::Char(']') | KeyCode::Char('.') => {
+                        view.step_history_forward();
+                    }
                     KeyCode::Char('?') | KeyCode::Char('h') => {
                         view.help = !view.help;
                         view.text_scroll = 0;
@@ -976,6 +1074,8 @@ mod tests {
         assert!(render(120, 30, &mut view).contains("PAUSED"));
         view.help = true;
         assert!(render(70, 30, &mut view).contains("sampling continues"));
+        assert!(render(120, 30, &mut view).contains("8888888b"));
+        assert!(!render(70, 30, &mut view).contains("8888888b"));
         for (width, height) in [(0, 0), (1, 1), (20, 4), (35, 7), (120, 30)] {
             let _ = render(width, height, &mut view);
         }
@@ -1203,5 +1303,73 @@ mod tests {
         assert!(small.contains("Ifaces: 1"));
         assert!(small.contains("Routes: 1"));
         assert!(small.contains("Sockets: 1"));
+    }
+
+    #[test]
+    fn bounded_history_ring_caps_at_max_and_steps_correctly() {
+        let mut view = View {
+            fixture: true,
+            ..View::default()
+        };
+
+        // Push 130 updates, each with monotonic_ns = i
+        for i in 0u64..130 {
+            let mut snapshot = Snapshot::new(i, 10, SnapshotMode::Fixture);
+            snapshot
+                .push(
+                    MetricObservation::new(
+                        "sample.id",
+                        "procfs/stat",
+                        Unit::Count,
+                        i,
+                        MetricState::Available(MetricValue::Integer(i)),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            view.push_update(Update {
+                snapshot,
+                network: None,
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            });
+        }
+
+        // Must be capped at MAX_VIEW_HISTORY (120)
+        assert_eq!(view.history.len(), MAX_VIEW_HISTORY);
+        assert_eq!(view.update.as_ref().unwrap().snapshot.monotonic_ns(), 129);
+        assert_eq!(view.history_cursor, None);
+        assert!(!view.paused);
+
+        // Step back once: should pause and show sample 128
+        view.step_history_back();
+        assert!(view.paused);
+        assert_eq!(view.history_cursor, Some(1));
+        assert_eq!(view.update.as_ref().unwrap().snapshot.monotonic_ns(), 128);
+
+        // Render header and verify history indicator
+        let output = render(120, 30, &mut view);
+        assert!(output.contains("PAUSED [-1/120]"));
+
+        // Step back 10 more times
+        for _ in 0..10 {
+            view.step_history_back();
+        }
+        assert_eq!(view.history_cursor, Some(11));
+        assert_eq!(view.update.as_ref().unwrap().snapshot.monotonic_ns(), 118);
+
+        // Step forward 5 times
+        for _ in 0..5 {
+            view.step_history_forward();
+        }
+        assert_eq!(view.history_cursor, Some(6));
+        assert_eq!(view.update.as_ref().unwrap().snapshot.monotonic_ns(), 123);
+
+        // Unpause: snap back to latest
+        view.paused = false;
+        view.history_cursor = None;
+        view.update = view.history.back().cloned();
+        assert_eq!(view.update.as_ref().unwrap().snapshot.monotonic_ns(), 129);
+        assert!(!render(120, 30, &mut view).contains("PAUSED"));
     }
 }

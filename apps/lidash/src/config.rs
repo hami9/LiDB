@@ -1,7 +1,25 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
-pub const HELP: &str = "LiDashBoard — read-only Linux host monitor
-Usage: lidash [snapshot|doctor|routes|interfaces|sockets|network|tui] [OPTIONS]
+pub const ASCII_LOGO: &str = r#"888      d8b 8888888b.                 888     888888b.                                    888
+888      Y8P 888  "Y88b                888     888  "88b                                   888
+888          888    888                888     888  .88P                                   888
+888      888 888    888  8888b.   .d8888b  88888b.  8888888K.   .d88b.   8888b.  888d888  .d88888
+888      888 888    888      "88b 88K      888 "88b 888  "Y88b d88""88b      "88b 888P"   d88" 888
+888      888 888    888 .d888888 "Y8888b. 888  888 888    888 888  888 .d888888 888     888  888
+888      888 888  .d88P 888  888      X88 888  888 888   d88P Y88..88P 888  888 888     Y88b 888
+88888888 888 8888888P"  "Y888888  88888P' 888  888 8888888P"   "Y88P"  "Y888888 888      "Y88888"#;
+
+pub const HELP: &str = r#"888      d8b 8888888b.                 888     888888b.                                    888
+888      Y8P 888  "Y88b                888     888  "88b                                   888
+888          888    888                888     888  .88P                                   888
+888      888 888    888  8888b.   .d8888b  88888b.  8888888K.   .d88b.   8888b.  888d888  .d88888
+888      888 888    888      "88b 88K      888 "88b 888  "Y88b d88""88b      "88b 888P"   d88" 888
+888      888 888    888 .d888888 "Y8888b. 888  888 888    888 888  888 .d888888 888     888  888
+888      888 888  .d88P 888  888      X88 888  888 888   d88P Y88..88P 888  888 888     Y88b 888
+88888888 888 8888888P"  "Y888888  88888P' 888  888 8888888P"   "Y88P"  "Y888888 888      "Y88888
+
+LiDashBoard — read-only Linux host monitor
+Usage: lidash [snapshot|doctor|routes|interfaces|sockets|network|export|tui] [OPTIONS]
 
 Commands:
   snapshot       Print one host snapshot (alias: status)
@@ -10,10 +28,12 @@ Commands:
   interfaces     Print network interface metadata (alias: interface, iface)
   sockets        Print TCP and UDP socket endpoints (alias: socket, sock)
   network        Print network report (alias: net)
+  export         Export offline diagnostic evidence bundle (alias: bundle)
   tui            Open the keyboard-driven terminal monitor
 
 Options:
-  --json                 JSON snapshot, doctor report, routing table, interfaces, sockets, or network; no terminal required
+  --json                 JSON output; no terminal required
+  --output PATH          Write export bundle to a specified file
   --interval-ms N        Sample interval, 250..60000 milliseconds
   --proc-root PATH       Read a fixture instead of /proc; output is labeled fixture
   --sys-root PATH        Read a fixture instead of /sys; output is labeled fixture
@@ -25,8 +45,8 @@ Without a command: open TUI when stdin and stdout are terminals, otherwise snaps
 Snapshot/doctor take two samples (default 250ms); TUI defaults to 1000ms.
 Doctor is read-only. Exit: 0 usable (possibly degraded), 1 no available metrics,
 2 invalid arguments or runtime failure. Snapshot preserves unavailable states.
-TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/3/Left/Right tabs, Space pause, ?/h help, Enter detail, Up/Down scroll.
-";
+TUI keys: q/Esc/Ctrl-C quit, Tab/1/2/3/Left/Right tabs, Space pause, [ / ] history, ?/h help, Enter detail, Up/Down scroll.
+"#;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
@@ -36,6 +56,7 @@ pub enum Command {
     Interfaces,
     Sockets,
     Network,
+    Export,
     Tui,
     Help,
     Version,
@@ -50,6 +71,7 @@ pub struct Config {
     pub sys_root: PathBuf,
     // Explicit --proc-root or --sys-root is a fixture request.
     pub fixture: bool,
+    pub output_file: Option<PathBuf>,
 }
 
 impl Config {
@@ -64,6 +86,7 @@ impl Config {
         let mut proc_root = PathBuf::from("/proc");
         let mut sys_root: Option<PathBuf> = None;
         let mut fixture = false;
+        let mut output_file: Option<PathBuf> = None;
         while let Some(arg) = args.next() {
             match arg.to_str() {
                 Some("-h" | "--help" | "help") => {
@@ -78,8 +101,16 @@ impl Config {
                 }
                 Some("sockets" | "socket" | "sock") => set_command(&mut command, Command::Sockets)?,
                 Some("network" | "net") => set_command(&mut command, Command::Network)?,
+                Some("export" | "bundle") => set_command(&mut command, Command::Export)?,
                 Some("tui") => set_command(&mut command, Command::Tui)?,
                 Some("--json") => json = true,
+                Some("--output") => {
+                    let path: PathBuf = args.next().ok_or("--output requires a path")?.into();
+                    if path.as_os_str().is_empty() {
+                        return Err("--output requires a nonempty path".into());
+                    }
+                    output_file = Some(path);
+                }
                 Some("--no-color") => {}
                 Some("--interval-ms") => {
                     let value = args.next().ok_or("--interval-ms requires a number")?;
@@ -115,7 +146,13 @@ impl Config {
         });
         if command == Command::Tui && json {
             return Err(
-                "--json is supported by snapshot, doctor, routes, interfaces, sockets, and network; choose one of those commands"
+                "--json is supported by snapshot, doctor, routes, interfaces, sockets, network, and export; choose one of those commands"
+                    .into(),
+            );
+        }
+        if output_file.is_some() && command != Command::Export {
+            return Err(
+                "--output is supported only by the export command; use redirection for other commands"
                     .into(),
             );
         }
@@ -141,6 +178,7 @@ impl Config {
             proc_root,
             sys_root,
             fixture,
+            output_file,
         })
     }
 
@@ -152,6 +190,7 @@ impl Config {
             proc_root: "/proc".into(),
             sys_root: "/sys".into(),
             fixture: false,
+            output_file: None,
         }
     }
 }
