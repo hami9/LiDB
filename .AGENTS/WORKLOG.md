@@ -138,4 +138,23 @@ Next action: review/integrate the tested public Core PR, then select one focused
 - Cleaned up merged worktrees: `.worktrees/codex/collector-shutdown` and `.worktrees/codex/interface-errors`.
 - Workspace status: All 108 tests passing (`cargo test --workspace --locked --all-targets`), zero clippy warnings, 151 local Markdown links valid, 19 Python CI tests passing.
 
+## 2026-11-07 — Historical Issue/PR Triage and Phase 4 (eBPF Lifecycle Instrumentation) Delivery
+
+- Actor: Antigravity.
+- Worktree & PR: `.worktrees/antigravity/ag-08-ebpf`, branch `agent/antigravity/ag-08-ebpf`, [PR #64](https://github.com/hami9/LiDB/pull/64).
+- Issue & PR Triage:
+  - Triaged and closed 11 resolved historical open issues (#49, #26, #24, #23, #22, #19, #17, #14, #10, #8, #7) with provenance notes referencing their implementing PRs. All open issues in repository closed.
+  - Closed 9 obsolete superseded PRs (#13, #16, #18, #27, #28, #29, #30, #31, #35).
+  - Cleaned up obsolete local worktree checkouts.
+- Phase 4 Implementation (Task AG-08 / [PR #64](https://github.com/hami9/LiDB/pull/64), commit `80de93c`):
+  - Pure platform-agnostic eBPF domain contracts in `crates/lidb-core/src/ebpf.rs` (`EbpfEventType`, `EbpfLifecycleEvent`, `EbpfReport`, `EbpfError`) with bounded retention (`MAX_EBPF_EVENTS = 2048`) and `dropped_events` tracking.
+  - C CO-RE eBPF program `crates/lidb-collect/bpf/tcp_lifecycle.bpf.c` hooking tracepoint `sock:inet_sock_set_state` via a 256KB ringbuf. Metadata-only: family, endpoints, state transitions, duration; strictly zero packet payload/decrypted TLS.
+  - Pure safe Rust userspace collector & capability probing in `crates/lidb-collect/src/ebpf.rs` and `lib.rs`: adheres strictly to `#![forbid(unsafe_code)]` with zero `unsafe` or `libc`. Probes `/sys/kernel/btf/vmlinux` and `/proc/self/status` for `Uid:` and `CapEff:` (`CAP_BPF` / `CAP_SYS_ADMIN`). Degrades truthfully to typed `SourceAvailability::unsupported` or `SourceAvailability::permission_denied`.
+  - Added CLI command `ebpf` (aliases: `bpf`, `events`) and `--ebpf` flag in `apps/lidash`, with `--json` export and human-readable text output.
+  - Added ADR-031 to `docs/DECISIONS.md`, updated `docs/CORE.md`, `crates/lidb-collect/README.md`, and `apps/lidash/README.md`.
+  - Verification: 114 workspace unit & integration tests passing (`cargo test --workspace --locked --all-targets`), zero Clippy warnings on Windows, Linux x86_64, and Linux aarch64 targets, 151 Markdown links verified, 19 CI Python tests passing.
+  - PR #64 passed all GitHub Actions checks (CI Gate, Rust x86_64, Rust aarch64, CodeQL C, CodeQL Rust, Worktree Windows smoke, Docs, Markdown links) and was squash-merged into `main`.
+  - Automatic Release workflow built cross-architecture binaries and published [**`LiDashBoard v0.0.5`**](https://github.com/hami9/LiDB/releases/tag/v0.0.5) advancing patch `0.0.1+`.
+
+
 
