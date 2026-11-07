@@ -187,3 +187,23 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Pure additive feature. Non-Linux platforms report `SourceAvailability::Unsupported` cleanly. Actual evidence is recorded in [issue #59](../.AGENTS/worklogs/antigravity-ag-07.md).
 
+## ADR-031 — read-only eBPF lifecycle instrumentation and unprivileged fallback (2026-11-07)
+
+**Status:** implemented in Task AG-08 (Phase 4).
+
+**Context:** Operators troubleshooting high-frequency connection churn, transient latency spikes, and socket lifecycle transitions (e.g. `SYN_SENT -> ESTABLISHED`, `CLOSE_WAIT`, `FIN_WAIT_1`, `RESET`) require deeper visibility than periodic polling of `/proc/net/tcp`. eBPF enables low-overhead, in-kernel event capture without polling delays. However, eBPF requires kernel support (>= 4.16), BTF (`/sys/kernel/btf/vmlinux`), and specific permissions (`CAP_BPF` or `CAP_SYS_ADMIN`), and must never violate operator privacy or crash on unprivileged hosts or non-Linux platforms.
+
+**Decision:**
+1. Define pure platform-agnostic eBPF contracts in `crates/lidb-core/src/ebpf.rs` (`EbpfEventType`, `EbpfLifecycleEvent`, `EbpfReport`, `EbpfError`).
+2. Implement safe C CO-RE program `crates/lidb-collect/bpf/tcp_lifecycle.bpf.c` hooking tracepoint `sock:inet_sock_set_state` via a 256KB ring buffer. Capture strictly metadata (family, endpoints, state transition, duration/latency), zero payload, zero headers, zero memory reads.
+3. Implement userspace loader, capability probing, and detach in `crates/lidb-collect/src/ebpf.rs` and `LinuxCollector::ebpf`.
+4. Enforce strict capability checks: check `/sys/kernel/btf/vmlinux` and BPF permissions. Report typed availability (`Unsupported` when BTF or OS is missing/non-Linux, `PermissionDenied` when unprivileged, `Available` when attached).
+5. Enforce bounded retention: ring buffer cap of `MAX_EBPF_EVENTS = 2048` per report, reporting `dropped_events` on overflow.
+6. Add CLI command `ebpf` (aliases: `bpf`, `events`) and `--ebpf` flag in `apps/lidash`, with JSON and human-readable text formatting.
+7. Support deterministic offline fixture playback for mock testing and verification across non-Linux and CI systems.
+
+**Alternatives:** Kprobes (`tcp_v4_connect`) are unstable across kernel versions; packet capture (libpcap) violates read-only metadata privacy contracts and imposes high CPU overhead. Tracepoints with CO-RE are stable, safe, and kernel-verified.
+
+**Migration / limits:** Pure additive feature. Non-Linux and unprivileged Linux systems degrade cleanly to typed availability without error.
+
+

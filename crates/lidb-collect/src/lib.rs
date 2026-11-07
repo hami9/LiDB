@@ -6,6 +6,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+/// Optional eBPF telemetry and unprivileged capability probing.
+pub mod ebpf;
 /// Bounded, read-only network interface metadata and namespace collection from Linux sysfs and procfs.
 pub mod interface;
 mod parse;
@@ -15,7 +17,9 @@ pub mod route;
 /// Bounded, read-only TCP and UDP socket collection from Linux procfs.
 pub mod socket;
 
+pub use ebpf::{probe_ebpf_support, EbpfCollector};
 pub use interface::InterfaceReport;
+pub use lidb_core::ebpf::EbpfReport;
 pub use lidb_core::network::NetworkReport;
 pub use route::RouteReport;
 pub use socket::SocketReport;
@@ -185,6 +189,20 @@ impl LinuxCollector {
         let _ = sockets.populate_into(&mut report);
 
         report
+    }
+
+    /// Collects optional eBPF lifecycle events.
+    ///
+    /// When `enabled` is false, returns an [`EbpfReport`] with status `Disabled`.
+    /// When `enabled` is true, probes for kernel BTF and permissions and returns
+    /// observed events or a typed failure status.
+    #[must_use]
+    pub fn ebpf(&self, enabled: bool) -> EbpfReport {
+        let began = Instant::now();
+        let monotonic_ns = duration_ns(began.duration_since(self.started));
+        let mut collector = EbpfCollector::new(self.mode, &self.sys_root);
+        collector.set_enabled(enabled);
+        collector.collect(monotonic_ns)
     }
 
     fn sample_at(&mut self, timestamp: u64) -> Snapshot {

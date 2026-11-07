@@ -572,6 +572,57 @@ impl<'a> DoctorReport<'a> {
     }
 }
 
+pub fn ebpf_text(report: &lidb_core::ebpf::EbpfReport) -> String {
+    let mut out = format!(
+        "LiDB {} ebpf | schema={} | collector_monotonic={}ns | collection={}ns | status={} | events={} | dropped={}\n",
+        mode_name(report.mode()),
+        report.schema(),
+        report.collection_time_ns(),
+        report.collection_duration_ns(),
+        report.status().as_str(),
+        report.events().len(),
+        report.dropped_events()
+    );
+    if let Some(reason) = report.status().reason() {
+        let _ = writeln!(out, "status reason: {reason}");
+    }
+    if !report.events().is_empty() {
+        for ev in report.events() {
+            let rtt_text = match ev.round_trip_us() {
+                Some(rtt) => format!(" rtt:{rtt}us"),
+                None => String::new(),
+            };
+            let state_text = match (ev.old_state(), ev.new_state()) {
+                (Some(old_st), Some(new_st)) => {
+                    format!(" state:{}->{}", old_st.as_str(), new_st.as_str())
+                }
+                (None, Some(new_st)) => format!(" state:{}", new_st.as_str()),
+                _ => String::new(),
+            };
+            let _ = writeln!(
+                out,
+                "{:<14} pid:{:<6} comm:{:<12} {}:{} -> {}:{}{}{}",
+                ev.event_type().as_str(),
+                ev.pid(),
+                ev.comm(),
+                ev.local_address(),
+                ev.local_port(),
+                ev.remote_address(),
+                ev.remote_port(),
+                state_text,
+                rtt_text
+            );
+        }
+    } else if !report.status().is_available() {
+        let _ = writeln!(out, "eBPF subsystem unavailable");
+    } else if report.dropped_events() == 0 {
+        let _ = writeln!(out, "no eBPF events observed");
+    } else {
+        let _ = writeln!(out, "no events retained; buffer has omissions");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,6 +7,8 @@
 
 /// Capability discovery and availability reporting.
 pub mod capability;
+/// Optional eBPF lifecycle event and report contracts.
+pub mod ebpf;
 /// Bounded, single-series telemetry history and freshness checks.
 pub mod history;
 /// Structured network topology, routing, and socket state contracts.
@@ -17,6 +19,10 @@ pub mod snapshot;
 pub mod telemetry;
 
 pub use capability::{Capability, CapabilityError, CapabilityRegistry, CapabilityState};
+pub use ebpf::{
+    EbpfError, EbpfEventType, EbpfLifecycleEvent, EbpfReport, EBPF_REPORT_SCHEMA_VERSION,
+    MAX_COMM_CHARS, MAX_EBPF_EVENTS,
+};
 pub use history::{
     assess_freshness, Freshness, HistoryError, TelemetryHistory, MAX_HISTORY_SAMPLES,
 };

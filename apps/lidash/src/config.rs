@@ -19,7 +19,7 @@ pub const HELP: &str = r#"888      d8b 8888888b.                 888     888888b
 88888888 888 8888888P"  "Y888888  88888P' 888  888 8888888P"   "Y88P"  "Y888888 888      "Y88888
 
 LiDashBoard — read-only Linux host monitor
-Usage: lidash [snapshot|doctor|routes|interfaces|sockets|network|export|tui] [OPTIONS]
+Usage: lidash [snapshot|doctor|routes|interfaces|sockets|network|export|ebpf|tui] [OPTIONS]
 
 Commands:
   snapshot       Print one host snapshot (alias: status)
@@ -29,11 +29,13 @@ Commands:
   sockets        Print TCP and UDP socket endpoints (alias: socket, sock)
   network        Print network report (alias: net)
   export         Export offline diagnostic evidence bundle (alias: bundle)
+  ebpf           Print eBPF network lifecycle events (alias: bpf)
   tui            Open the keyboard-driven terminal monitor
 
 Options:
   --json                 JSON output; no terminal required
   --output PATH          Write export bundle to a specified file
+  --ebpf                 Enable optional eBPF tracepoint probes
   --interval-ms N        Sample interval, 250..60000 milliseconds
   --proc-root PATH       Read a fixture instead of /proc; output is labeled fixture
   --sys-root PATH        Read a fixture instead of /sys; output is labeled fixture
@@ -59,6 +61,7 @@ pub enum Command {
     Sockets,
     Network,
     Export,
+    Ebpf,
     Tui,
     Help,
     Version,
@@ -74,6 +77,7 @@ pub struct Config {
     // Explicit --proc-root or --sys-root is a fixture request.
     pub fixture: bool,
     pub output_file: Option<PathBuf>,
+    pub ebpf: bool,
 }
 
 impl Config {
@@ -89,6 +93,7 @@ impl Config {
         let mut sys_root: Option<PathBuf> = None;
         let mut fixture = false;
         let mut output_file: Option<PathBuf> = None;
+        let mut ebpf = false;
         while let Some(arg) = args.next() {
             match arg.to_str() {
                 Some("-h" | "--help" | "help") => {
@@ -104,8 +109,13 @@ impl Config {
                 Some("sockets" | "socket" | "sock") => set_command(&mut command, Command::Sockets)?,
                 Some("network" | "net") => set_command(&mut command, Command::Network)?,
                 Some("export" | "bundle") => set_command(&mut command, Command::Export)?,
+                Some("ebpf" | "bpf") => {
+                    set_command(&mut command, Command::Ebpf)?;
+                    ebpf = true;
+                }
                 Some("tui") => set_command(&mut command, Command::Tui)?,
                 Some("--json") => json = true,
+                Some("--ebpf") => ebpf = true,
                 Some("--output") => {
                     let path: PathBuf = args.next().ok_or("--output requires a path")?.into();
                     if path.as_os_str().is_empty() {
@@ -148,7 +158,7 @@ impl Config {
         });
         if command == Command::Tui && json {
             return Err(
-                "--json is supported by snapshot, doctor, routes, interfaces, sockets, network, and export; choose one of those commands"
+                "--json is supported by snapshot, doctor, routes, interfaces, sockets, network, export, and ebpf; choose one of those commands"
                     .into(),
             );
         }
@@ -181,6 +191,7 @@ impl Config {
             sys_root,
             fixture,
             output_file,
+            ebpf,
         })
     }
 
@@ -193,6 +204,7 @@ impl Config {
             sys_root: "/sys".into(),
             fixture: false,
             output_file: None,
+            ebpf: false,
         }
     }
 }
@@ -254,6 +266,13 @@ mod tests {
             parse(&["net", "--json"], false).unwrap().command,
             Command::Network
         );
+        assert_eq!(parse(&["ebpf"], false).unwrap().command, Command::Ebpf);
+        assert!(parse(&["ebpf"], false).unwrap().ebpf);
+        assert_eq!(
+            parse(&["bpf", "--json"], false).unwrap().command,
+            Command::Ebpf
+        );
+        assert!(parse(&["snapshot", "--ebpf"], false).unwrap().ebpf);
         assert!(parse(&["tui", "--json"], true).is_err());
     }
 

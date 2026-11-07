@@ -66,6 +66,17 @@ Procfs and netlink sources may succeed with zero records (e.g. an isolated netwo
 
 Every non-available status carries a validated explanatory string with ASCII control characters stripped. Excess records beyond table capacity are safely omitted and accounted for in `NetworkReport.dropped_records`.
 
+## eBPF instrumentation contracts
+
+Optional kernel-level socket lifecycle instrumentation is exposed via `EbpfReport` (schema `0.1`):
+- `EbpfLifecycleEvent`: Typed TCP transition events (`sock:inet_sock_set_state`) capturing timestamp, PID, comm, address family, local/remote endpoints, old/new states, and optional duration/round-trip latency.
+- Capacity bounds: `MAX_EBPF_EVENTS = 2048` entries per report, with overflow tracked in `dropped_events`.
+- Strict capability & platform checks:
+  - Non-Linux systems report `SourceAvailability::unsupported("eBPF instrumentation is only supported on Linux")`.
+  - Missing BTF (`/sys/kernel/btf/vmlinux`) reports `SourceAvailability::unsupported("Kernel BTF not available (/sys/kernel/btf/vmlinux missing)")`.
+  - Unprivileged environments without `CAP_BPF` or `CAP_SYS_ADMIN` report `SourceAvailability::permission_denied("Insufficient privileges for eBPF operations")`.
+- Metadata privacy: Tracepoint monitors socket state changes only; zero packet payload inspection, zero header decapsulation, zero TLS decryption.
+
 ## Rates, time and missing data
 
 One-shot commands take two samples; the initial rate is `temporarily_unavailable`. Newly observed devices also need a baseline. A decreasing counter creates an explicit reset error and a new baseline. A failed source discards its old rate baseline. No interpolation or unavailable-to-zero conversion occurs. CPU iowait counters can decrease on Linux; that creates a visible gap.

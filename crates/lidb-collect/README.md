@@ -3,8 +3,9 @@
 Bounded, read-only Linux host telemetry for `lidash`. The collector runs without
 privilege escalation, network requests, active probes, or process payload reads.
 It supports Linux x86_64 and aarch64; other targets produce typed `unsupported`
-observations without filesystem reads. This is an aggregate host baseline, with
-no GPU, eBPF, cgroup, process attribution, or diagnosis implementation.
+observations without filesystem reads. This provides an aggregate host baseline
+and optional read-only eBPF lifecycle instrumentation with unprivileged fallback,
+with no GPU, cgroup, or intrusive payload diagnosis implementation.
 
 ```rust
 use lidb_collect::LinuxCollector;
@@ -167,6 +168,16 @@ The generated `SocketReport` uses socket-only JSON schema `0.1`, retains live/fi
 `collector.network()` unifies interface metadata, network namespace identity, IPv4 and IPv6 routing tables, and TCP/UDP socket observations into a single `NetworkReport`.
 
 The generated `NetworkReport` uses network schema `0.1`, retains live/fixture mode, namespace attribution, individual source availability states (`interfaces_status`, `routes_status`, `sockets_status`), unified collector-local monotonic timestamp, collection duration, and table-specific omission counters (`dropped_interfaces`, `dropped_routes`, `dropped_sockets`).
+
+## eBPF lifecycle instrumentation
+
+`collector.ebpf()` or `lidb_collect::ebpf::collect_ebpf` provides optional read-only TCP lifecycle instrumentation (`sock:inet_sock_set_state`).
+
+The generated `EbpfReport` uses schema `0.1`, retains live/fixture mode, collector-local monotonic timestamp, collection duration, source status, retained events, and omission accounting (`dropped_events`).
+
+- Privacy Boundary: Captures socket state transitions, address family, endpoint IP/ports, and transition durations. Zero packet payloads, zero packet headers, zero memory reads.
+- Non-privileged Fallback: If BTF (`/sys/kernel/btf/vmlinux`) is missing, or the platform is not Linux, reports `SourceAvailability::Unsupported`. If the process lacks `CAP_BPF` or `CAP_SYS_ADMIN`, reports `SourceAvailability::PermissionDenied`.
+- Bounded Ring Buffer: Reports are bounded by `MAX_EBPF_EVENTS = 2048` entries per sample.
 
 ## Fixtures and validation
 
