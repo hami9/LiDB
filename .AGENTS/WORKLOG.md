@@ -156,5 +156,24 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - PR #64 passed all GitHub Actions checks (CI Gate, Rust x86_64, Rust aarch64, CodeQL C, CodeQL Rust, Worktree Windows smoke, Docs, Markdown links) and was squash-merged into `main`.
   - Automatic Release workflow built cross-architecture binaries and published [**`LiDashBoard v0.0.5`**](https://github.com/hami9/LiDB/releases/tag/v0.0.5) advancing patch `0.0.1+`.
 
+## 2026-11-08 — Phase 5: Public Release Hardening, Standalone Installer, and SBOM Delivery
+
+- Actor: Antigravity.
+- Worktree & PR: `.worktrees/antigravity/ag-10-hardening`, branch `agent/antigravity/ag-10-hardening`, [PR #66](https://github.com/hami9/LiDB/pull/66).
+- Scope: `scripts/install.sh`, `tests/ci/test_install_script.py`, `docs/PACKAGING.md`, `docs/SUPPORT_MATRIX.md`, `docs/THIRD_PARTY_LICENSES.md`, `docs/DECISIONS.md`, `README.md`.
+- Phase 5 Implementation (Task AG-10 / [PR #66](https://github.com/hami9/LiDB/pull/66), commit `27400c7`):
+  - Standalone installer script `scripts/install.sh`: POSIX-compliant, supports CPU architecture detection (`x86_64` and `aarch64`), SHA-256 cryptographic checksum verification, unprivileged user install (`~/.local/bin`) or system install (`/usr/local/bin`), `--uninstall`, `--tag`, and `--dry-run`.
+  - Installer integration test suite `tests/ci/test_install_script.py` validating options, usage text, and dry-run execution.
+  - Comprehensive packaging and installation guide in `docs/PACKAGING.md`.
+  - Platform support and kernel compatibility matrix in `docs/SUPPORT_MATRIX.md` (defining Tier 1 Linux targets, procfs Linux 2.6+ to eBPF Linux 4.16+, container environments, and < 15 MB RSS resource envelope).
+  - Software Bill of Materials (SBOM) and third-party license audit in `docs/THIRD_PARTY_LICENSES.md`, confirming that all 22 compiled dependencies use permissive open-source licenses (MIT, Apache-2.0, BSD-3-Clause) with zero copyleft code.
+  - Recorded ADR-032 in `docs/DECISIONS.md`.
+  - Updated `README.md` with one-line quick installer command and documentation links.
+  - Closed obsolete/invalid Dependabot pull requests (#41, #38, #12, #5).
+  - Verification: 114 workspace unit & integration tests passing (`cargo test --workspace --locked --all-targets`), zero Clippy warnings across Windows, Linux x86_64, and Linux aarch64 targets, 157 Markdown links verified, 22 CI Python tests passing.
+  - PR #66 passed all GitHub Actions checks (CI Gate, Rust x86_64, Rust aarch64, CodeQL C, CodeQL Rust, Worktree Windows smoke, Docs, Markdown links) and was squash-merged into `main`.
+  - Automatic Release workflow built cross-architecture binaries and published [**`LiDashBoard v0.0.7`**](https://github.com/hami9/LiDB/releases/tag/v0.0.7) advancing patch `0.0.1+`.
+
+
 
 
