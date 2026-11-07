@@ -206,4 +206,22 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Pure additive feature. Non-Linux and unprivileged Linux systems degrade cleanly to typed availability without error.
 
+## ADR-032 — standalone installer, packaging distribution, and verified support matrix (2026-11-08)
+
+**Status:** implemented in Task AG-10 (Phase 5).
+
+**Context:** With the core diagnostics, networking telemetry, terminal experience, and optional eBPF instrumentation completed, operators require a secure, reliable, and standardized mechanism to install, verify, upgrade, and cleanly remove `lidash` on production Linux systems without external package manager dependencies or root escalation requirements. Furthermore, open-source operators require full supply-chain transparency, license compliance verification (SBOM), and an explicit kernel compatibility matrix.
+
+**Decision:**
+1. Provide an official POSIX-compliant standalone installer and uninstaller script at `scripts/install.sh`. It automatically detects CPU architecture (`x86_64` and `aarch64`), verifies SHA-256 cryptographic checksums before file placement, installs to `/usr/local/bin` (root) or `~/.local/bin` (unprivileged), and supports `--uninstall` and `--dry-run`.
+2. Document end-to-end binary distribution, manual checksum verification, system requirements, and clean uninstallation in `docs/PACKAGING.md`.
+3. Provide a complete Software Bill of Materials (SBOM) and third-party license audit in `docs/THIRD_PARTY_LICENSES.md`, confirming that all statically linked libraries use permissive open-source licenses (MIT, Apache-2.0) with zero copyleft or restrictive licenses.
+4. Define hardware tiers, Linux kernel version compatibility (from Linux 2.6+ baseline through Linux 4.16+ eBPF), and container runtime environments (Docker, Podman, Kubernetes, WSL2) in `docs/SUPPORT_MATRIX.md`.
+5. Maintain zero system modifications: `lidash` remains a single self-contained executable creating zero daemons, services, or config databases.
+
+**Alternatives:** Distributing solely via package managers (.deb/.rpm) introduces maintenance overhead across distinct distributions and delays security patches. Distributing unverified raw binaries without checksum manifests leaves operators vulnerable to incomplete downloads.
+
+**Migration / limits:** Completely backward compatible. No breaking changes to existing CLI flags or schema contracts.
+
+
 

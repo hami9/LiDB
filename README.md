@@ -4,11 +4,21 @@
 
 LiDB provides a runnable foundation for developers, VPS owners and system operators inspecting a Linux host over SSH. The core collects CPU, memory, load, uptime, disk, network-interface and pressure observations without a cloud account, a daemon or elevated privileges. Missing data is reported with a reason instead of a fabricated zero.
 
-The project is in core development. There is no published binary release or production performance claim. Native Linux x86_64 and aarch64 passed the baseline CI checks; see the [compatibility matrix](docs/INTEGRATION_MATRIX.md) for exact evidence and limits.
+Official standalone precompiled binary releases with cryptographic checksums are available on [GitHub Releases](https://github.com/hami9/LiDB/releases). Native Linux x86_64 and aarch64 pass automated CI release gates; see the [compatibility matrix](docs/SUPPORT_MATRIX.md) and [packaging guide](docs/PACKAGING.md) for detailed platform evidence.
 
-## Build and install
+## Quick install
 
-Requirements: Linux, Git and Rust **1.85 or newer**, including Cargo. The live baseline reads the current process's procfs view; restricted containers and hosts may expose fewer metrics.
+Install the precompiled standalone `lidash` binary on Linux with one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hami9/LiDB/main/scripts/install.sh | sh
+```
+
+The script automatically detects your architecture (`x86_64` or `aarch64`), cryptographically verifies SHA-256 checksums, and installs to `/usr/local/bin` (or `~/.local/bin` if unprivileged). To uninstall cleanly, run `sh install.sh --uninstall`. See [PACKAGING.md](docs/PACKAGING.md) for manual verification steps.
+
+## Build from source
+
+Requirements: Linux, Git, and Rust **1.85 or newer**, including Cargo.
 
 ```bash
 git clone https://github.com/hami9/LiDB.git
@@ -26,7 +36,12 @@ lidash                         # dashboard when input/output are TTYs; text othe
 lidash snapshot                # one text snapshot
 lidash snapshot --json         # machine-readable observations
 lidash doctor                  # collector capabilities and failure reasons
-lidash doctor --json
+lidash routes --json           # routing table entries (IPv4/IPv6)
+lidash interfaces --json       # network interfaces and namespace identity
+lidash sockets --json          # TCP and UDP socket endpoints
+lidash network --json          # unified network diagnostic report
+lidash ebpf --json             # optional read-only TCP lifecycle instrumentation
+lidash export --output out.json # offline diagnostic evidence bundle
 lidash tui                     # explicitly request an interactive dashboard
 lidash --help
 lidash --version
@@ -59,7 +74,7 @@ cargo test --workspace --locked --all-targets
 python3 scripts/check_docs.py
 ```
 
-See the [Core data reference](docs/CORE.md), [architecture](docs/ARCHITECTURE.md), [product requirements](docs/PRODUCT_REQUIREMENTS.md), [roadmap](ROADMAP.md), [capability model](docs/CAPABILITY_MODEL.md), [telemetry contract](docs/OBSERVABILITY_CONTRACT.md), [test strategy](docs/TEST_STRATEGY.md) and [architecture decisions](docs/DECISIONS.md). The preserved [core contracts](docs/P0_CORE_CONTRACTS.md) and [bounded history](docs/P0_TELEMETRY_HISTORY.md) describe the existing foundation libraries.
+See the [Core data reference](docs/CORE.md), [architecture](docs/ARCHITECTURE.md), [packaging guide](docs/PACKAGING.md), [support matrix](docs/SUPPORT_MATRIX.md), [third-party licenses](docs/THIRD_PARTY_LICENSES.md), [product requirements](docs/PRODUCT_REQUIREMENTS.md), [roadmap](ROADMAP.md), [capability model](docs/CAPABILITY_MODEL.md), [telemetry contract](docs/OBSERVABILITY_CONTRACT.md), [test strategy](docs/TEST_STRATEGY.md) and [architecture decisions](docs/DECISIONS.md). The preserved [core contracts](docs/P0_CORE_CONTRACTS.md) and [bounded history](docs/P0_TELEMETRY_HISTORY.md) describe the existing foundation libraries.
 
 Contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Parallel coding uses [isolated worktrees](.AGENTS/WORKTREES.md). [CI/CD](docs/CI_CD.md) and [branch protection](docs/BRANCH_PROTECTION.md) describe repository automation; committed rulesets require administrative activation.
 
