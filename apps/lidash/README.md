@@ -14,6 +14,7 @@ cargo run -p lidash -- routes --json
 cargo run -p lidash -- interfaces --json
 cargo run -p lidash -- sockets --json
 cargo run -p lidash -- network --json
+cargo run -p lidash -- ebpf --json
 cargo run -p lidash -- export --json --output evidence.json
 cargo run -p lidash -- tui --interval-ms 1000 --no-color
 ```
@@ -111,6 +112,10 @@ Explicit `--proc-root PATH` labels the output `fixture`. Text displays protocol,
 `export` captures a unified offline diagnostic evidence bundle aggregating host metrics snapshot, source doctor capabilities, and network telemetry into a structured JSON or text report.
 Its export schema `0.1` embeds an explicit privacy declaration: non-root, read-only, metadata-only with zero packet payloads, zero decrypted TLS, zero process arguments, zero environments, and zero secrets.
 Use `--output PATH` to write directly to a destination file safely.
+
+`ebpf` collects optional read-only TCP lifecycle transition events (`sock:inet_sock_set_state`) via in-kernel eBPF instrumentation.
+Its schema `0.1` report records timestamp, PID, command, endpoints, state transitions, and round-trip duration.
+When run in unprivileged environments or non-Linux platforms, it degrades gracefully to typed `SourceAvailability::PermissionDenied` or `SourceAvailability::Unsupported` without error or panic.
 
 The TUI maintains an in-memory bounded ring buffer of historical updates (`MAX_VIEW_HISTORY = 120` samples, ~2 minutes of history at 1s intervals).
 Press `[` or `,` to step backward in history (auto-pauses the live stream) and `]` or `.` to step forward.

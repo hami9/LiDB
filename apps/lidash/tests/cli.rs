@@ -699,3 +699,21 @@ Inter-|   Receive                                                |  Transmit
     assert!(text.contains("--- [2/3] Source Doctor Report ---"));
     assert!(text.contains("--- [3/3] Network Telemetry Report ---"));
 }
+
+#[test]
+fn ebpf_command_runs_cleanly_on_all_platforms() {
+    let output = binary(&["ebpf", "--json"]);
+    assert!(output.status.success());
+    let data = json(&output);
+    assert_eq!(data["schema"], "0.1");
+    assert_eq!(data["clock_source"], "collector_monotonic");
+    assert!(data.get("status").is_some());
+    assert!(data.get("events").is_some());
+    assert!(data.get("dropped_events").is_some());
+    assert_eq!(data["mode"], "live");
+
+    let text_output = binary(&["ebpf"]);
+    assert!(text_output.status.success());
+    let text = String::from_utf8(text_output.stdout).unwrap();
+    assert!(text.contains("LiDB live ebpf"));
+}

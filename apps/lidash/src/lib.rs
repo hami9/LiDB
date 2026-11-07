@@ -103,6 +103,16 @@ pub fn execute(config: Config, mut output: impl Write) -> Result<u8, io::Error> 
                 output.write_all(output::network_text(&report).as_bytes())?;
             }
         }
+        Command::Ebpf => {
+            let collector = collector(&config);
+            let report = collector.ebpf(true);
+            if config.json {
+                serde_json::to_writer(&mut output, &report)?;
+                output.write_all(b"\n")?;
+            } else {
+                output.write_all(output::ebpf_text(&report).as_bytes())?;
+            }
+        }
         Command::Export => {
             let mut collector = collector(&config);
             let _ = collector.sample();
