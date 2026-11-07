@@ -16,6 +16,39 @@
 use lidb_core::{EbpfLifecycleEvent, EbpfReport, SnapshotMode, SourceAvailability};
 use std::{path::Path, sync::Mutex, time::Instant};
 
+#[cfg(target_os = "linux")]
+fn has_bpf_privilege() -> bool {
+    let Ok(content) = std::fs::read_to_string("/proc/self/status") else {
+        return false;
+    };
+    let mut is_root = false;
+    let mut has_cap = false;
+
+    for line in content.lines() {
+        if line.starts_with("Uid:") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            // Format: Uid: <ruid> <euid> <suid> <fsuid>
+            if parts.len() >= 3 && parts[2] == "0" {
+                is_root = true;
+            }
+        } else if line.starts_with("CapEff:") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                if let Ok(cap) = u64::from_str_radix(parts[1], 16) {
+                    // CAP_SYS_ADMIN is bit 21, CAP_BPF is bit 38
+                    const CAP_SYS_ADMIN: u64 = 1 << 21;
+                    const CAP_BPF: u64 = 1 << 38;
+                    if (cap & CAP_SYS_ADMIN) != 0 || (cap & CAP_BPF) != 0 {
+                        has_cap = true;
+                    }
+                }
+            }
+        }
+    }
+
+    is_root || has_cap
+}
+
 /// Probes whether the host environment supports Linux eBPF CO-RE.
 #[must_use]
 pub fn probe_ebpf_support(sys_root: &Path) -> SourceAvailability {
@@ -38,8 +71,7 @@ pub fn probe_ebpf_support(sys_root: &Path) -> SourceAvailability {
         }
 
         // 2. Check unprivileged status (eBPF typically requires CAP_BPF or root)
-        let is_root = unsafe { libc::geteuid() == 0 };
-        if !is_root {
+        if !has_bpf_privilege() {
             return SourceAvailability::permission_denied(
                 "eBPF collection requires CAP_BPF or root privileges",
             )
