@@ -9,7 +9,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use lidb_core::{MetricObservation, MetricState, MetricValue, NetworkReport, Snapshot};
+use lidb_core::{
+    EbpfReport, MetricObservation, MetricState, MetricValue, NetworkReport, Snapshot,
+    SourceAvailability,
+};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout, Rect},
@@ -38,27 +41,31 @@ pub enum Tab {
     CpuMemory = 1,
     /// Dedicated Network overview dashboard (interfaces, routes, sockets, namespace).
     Network = 2,
+    /// Dedicated eBPF lifecycle events dashboard.
+    Ebpf = 3,
 }
 
 impl Tab {
     /// All available tabs in presentation order.
-    pub const ALL: [Tab; 3] = [Tab::Metrics, Tab::CpuMemory, Tab::Network];
+    pub const ALL: [Tab; 4] = [Tab::Metrics, Tab::CpuMemory, Tab::Network, Tab::Ebpf];
 
     /// Cycles forward to the next tab.
     pub fn next(&self) -> Self {
         match self {
             Self::Metrics => Self::CpuMemory,
             Self::CpuMemory => Self::Network,
-            Self::Network => Self::Metrics,
+            Self::Network => Self::Ebpf,
+            Self::Ebpf => Self::Metrics,
         }
     }
 
     /// Cycles backward to the previous tab.
     pub fn prev(&self) -> Self {
         match self {
-            Self::Metrics => Self::Network,
+            Self::Metrics => Self::Ebpf,
             Self::CpuMemory => Self::Metrics,
             Self::Network => Self::CpuMemory,
+            Self::Ebpf => Self::Network,
         }
     }
 }
@@ -230,14 +237,14 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let inner_header = header_block.inner(layout[0]);
     frame.render_widget(header_block, layout[0]);
 
-    if inner_header.width >= 68 {
+    if inner_header.width >= 78 {
         let header_layout =
-            Layout::horizontal([Constraint::Min(24), Constraint::Length(39)]).split(inner_header);
+            Layout::horizontal([Constraint::Min(24), Constraint::Length(51)]).split(inner_header);
         frame.render_widget(
             Paragraph::new(format!("{state} | {freshness}")),
             header_layout[0],
         );
-        let tabs = Tabs::new(vec!["1: Metrics", "2: CPU/Mem", "3: Network"])
+        let tabs = Tabs::new(vec!["1: Metrics", "2: CPU/Mem", "3: Network", "4: eBPF"])
             .select(view.tab as usize)
             .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED));
         frame.render_widget(tabs, header_layout[1]);
@@ -250,11 +257,11 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let shortcuts = if view.help || view.detail {
         "q quit | PgUp/PgDn scroll text"
     } else {
-        "q quit | Tab / 1-3 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
+        "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
-        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, Left/Right: switch between 1:Metrics, 2:CPU/Mem, and 3:Network tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
         let help_body = if area.width >= 96 {
             format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
         } else {
@@ -307,6 +314,10 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     }
     if view.tab == Tab::Network {
         draw_network(frame, update.network.as_ref(), layout[1]);
+        return;
+    }
+    if view.tab == Tab::Ebpf {
+        draw_ebpf(frame, update.ebpf.as_ref(), view.scroll, layout[1]);
         return;
     }
     if area.width >= 90 {
@@ -817,6 +828,186 @@ fn draw_network(
     frame.render_widget(sock_table, rows[2]);
 }
 
+fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, area: Rect) {
+    let Some(report) = ebpf else {
+        frame.render_widget(
+            Paragraph::new(
+                "eBPF lifecycle tracing is disabled by default.\n\n\
+                 Run lidash with --ebpf to enable in-kernel TCP lifecycle tracing:\n\
+                   cargo run -p lidash -- --ebpf\n\
+                   lidash tui --ebpf\n\n\
+                 Requirements:\n\
+                 - Linux kernel 4.16+ with BTF (/sys/kernel/btf/vmlinux)\n\
+                 - CAP_BPF or CAP_SYS_ADMIN privileges (or unprivileged safe fallback)",
+            )
+            .block(
+                Block::default()
+                    .title(" eBPF Socket Lifecycle Tracing ")
+                    .borders(Borders::ALL),
+            ),
+            area,
+        );
+        return;
+    };
+
+    match report.status() {
+        SourceAvailability::Disabled(reason) => {
+            let msg = format!("eBPF collection is disabled: {reason}\nPass --ebpf to enable.");
+            frame.render_widget(
+                Paragraph::new(msg).block(
+                    Block::default()
+                        .title(" eBPF Socket Lifecycle Tracing ")
+                        .borders(Borders::ALL),
+                ),
+                area,
+            );
+            return;
+        }
+        SourceAvailability::PermissionDenied(reason) => {
+            let msg = format!(
+                "Permission denied: {reason}\n\n\
+                 eBPF tracepoints require elevated capabilities:\n\
+                 - CAP_BPF or CAP_SYS_ADMIN (root)\n\
+                 Running unprivileged safely falls back without crashing."
+            );
+            frame.render_widget(
+                Paragraph::new(msg).block(
+                    Block::default()
+                        .title(" eBPF Permission Denied ")
+                        .borders(Borders::ALL),
+                ),
+                area,
+            );
+            return;
+        }
+        SourceAvailability::Unsupported(reason) => {
+            let msg = format!(
+                "eBPF unsupported on this platform: {reason}\n\n\
+                 Supported platform requirements:\n\
+                 - Linux kernel 4.16+\n\
+                 - Kernel BTF (/sys/kernel/btf/vmlinux)"
+            );
+            frame.render_widget(
+                Paragraph::new(msg).block(
+                    Block::default()
+                        .title(" eBPF Unsupported ")
+                        .borders(Borders::ALL),
+                ),
+                area,
+            );
+            return;
+        }
+        _ => {}
+    }
+
+    let summary_text = format!(
+        "Tracepoint: sock:inet_sock_set_state │ Status: {} │ Events: {} (dropped: {}) │ Ringbuf: 256KB",
+        report.status().as_str(),
+        report.events().len(),
+        report.dropped_events(),
+    );
+
+    if area.height <= 10 {
+        let text = format!(
+            "{summary_text}\nEvents: {}\nMode: {}",
+            report.events().len(),
+            mode_name(report.mode())
+        );
+        frame.render_widget(
+            Paragraph::new(text).wrap(Wrap { trim: true }).block(
+                Block::default()
+                    .title(" eBPF Lifecycle Overview ")
+                    .borders(Borders::ALL),
+            ),
+            area,
+        );
+        return;
+    }
+
+    let rows = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).split(area);
+
+    let summary_widget = Paragraph::new(summary_text).block(
+        Block::default()
+            .title(" eBPF Socket Lifecycle Status ")
+            .borders(Borders::ALL),
+    );
+    frame.render_widget(summary_widget, rows[0]);
+
+    let events = report.events();
+    if events.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No TCP lifecycle events observed yet. Monitoring tracepoint sock:inet_sock_set_state...").block(
+                Block::default()
+                    .title(" eBPF Lifecycle Events (0) ")
+                    .borders(Borders::ALL),
+            ),
+            rows[1],
+        );
+        return;
+    }
+
+    let inner_height = rows[1].height.saturating_sub(2) as usize;
+    let start = scroll.min(events.len().saturating_sub(1));
+    let table_rows: Vec<Row> = events
+        .iter()
+        .skip(start)
+        .take(inner_height.max(1))
+        .map(|event| {
+            let event_type = event.event_type().as_str().to_string();
+            let comm_pid = format!("{} [{}]", event.comm(), event.pid());
+            let family = event.family().as_str().to_string();
+            let src = format!("{}:{}", event.local_address(), event.local_port());
+            let dst = format!("{}:{}", event.remote_address(), event.remote_port());
+            let states = match (event.old_state(), event.new_state()) {
+                (Some(old), Some(new)) => format!("{} -> {}", old.as_str(), new.as_str()),
+                (None, Some(new)) => format!("-> {}", new.as_str()),
+                (Some(old), None) => format!("{} ->", old.as_str()),
+                (None, None) => "-".to_string(),
+            };
+            let rtt = event
+                .round_trip_us()
+                .map_or("-".to_string(), |us| format!("{:.1}ms", us as f64 / 1000.0));
+            Row::new(vec![event_type, comm_pid, family, src, dst, states, rtt])
+        })
+        .collect();
+
+    let table = Table::new(
+        table_rows,
+        [
+            Constraint::Length(12),
+            Constraint::Length(16),
+            Constraint::Length(6),
+            Constraint::Percentage(22),
+            Constraint::Percentage(22),
+            Constraint::Length(24),
+            Constraint::Length(8),
+        ],
+    )
+    .header(
+        Row::new([
+            "Event",
+            "Process",
+            "Family",
+            "Source",
+            "Destination",
+            "Transition",
+            "RTT",
+        ])
+        .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .block(
+        Block::default()
+            .title(format!(
+                " Events {}..{} of {} ",
+                start.saturating_add(1),
+                (start + inner_height).min(events.len()),
+                events.len()
+            ))
+            .borders(Borders::ALL),
+    );
+    frame.render_widget(table, rows[1]);
+}
+
 struct TerminalGuard;
 impl TerminalGuard {
     fn enter() -> io::Result<Self> {
@@ -883,16 +1074,27 @@ impl Drop for SignalGuard {
 /// Runs the interactive terminal dashboard event loop until user exit or termination signal.
 pub fn run(config: Config) -> io::Result<()> {
     let mut collector = crate::collector(&config);
+    let ebpf_enabled = config.ebpf;
     run_with_sampler(config, move || {
         let snapshot = collector.sample();
         let network = collector.network();
-        (snapshot, Some(network))
+        let ebpf = if ebpf_enabled {
+            Some(collector.ebpf(true))
+        } else {
+            None
+        };
+        (snapshot, Some(network), ebpf)
     })
 }
 
 pub(crate) fn run_with_sampler(
     config: Config,
-    sample: impl FnMut() -> (Snapshot, Option<NetworkReport>) + Send + 'static,
+    sample: impl FnMut() -> (
+            Snapshot,
+            Option<NetworkReport>,
+            Option<lidb_core::ebpf::EbpfReport>,
+        ) + Send
+        + 'static,
 ) -> io::Result<()> {
     // Restore before the default panic hook prints; the guard also covers unwinding/errors.
     let previous = panic::take_hook();
@@ -972,6 +1174,9 @@ pub(crate) fn run_with_sampler(
                     KeyCode::Char('3') => {
                         view.tab = Tab::Network;
                     }
+                    KeyCode::Char('4') => {
+                        view.tab = Tab::Ebpf;
+                    }
                     KeyCode::Left if !view.help && !view.detail => {
                         view.tab = view.tab.prev();
                     }
@@ -1041,6 +1246,7 @@ mod tests {
             update: Some(Update {
                 snapshot,
                 network: None,
+                ebpf: None,
                 collected_at: Instant::now(),
                 skipped_updates: 3,
             }),
@@ -1145,6 +1351,7 @@ mod tests {
             update: Some(Update {
                 snapshot,
                 network: None,
+                ebpf: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             }),
@@ -1222,6 +1429,7 @@ mod tests {
             update: Some(Update {
                 snapshot,
                 network: None,
+                ebpf: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             }),
@@ -1237,10 +1445,91 @@ mod tests {
         let tab = Tab::Metrics;
         assert_eq!(tab.next(), Tab::CpuMemory);
         assert_eq!(tab.next().next(), Tab::Network);
-        assert_eq!(tab.next().next().next(), Tab::Metrics);
-        assert_eq!(tab.prev(), Tab::Network);
-        assert_eq!(tab.prev().prev(), Tab::CpuMemory);
-        assert_eq!(tab.prev().prev().prev(), Tab::Metrics);
+        assert_eq!(tab.next().next().next(), Tab::Ebpf);
+        assert_eq!(tab.next().next().next().next(), Tab::Metrics);
+        assert_eq!(tab.prev(), Tab::Ebpf);
+        assert_eq!(tab.prev().prev(), Tab::Network);
+        assert_eq!(tab.prev().prev().prev(), Tab::CpuMemory);
+        assert_eq!(tab.prev().prev().prev().prev(), Tab::Metrics);
+    }
+
+    #[test]
+    fn ebpf_tab_renders_disabled_and_unavailable_states_cleanly() {
+        let mut view = fixture();
+        view.tab = Tab::Ebpf;
+
+        // When ebpf is None (not enabled via --ebpf)
+        let out_disabled = render(100, 30, &mut view);
+        assert!(out_disabled.contains("eBPF lifecycle tracing is disabled by default"));
+        assert!(out_disabled.contains("--ebpf"));
+
+        // When ebpf report is present but permission denied
+        let mut report = EbpfReport::new(SnapshotMode::Fixture, 100);
+        report.set_status(SourceAvailability::PermissionDenied(
+            "Missing CAP_BPF".into(),
+        ));
+        view.update.as_mut().unwrap().ebpf = Some(report);
+        let out_denied = render(100, 30, &mut view);
+        assert!(out_denied.contains("Permission denied: Missing CAP_BPF"));
+        assert!(out_denied.contains("CAP_BPF or CAP_SYS_ADMIN"));
+
+        // When ebpf report is present but unsupported
+        let mut report_unsupported = EbpfReport::new(SnapshotMode::Fixture, 100);
+        report_unsupported.set_status(SourceAvailability::Unsupported("Kernel BTF missing".into()));
+        view.update.as_mut().unwrap().ebpf = Some(report_unsupported);
+        let out_unsupported = render(100, 30, &mut view);
+        assert!(out_unsupported.contains("eBPF unsupported on this platform"));
+        assert!(out_unsupported.contains("Kernel BTF missing"));
+    }
+
+    #[test]
+    fn ebpf_tab_renders_events_and_transitions() {
+        use lidb_core::ebpf::{EbpfEventType, EbpfLifecycleEvent};
+        use lidb_core::network::SocketState;
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut report = EbpfReport::new(SnapshotMode::Fixture, 500);
+        report.set_status(SourceAvailability::Available);
+
+        let event = EbpfLifecycleEvent::new(
+            EbpfEventType::TcpConnect,
+            123456789,
+            4242,
+            "curl",
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)),
+            45678,
+            IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)),
+            80,
+        )
+        .unwrap()
+        .with_states(Some(SocketState::SynSent), Some(SocketState::Established))
+        .with_round_trip_us(Some(12400));
+        report.push_event(event);
+
+        let mut view = fixture();
+        view.tab = Tab::Ebpf;
+        view.update.as_mut().unwrap().ebpf = Some(report);
+
+        for width in [120, 85, 50] {
+            let out = render(width, 30, &mut view);
+            assert!(out.contains("eBPF Socket Lifecycle Status"));
+            assert!(out.contains("Tracepoint: sock:inet_sock_set_state"));
+            if width >= 85 {
+                assert!(out.contains("curl [4242]"));
+                assert!(out.contains("tcp_connect"));
+                assert!(out.contains("syn_sent -> established"));
+                assert!(out.contains("12.4ms"));
+            }
+            if width >= 120 {
+                assert!(out.contains("192.168.1.10:45678"));
+                assert!(out.contains("93.184.216.34:80"));
+            }
+        }
+
+        // Small height test
+        let small = render(80, 10, &mut view);
+        assert!(small.contains("eBPF Lifecycle Overview"));
+        assert!(small.contains("Events: 1"));
     }
 
     #[test]
@@ -1288,6 +1577,7 @@ mod tests {
             update: Some(Update {
                 snapshot: Snapshot::new(0, 0, SnapshotMode::Fixture),
                 network: Some(net_report),
+                ebpf: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             }),
@@ -1338,6 +1628,7 @@ mod tests {
             view.push_update(Update {
                 snapshot,
                 network: None,
+                ebpf: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             });

@@ -192,13 +192,13 @@ Next action: review/integrate the tested public Core PR, then select one focused
 ## 2026-11-09 — TUI Stack Dependency Modernization and MSRV Triage
 
 - Actor: Antigravity.
-- Branch & PR: `agent/antigravity/ag-13-tui-modernization`, PR #68 published [**`v0.0.11`**](https://github.com/hami9/LiDB/releases/tag/v0.0.11).
+- Branch & PR: `agent/antigravity/ag-13-tui-modernization`, PR #69 published [**`v0.0.12`**](https://github.com/hami9/LiDB/releases/tag/v0.0.12).
 - Scope & Implementation:
   - Bumped `crossterm` from `0.28.1` to `0.29.0` in `apps/lidash/Cargo.toml` (incorporating PR #40).
   - Bumped `signal-hook` from `0.3.18` to `0.4.6` in `apps/lidash/Cargo.toml` (incorporating PR #36).
   - Triaged `ratatui 0.30.2` (PR #39): verified that Ratatui 0.30+ requires `rustc >= 1.88.0`, which is incompatible with the repository MSRV contract of Rust 1.85.0 (`Cargo.toml` and CI runners). Retained `ratatui = "=0.29.0"` until the workspace MSRV is formally bumped in a future cycle.
   - Updated Software Bill of Materials (SBOM) in `docs/THIRD_PARTY_LICENSES.md` to inventory `crossterm 0.29.0`, `signal-hook 0.4.6`, `derive_more 2.1.1`, and `rustix 1.1.6 / 0.38.44`.
-  - Updated `.AGENTS/STATE.md` with verified snapshot on `main` at `4bd5b80` and release tracking up to `v0.0.11`.
+  - Updated `.AGENTS/STATE.md` with verified snapshot on `main` at `4bd5b80` and release tracking up to `v0.0.12`.
 - Verification:
   - `cargo fmt --all -- --check`: PASS
   - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
@@ -207,6 +207,31 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `cargo test --workspace --locked --all-targets`: PASS (114 tests)
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (22 tests)
+
+## 2026-11-09 — Interactive eBPF TCP Socket Lifecycle Dashboard Tab in TUI
+
+- Actor: Antigravity.
+- Branch & PR: `agent/antigravity/ag-14-tui-ebpf-tab`, PR #70 targeting `main`.
+- Scope & Implementation:
+  - Extended TUI view model with Tab 4 (`4: eBPF`), expanding the tab bar from 3 to 4 tabs (`1: Metrics`, `2: CPU/Mem`, `3: Network`, `4: eBPF`).
+  - Added direct keybinding `'4'` alongside `Tab`, `Shift+Tab`, and arrow navigation.
+  - Integrated `collector.ebpf(true)` into background worker when `--ebpf` is enabled, returning `(Snapshot, Option<NetworkReport>, Option<EbpfReport>)`.
+  - Implemented `draw_ebpf` UI view in `apps/lidash/src/tui.rs`:
+    - Summary status bar showing tracepoint (`sock:inet_sock_set_state`), source availability, event counts, dropped event count, and ring buffer size (256KB).
+    - Clear fallback cards for `Disabled` (with instructions to enable `--ebpf`), `PermissionDenied` (`CAP_BPF`/`CAP_SYS_ADMIN`), and `Unsupported` (missing BTF / non-Linux).
+    - Structured table displaying Event type, Process comm & PID, Family, Source endpoint, Destination endpoint, TCP State Transition (`old -> new`), and Round-Trip Time (`RTT`).
+    - Responsive layout adapting gracefully to compact heights (<= 10 rows) and narrow widths.
+  - Documented ADR-033 in `docs/DECISIONS.md`.
+  - Updated `apps/lidash/README.md` with keybindings and eBPF tab instructions.
+- Verification:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (118 tests across lidash, lidb-collect, lidb-core, lidb-protocol)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (22 tests)
+
 
 
 
