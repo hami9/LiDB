@@ -174,6 +174,22 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - PR #66 passed all GitHub Actions checks (CI Gate, Rust x86_64, Rust aarch64, CodeQL C, CodeQL Rust, Worktree Windows smoke, Docs, Markdown links) and was squash-merged into `main`.
   - Automatic Release workflow built cross-architecture binaries and published [**`LiDashBoard v0.0.7`**](https://github.com/hami9/LiDB/releases/tag/v0.0.7) advancing patch `0.0.1+`.
 
+## 2026-11-08 — Dependency Triage, SBOM Alignment, and Automatic Release Verification
+
+- Actor: Antigravity.
+- Branches & PRs:
+  - Branch `agent/antigravity/ag-11-sync-state`, [PR #67](https://github.com/hami9/LiDB/pull/67) (commit `f4cc6e2`): synchronized central state and worklog for Phase 5. Published [**`v0.0.8`**](https://github.com/hami9/LiDB/releases/tag/v0.0.8).
+  - Dependabot [PR #42](https://github.com/hami9/LiDB/pull/42) (commit `154b790`): bumped `serde_json` from 1.0.151 to 1.0.154. Verified backwards compatibility with telemetry schema 0.1. Published [**`v0.0.9`**](https://github.com/hami9/LiDB/releases/tag/v0.0.9).
+  - Dependabot [PR #37](https://github.com/hami9/LiDB/pull/37) (commit `8ecd4c2`): bumped `unicode-segmentation` from 1.12.0 to 1.13.3. Verified unicode boundary preservation in presentation and headers. Published [**`v0.0.10`**](https://github.com/hami9/LiDB/releases/tag/v0.0.10).
+- Scope & Verification:
+  - Updated `docs/THIRD_PARTY_LICENSES.md` to reflect `serde_json 1.0.154` and `unicode-segmentation 1.13.3` in the dependency inventory and SBOM.
+  - Updated `.AGENTS/STATE.md` to point snapshot to `8ecd4c2` with release state tracking `v0.0.1` through `v0.0.10`.
+  - All 114 workspace tests passing (`cargo test --workspace --locked --all-targets`).
+  - All 22 CI Python tests passing (`python -m unittest discover -s tests/ci -p "test_*.py"`).
+  - Documentation link verification: 157 links verified with zero errors.
+  - Preserved patch-only release versioning contract (`0.0.1+`), generating verified cross-architecture binaries (`x86_64` and `aarch64`) and SHA-256 checksums on all releases.
+
+
 
 
 
