@@ -142,9 +142,16 @@ fi
 # Resolve version tag
 if [ -z "$INSTALL_TAG" ]; then
     log "Finding latest release tag..."
-    LATEST_JSON=$($FETCH_CMD "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null || true)
+    LATEST_JSON=$($FETCH_CMD "https://api.github.com/repos/$REPO/releases" 2>/dev/null || true)
     if [ -n "$LATEST_JSON" ]; then
         INSTALL_TAG=$(printf "%s" "$LATEST_JSON" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
+    fi
+    if [ -z "$INSTALL_TAG" ]; then
+        # Fallback to /releases/latest endpoint
+        LATEST_JSON=$($FETCH_CMD "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null || true)
+        if [ -n "$LATEST_JSON" ]; then
+            INSTALL_TAG=$(printf "%s" "$LATEST_JSON" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
+        fi
     fi
     if [ -z "$INSTALL_TAG" ]; then
         # Fallback to direct redirect header lookup
