@@ -22,11 +22,12 @@ No copyleft (GPL, AGPL, LGPL), non-commercial, or proprietary code is linked int
 | `serde_json` | 1.0.154 | MIT OR Apache-2.0 | JSON serialization for schema 0.1 | https://github.com/serde-rs/json |
 | `serde_derive` | 1.0.229 | MIT OR Apache-2.0 | Derive macro for Serialize/Deserialize | https://github.com/serde-rs/serde |
 | `ratatui` | 0.29.0 | MIT | Terminal user interface rendering engine | https://github.com/ratatui/ratatui |
-| `crossterm` | 0.28.1 | MIT | Cross-platform terminal raw mode and event loop | https://github.com/crossterm-rs/crossterm |
-| `rustix` | 0.38.44 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Safe POSIX/Linux syscall wrappers | https://github.com/bytecodealliance/rustix |
-| `linux-raw-sys` | 0.4.15 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Raw Linux kernel syscall definitions | https://github.com/sunfishcode/linux-raw-sys |
+| `crossterm` | 0.29.0 | MIT | Cross-platform terminal raw mode and event loop | https://github.com/crossterm-rs/crossterm |
+| `derive_more` | 2.1.1 | MIT OR Apache-2.0 | Macro derivation helpers for crossterm event types | https://github.com/JelteF/derive_more |
+| `rustix` | 1.1.6 / 0.38.44 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Safe POSIX/Linux syscall wrappers | https://github.com/bytecodealliance/rustix |
+| `linux-raw-sys` | 0.12.1 / 0.4.15 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Raw Linux kernel syscall definitions | https://github.com/sunfishcode/linux-raw-sys |
 | `libc` | 0.2.190 | MIT OR Apache-2.0 | Standard C library type bindings | https://github.com/rust-lang/libc |
-| `signal-hook` | 0.3.18 | Apache-2.0 OR MIT | Safe Unix signal handling (SIGINT/SIGTERM) | https://github.com/vorner/signal-hook |
+| `signal-hook` | 0.4.6 | Apache-2.0 OR MIT | Safe Unix signal handling (SIGINT/SIGTERM) | https://github.com/vorner/signal-hook |
 | `signal-hook-mio` | 0.2.5 | Apache-2.0 OR MIT | Mio adapter for Unix signal handling | https://github.com/vorner/signal-hook |
 | `mio` | 1.2.4 | MIT | Low-level event-driven I/O | https://github.com/tokio-rs/mio |
 | `compact_str` | 0.8.2 | MIT | Inlined small string optimization | https://github.com/ParkMyCar/compact_str |
