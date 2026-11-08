@@ -19,7 +19,7 @@ No copyleft (GPL, AGPL, LGPL), non-commercial, or proprietary code is linked int
 | Crate | Version | License | Primary Purpose | Repository |
 | --- | --- | --- | --- | --- |
 | `serde` | 1.0.229 | MIT OR Apache-2.0 | Generic serialization framework | https://github.com/serde-rs/serde |
-| `serde_json` | 1.0.151 | MIT OR Apache-2.0 | JSON serialization for schema 0.1 | https://github.com/serde-rs/json |
+| `serde_json` | 1.0.154 | MIT OR Apache-2.0 | JSON serialization for schema 0.1 | https://github.com/serde-rs/json |
 | `serde_derive` | 1.0.229 | MIT OR Apache-2.0 | Derive macro for Serialize/Deserialize | https://github.com/serde-rs/serde |
 | `ratatui` | 0.29.0 | MIT | Terminal user interface rendering engine | https://github.com/ratatui/ratatui |
 | `crossterm` | 0.28.1 | MIT | Cross-platform terminal raw mode and event loop | https://github.com/crossterm-rs/crossterm |
@@ -31,7 +31,7 @@ No copyleft (GPL, AGPL, LGPL), non-commercial, or proprietary code is linked int
 | `mio` | 1.2.4 | MIT | Low-level event-driven I/O | https://github.com/tokio-rs/mio |
 | `compact_str` | 0.8.2 | MIT | Inlined small string optimization | https://github.com/ParkMyCar/compact_str |
 | `unicode-width` | 0.2.0 | MIT OR Apache-2.0 | Unicode grapheme character display width | https://github.com/unicode-rs/unicode-width |
-| `unicode-segmentation` | 1.12.0 | MIT OR Apache-2.0 | Word and grapheme boundary segmentation | https://github.com/unicode-rs/unicode-segmentation |
+| `unicode-segmentation` | 1.13.3 | MIT OR Apache-2.0 | Word and grapheme boundary segmentation | https://github.com/unicode-rs/unicode-segmentation |
 | `unicode-truncate` | 1.1.0 | MIT OR Apache-2.0 | Unicode grapheme string truncation | https://github.com/Aetf/unicode-truncate |
 | `itertools` | 0.13.0 | MIT OR Apache-2.0 | Iterator combinators | https://github.com/rust-itertools/itertools |
 | `cassowary` | 0.3.0 | MIT / Apache-2.0 | Constraint-solving engine for TUI layout | https://github.com/derekdreery/cassowary-rs |
