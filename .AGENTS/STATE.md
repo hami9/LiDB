@@ -1,6 +1,6 @@
 # Current implementation state
 
-**Verified implementation snapshot:** 2026-11-08, branch `main` at commit `8ecd4c2`, integrating the completed Phase 2 (Networking Diagnostics), Phase 3 (Terminal & Evidence Usability), Phase 4 (Optional read-only eBPF instrumentation, PR #64), Phase 5 (Public release hardening, packaging guide, standalone installer script, support matrix, license SBOM, PR #66), dependency updates (PR #42 `serde_json 1.0.154`, PR #37 `unicode-segmentation 1.13.3`), bounded collector lifecycle & shutdown safety (PR #45), and interface error/drop counters (PR #33).
+**Verified implementation snapshot:** 2026-11-09, branch `main` at commit `4bd5b80`, integrating the completed Phase 2 (Networking Diagnostics), Phase 3 (Terminal & Evidence Usability), Phase 4 (Optional read-only eBPF instrumentation, PR #64), Phase 5 (Public release hardening, packaging guide, standalone installer script, support matrix, license SBOM, PR #66), dependency updates (PR #42 `serde_json 1.0.154`, PR #37 `unicode-segmentation 1.13.3`, PR #40 `crossterm 0.29.0`, PR #36 `signal-hook 0.4.6`), bounded collector lifecycle & shutdown safety (PR #45), and interface error/drop counters (PR #33).
 
 | Field | Value |
 | --- | --- |
@@ -13,7 +13,7 @@
 | Privacy constraints | Strict read-only procfs/sysfs/eBPF tracepoints; zero packet payloads, zero decrypted TLS, zero environment variables, zero process arguments, zero secrets (Rule R07) |
 | Native architecture evidence | Native x86_64 and aarch64 CI passed on all PRs; CodeQL Actions/Rust clean; all 114 workspace tests pass |
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
-| Release state | Clean patch-only release versioning (0.0.1+): releases v0.0.1 through v0.0.10 published with verified cross-architecture binaries |
+| Release state | Clean patch-only release versioning (0.0.1+): releases v0.0.1 through v0.0.11 published with verified cross-architecture binaries |
 | Review / tests | 114 unit & integration tests passing (`cargo test --workspace --locked --all-targets`), zero Clippy warnings, 157 Markdown links verified, 22 CI Python tests passing |
 | Current next action | Product maintenance, community onboarding, and follow-up feature planning |
 | Remaining limits | Bounded history ring buffer capped at 120 samples (~700 KB RAM); route cache bounded at 2048 records; socket tables bounded at 2048 entries; eBPF event queue bounded at 2048 entries |
