@@ -53,6 +53,23 @@ class InstallScriptTests(unittest.TestCase):
         except FileNotFoundError:
             pass
 
+    def test_dry_run_resolves_latest_release_tag(self):
+        bash_path = "bash"
+        try:
+            result = subprocess.run(
+                [bash_path, "scripts/install.sh", "--dry-run", "--dir", "/tmp"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if "Unsupported operating system" not in result.stderr:
+                self.assertEqual(result.returncode, 0)
+                self.assertIn("[dry-run]", result.stdout)
+                self.assertIn("Target release: v", result.stdout)
+        except FileNotFoundError:
+            pass
+
 
 if __name__ == "__main__":
     unittest.main()
