@@ -39,9 +39,10 @@ in JSON. Source timestamps use one collector-local monotonic clock and cannot be
 compared between different runs or hosts.
 
 The TUI is monochrome by default, accepts `--no-color`, and adapts to narrow
-windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, `3`, or `Left`/`Right` switches
-between the full metric list (`1: Metrics`), the CPU & Memory overview tab (`2: CPU/Mem`), and the Network overview tab (`3: Network`); `Space` pauses
-displayed readings; `?` or `h` toggles help; Enter opens the full details of the
+windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, `3`, `4`, or `Left`/`Right` switches
+between the full metric list (`1: Metrics`), the CPU & Memory overview tab (`2: CPU/Mem`),
+the Network overview tab (`3: Network`), and the in-kernel eBPF socket lifecycle tab (`4: eBPF`);
+`Space` pauses displayed readings; `?` or `h` toggles help; Enter opens the full details of the
 first visible metric on the Metrics tab. `Up`/`Down` or `j`/`k` scroll metrics, PageUp/PageDown scroll ten
 metrics or scroll wrapped text while help/details are open,
 and Home/End jump to the first/last. Windows below 35x10 show a resize prompt.
@@ -116,6 +117,7 @@ Use `--output PATH` to write directly to a destination file safely.
 `ebpf` collects optional read-only TCP lifecycle transition events (`sock:inet_sock_set_state`) via in-kernel eBPF instrumentation.
 Its schema `0.1` report records timestamp, PID, command, endpoints, state transitions, and round-trip duration.
 When run in unprivileged environments or non-Linux platforms, it degrades gracefully to typed `SourceAvailability::PermissionDenied` or `SourceAvailability::Unsupported` without error or panic.
+When launched with `lidash tui --ebpf`, Tab `4: eBPF` renders a real-time table of TCP state transitions, process context, socket endpoints, and round-trip times.
 
 The TUI maintains an in-memory bounded ring buffer of historical updates (`MAX_VIEW_HISTORY = 120` samples, ~2 minutes of history at 1s intervals).
 Press `[` or `,` to step backward in history (auto-pauses the live stream) and `]` or `.` to step forward.

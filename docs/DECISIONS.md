@@ -223,5 +223,27 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Completely backward compatible. No breaking changes to existing CLI flags or schema contracts.
 
+## ADR-033 — interactive eBPF socket lifecycle dashboard tab in TUI (2026-11-09)
+
+**Status:** implemented in Task AG-14 (Phase 5).
+
+**Context:** While ADR-031 introduced offline and CLI-level eBPF socket lifecycle collection via `cargo run -p lidash -- ebpf --json`, operators using the interactive TUI (`lidash tui`) lacked a live, real-time dashboard view for observing in-kernel TCP state transitions (`sock:inet_sock_set_state`). Operators diagnosing connection storms, transient connection resets, or TCP handshake stalls need to inspect active state transitions, process contexts, socket endpoints, and RTTs concurrently with host metrics and network topology.
+
+**Decision:**
+1. Extend the TUI view model with Tab `4: eBPF` (`Tab::Ebpf`), expanding the tab bar from 3 to 4 tabs (`1: Metrics`, `2: CPU/Mem`, `3: Network`, `4: eBPF`).
+2. Add direct keybinding `'4'` alongside `Tab` and `Shift+Tab` / arrow navigation.
+3. Thread eBPF sampling into the background worker and update loop when `--ebpf` is enabled, capturing `collector.ebpf(true)` concurrently with metric snapshots and network reports.
+4. Implement dedicated `draw_ebpf` UI view:
+   - Header summary banner showing tracepoint name (`sock:inet_sock_set_state`), source availability, event counts, dropped event count, and ring buffer capacity (256KB).
+   - Graceful fallback cards displaying typed reasons when disabled (with hint to run with `--ebpf`), permission denied (`CAP_BPF` or `CAP_SYS_ADMIN`), or unsupported platform (missing BTF / non-Linux).
+   - Structured tabular view of recent socket lifecycle events displaying Event type, Process comm & PID, Address Family, Source endpoint, Destination endpoint, TCP State Transition (`old -> new`), and Round-Trip Time (`RTT`).
+   - Responsive layout adapting to small terminals, compact heights (<= 10 rows), and wide displays.
+5. Guarantee `#![forbid(unsafe_code)]` compliance, zero heap allocations on rendering hot paths, and graceful degraded states on unprivileged systems.
+
+**Alternatives:** Embedding eBPF events inside the Network tab would overcrowd the interface and degrade socket table readability. A separate standalone binary would fragment the operator UX.
+
+**Migration / limits:** Completely backward compatible. Purely additive to TUI navigation. Defaults to disabled unless `--ebpf` flag is supplied.
+
+
 
 

@@ -1,3 +1,4 @@
+use lidb_core::ebpf::EbpfReport;
 use lidb_core::network::NetworkReport;
 use lidb_core::Snapshot;
 use std::{
@@ -21,6 +22,7 @@ static COLLECTOR_ACTIVE: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 pub struct Update {
     pub snapshot: Snapshot,
     pub network: Option<NetworkReport>,
+    pub ebpf: Option<EbpfReport>,
     pub collected_at: Instant,
     pub skipped_updates: u64,
 }
@@ -81,7 +83,7 @@ impl Worker {
     /// A shutdown timeout permanently closes admission in this process. An
     /// in-flight read cannot safely be killed or replaced with another worker.
     pub fn start(
-        sample: impl FnMut() -> (Snapshot, Option<NetworkReport>) + Send + 'static,
+        sample: impl FnMut() -> (Snapshot, Option<NetworkReport>, Option<EbpfReport>) + Send + 'static,
         interval: Duration,
     ) -> io::Result<Self> {
         let active = COLLECTOR_ACTIVE
@@ -91,7 +93,9 @@ impl Worker {
     }
 
     fn start_with_admission(
-        mut sample: impl FnMut() -> (Snapshot, Option<NetworkReport>) + Send + 'static,
+        mut sample: impl FnMut() -> (Snapshot, Option<NetworkReport>, Option<EbpfReport>)
+            + Send
+            + 'static,
         interval: Duration,
         active: Arc<AtomicBool>,
     ) -> io::Result<Self> {
@@ -114,7 +118,7 @@ impl Worker {
                     slot.collecting_since = Some(began);
                 }
                 // No mailbox lock is held during the potentially blocking read.
-                let (snapshot, network) = sample();
+                let (snapshot, network, ebpf) = sample();
                 let collected_at = Instant::now();
                 let Ok(mut slot) = worker_latest.lock() else {
                     break;
@@ -137,6 +141,7 @@ impl Worker {
                 slot.update = Some(Update {
                     snapshot,
                     network,
+                    ebpf,
                     collected_at,
                     skipped_updates: slot.skipped_updates,
                 });
@@ -261,7 +266,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn start(
-        sample: impl FnMut() -> (Snapshot, Option<NetworkReport>) + Send + 'static,
+        sample: impl FnMut() -> (Snapshot, Option<NetworkReport>, Option<EbpfReport>) + Send + 'static,
         interval: Duration,
     ) -> Worker {
         Worker::start_with_admission(sample, interval, Arc::new(AtomicBool::new(false))).unwrap()
@@ -296,7 +301,7 @@ mod tests {
                 sampled.fetch_add(1, Ordering::SeqCst);
                 let _ = entered.send(());
                 let _ = blocked.recv();
-                (Snapshot::new(0, 0, SnapshotMode::Fixture), None)
+                (Snapshot::new(0, 0, SnapshotMode::Fixture), None, None)
             },
             Duration::from_secs(60),
             Arc::clone(&active),
@@ -304,7 +309,7 @@ mod tests {
         .unwrap();
         started.recv_timeout(Duration::from_secs(2)).unwrap();
         let duplicate = Worker::start_with_admission(
-            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None),
+            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None, None),
             Duration::from_secs(60),
             Arc::clone(&active),
         );
@@ -330,7 +335,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         // Even after the detached thread returns, no replacement may be started.
         let restart = Worker::start_with_admission(
-            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None),
+            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None, None),
             Duration::from_secs(60),
             active,
         );
@@ -351,7 +356,7 @@ mod tests {
                 let _keep_until_worker_exit = &finished;
                 entered.send(()).unwrap();
                 let _ = blocked.recv_timeout(Duration::from_secs(2));
-                (Snapshot::new(99, 0, SnapshotMode::Fixture), None)
+                (Snapshot::new(99, 0, SnapshotMode::Fixture), None, None)
             },
             Duration::from_secs(60),
         );
@@ -361,6 +366,7 @@ mod tests {
             slot.update = Some(Update {
                 snapshot: Snapshot::new(1, 0, SnapshotMode::Fixture),
                 network: None,
+                ebpf: None,
                 collected_at: Instant::now(),
                 skipped_updates: 0,
             });
@@ -410,7 +416,7 @@ mod tests {
             move || {
                 let _keep_until_worker_exit = &guard;
                 let _ = sampled.send(());
-                (Snapshot::new(0, 0, SnapshotMode::Fixture), None)
+                (Snapshot::new(0, 0, SnapshotMode::Fixture), None, None)
             },
             Duration::from_secs(60),
         );
@@ -448,7 +454,7 @@ mod tests {
         }
         assert_eq!(worker.shutdown().unwrap_err().kind(), io::ErrorKind::Other);
         let mut replacement = Worker::start_with_admission(
-            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None),
+            || (Snapshot::new(0, 0, SnapshotMode::Fixture), None, None),
             Duration::from_secs(60),
             active,
         )
@@ -463,6 +469,7 @@ mod tests {
                 update: Some(Update {
                     snapshot: Snapshot::new(42, 0, SnapshotMode::Fixture),
                     network: None,
+                    ebpf: None,
                     collected_at: Instant::now(),
                     skipped_updates: 2,
                 }),
@@ -498,7 +505,7 @@ mod tests {
             move || {
                 let time = collect_counter.fetch_add(1, Ordering::SeqCst);
                 let _ = observed.send(time);
-                (Snapshot::new(time, 0, SnapshotMode::Fixture), None)
+                (Snapshot::new(time, 0, SnapshotMode::Fixture), None, None)
             },
             Duration::from_millis(1),
         );
@@ -523,7 +530,7 @@ mod tests {
         let mut worker = start(
             move || {
                 let _ = started.send(());
-                (Snapshot::new(0, 0, SnapshotMode::Fixture), None)
+                (Snapshot::new(0, 0, SnapshotMode::Fixture), None, None)
             },
             Duration::from_secs(60),
         );
