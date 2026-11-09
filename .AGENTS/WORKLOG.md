@@ -235,12 +235,12 @@ Next action: review/integrate the tested public Core PR, then select one focused
 ## 2026-11-09 — Installer Tag Discovery Hardening and CLI Help Keybinding Alignment
 
 - Actor: Antigravity.
-- Branch & PR: `agent/antigravity/ag-15-installer-and-help-polish`, PR targeting `main`.
+- Branch & PR: `agent/antigravity/ag-15-installer-and-help-polish`, PR #71 published [**`v0.0.14`**](https://github.com/hami9/LiDB/releases/tag/v0.0.14).
 - Scope & Implementation:
   - Updated `scripts/install.sh` release tag resolution: queries `https://api.github.com/repos/$REPO/releases` first to reliably detect semantic pre-release tracks (`v0.0.x`) where GitHub's `/releases/latest` endpoint returns HTTP 404, with fallback to `/releases/latest` and direct redirect headers.
   - Added integration test `test_dry_run_resolves_latest_release_tag` in `tests/ci/test_install_script.py` validating that unattended installations without explicit `--tag` resolve the release tag properly.
   - Aligned CLI help text in `apps/lidash/src/config.rs` to reflect Tab 1-4 navigation (`Tab/1-4/Left/Right tabs`), matching the TUI help overlay and README.
-  - Synchronized `.AGENTS/STATE.md` with verified snapshot on `main` at commit `2c3f759` and release tracking up to `v0.0.13`.
+  - Synchronized `.AGENTS/STATE.md` with verified snapshot on `main` at commit `2cbeb45` and release tracking up to `v0.0.14`.
 - Verification:
   - `cargo fmt --all -- --check`: PASS
   - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
@@ -249,6 +249,26 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `cargo test --workspace --locked --all-targets`: PASS (118 tests across workspace)
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
+
+## 2026-11-09 — Interactive Network Dashboard Socket Scrolling and Tab Switch Reset
+
+- Actor: Antigravity.
+- Branch & PR: `agent/antigravity/ag-16-network-socket-scroll`, PR targeting `main`.
+- Scope & Implementation:
+  - Enabled keyboard scrolling for the socket endpoint table on Tab 3 (`3: Network`) in `apps/lidash/src/tui.rs`, passing `view.scroll` to `draw_network`.
+  - Added dynamic window range title to socket table block (`Sockets {start}..{end} of {total}`) mirroring the eBPF tab behavior.
+  - Ensured `view.scroll` resets to 0 whenever an operator switches tabs (`Tab`, `BackTab`, `1-4`, `Left`/`Right`), preventing stale scroll offsets across different views.
+  - Added test `network_tab_scrolls_sockets_table` in `apps/lidash/src/tui.rs`.
+  - Updated `.AGENTS/STATE.md` with verified snapshot and test count (119 workspace tests).
+- Verification:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (119 tests across workspace)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
+
 
 
 
