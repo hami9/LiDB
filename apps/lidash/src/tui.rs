@@ -313,7 +313,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         return;
     }
     if view.tab == Tab::Network {
-        draw_network(frame, update.network.as_ref(), layout[1]);
+        draw_network(frame, update.network.as_ref(), view.scroll, layout[1]);
         return;
     }
     if view.tab == Tab::Ebpf {
@@ -638,6 +638,7 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
 fn draw_network(
     frame: &mut Frame<'_>,
     network: Option<&lidb_core::network::NetworkReport>,
+    scroll: usize,
     area: Rect,
 ) {
     let Some(report) = network else {
@@ -782,14 +783,26 @@ fn draw_network(
         frame.render_widget(route_table, split_rows[1]);
     }
 
-    let socket_block = Block::default()
-        .title(format!(" Sockets ({}) ", report.sockets().len()))
-        .borders(Borders::ALL);
-
+    let socket_count = report.sockets().len();
     let sock_inner_height = rows[2].height.saturating_sub(2) as usize;
+    let start = if socket_count == 0 {
+        0
+    } else {
+        scroll.min(socket_count.saturating_sub(1))
+    };
+    let end = (start + sock_inner_height).min(socket_count);
+    let title = if socket_count == 0 {
+        " Sockets (0) ".to_string()
+    } else {
+        format!(" Sockets {}..{} of {} ", start + 1, end, socket_count)
+    };
+
+    let socket_block = Block::default().title(title).borders(Borders::ALL);
+
     let sock_rows: Vec<Row> = report
         .sockets()
         .iter()
+        .skip(start)
         .take(sock_inner_height.max(1))
         .map(|sock| {
             let local =
@@ -1161,27 +1174,35 @@ pub(crate) fn run_with_sampler(
                     }
                     KeyCode::Tab => {
                         view.tab = view.tab.next();
+                        view.scroll = 0;
                     }
                     KeyCode::BackTab => {
                         view.tab = view.tab.prev();
+                        view.scroll = 0;
                     }
                     KeyCode::Char('1') => {
                         view.tab = Tab::Metrics;
+                        view.scroll = 0;
                     }
                     KeyCode::Char('2') => {
                         view.tab = Tab::CpuMemory;
+                        view.scroll = 0;
                     }
                     KeyCode::Char('3') => {
                         view.tab = Tab::Network;
+                        view.scroll = 0;
                     }
                     KeyCode::Char('4') => {
                         view.tab = Tab::Ebpf;
+                        view.scroll = 0;
                     }
                     KeyCode::Left if !view.help && !view.detail => {
                         view.tab = view.tab.prev();
+                        view.scroll = 0;
                     }
                     KeyCode::Right if !view.help && !view.detail => {
                         view.tab = view.tab.next();
+                        view.scroll = 0;
                     }
                     KeyCode::Down | KeyCode::Char('j') if view.help => {
                         view.text_scroll = view.text_scroll.saturating_add(1)
@@ -1593,6 +1614,7 @@ mod tests {
             assert!(output.contains("4026531992"));
             assert!(output.contains("eth0"));
             assert!(output.contains("12345"));
+            assert!(output.contains("Sockets 1..1 of 1"));
         }
 
         // Test small screen
@@ -1601,6 +1623,57 @@ mod tests {
         assert!(small.contains("Ifaces: 1"));
         assert!(small.contains("Routes: 1"));
         assert!(small.contains("Sockets: 1"));
+    }
+
+    #[test]
+    fn network_tab_scrolls_sockets_table() {
+        use lidb_core::network::{
+            NetworkReport, SocketProtocol, SocketRecord, SocketState, SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_interfaces_status(SourceAvailability::Available);
+        net_report.set_routes_status(SourceAvailability::Available);
+        net_report.set_sockets_status(SourceAvailability::Available);
+
+        for i in 0..25 {
+            let sock = SocketRecord::new(
+                SocketProtocol::Tcp,
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                1000 + i as u16,
+                SocketState::Listen,
+            )
+            .with_inode(50000 + i as u64);
+            net_report.push_socket(sock).unwrap();
+        }
+
+        let mut view = View {
+            update: Some(Update {
+                snapshot: Snapshot::new(0, 0, SnapshotMode::Fixture),
+                network: Some(net_report),
+                ebpf: None,
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::Network,
+            fixture: true,
+            scroll: 0,
+            ..View::default()
+        };
+
+        let top = render(100, 30, &mut view);
+        assert!(top.contains("Sockets 1.."));
+        assert!(top.contains("of 25"));
+        assert!(top.contains("50000"));
+
+        // Scroll down to 10
+        view.scroll = 10;
+        let scrolled = render(100, 30, &mut view);
+        assert!(scrolled.contains("Sockets 11.."));
+        assert!(scrolled.contains("of 25"));
+        assert!(scrolled.contains("50010"));
+        assert!(!scrolled.contains("50000"));
     }
 
     #[test]

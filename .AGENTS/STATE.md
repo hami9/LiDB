@@ -1,6 +1,6 @@
 # Current implementation state
 
-**Verified implementation snapshot:** 2026-11-09, branch `main` at commit `2c3f759`, integrating the completed Phase 2 (Networking Diagnostics), Phase 3 (Terminal & Evidence Usability), Phase 4 (Optional read-only eBPF instrumentation, PR #64), Phase 5 (Public release hardening, packaging guide, standalone installer script, support matrix, license SBOM, PR #66), dependency updates (PR #42 `serde_json 1.0.154`, PR #37 `unicode-segmentation 1.13.3`, PR #69 `crossterm 0.29.0` and `signal-hook 0.4.6`), interactive eBPF socket lifecycle dashboard tab (PR #70), and installer tag discovery hardening (Task AG-15).
+**Verified implementation snapshot:** 2026-11-09, branch `main` at commit `2cbeb45`, integrating the completed Phase 2 (Networking Diagnostics), Phase 3 (Terminal & Evidence Usability), Phase 4 (Optional read-only eBPF instrumentation, PR #64), Phase 5 (Public release hardening, packaging guide, standalone installer script, support matrix, license SBOM, PR #66), dependency updates (PR #42 `serde_json 1.0.154`, PR #37 `unicode-segmentation 1.13.3`, PR #69 `crossterm 0.29.0` and `signal-hook 0.4.6`), interactive eBPF socket lifecycle dashboard tab (PR #70), installer tag discovery hardening (PR #71), and interactive Network tab socket table scrolling (Task AG-16).
 
 | Field | Value |
 | --- | --- |
@@ -8,14 +8,14 @@
 | Status | All roadmap phases verified via native CI / CodeQL and squashed into `main` |
 | Application code present | YES: `lidb-core`, `lidb-collect`, `lidb-protocol`, and `apps/lidash` fully runnable |
 | Collector / terminal / headless runnable | YES, tested across unprivileged local Linux and Windows environments |
-| Observations | CPU, memory, swap, load, uptime, disk stats; interfaces, network namespaces, IPv4/IPv6 routes, TCP/UDP sockets, interface error/drop counters, optional read-only TCP lifecycle instrumentation (`EbpfReport`), interactive TUI eBPF tab |
+| Observations | CPU, memory, swap, load, uptime, disk stats; interfaces, network namespaces, IPv4/IPv6 routes, TCP/UDP sockets, interface error/drop counters, optional read-only TCP lifecycle instrumentation (`EbpfReport`), interactive TUI eBPF tab, navigable socket tables |
 | Data contract | Snapshot JSON 0.1, NetworkReport schema 0.1, SocketReport schema 0.1, InterfaceReport schema 0.1, EvidenceExport schema 0.1, EbpfReport schema 0.1 |
 | Privacy constraints | Strict read-only procfs/sysfs/eBPF tracepoints; zero packet payloads, zero decrypted TLS, zero environment variables, zero process arguments, zero secrets (Rule R07) |
-| Native architecture evidence | Native x86_64 and aarch64 CI passed on all PRs; CodeQL Actions/Rust clean; all 118 workspace tests pass |
+| Native architecture evidence | Native x86_64 and aarch64 CI passed on all PRs; CodeQL Actions/Rust clean; all 119 workspace tests pass |
 | Runtime privileges / services | Read-only local process; no elevated privileges, daemon, listener or outbound runtime connection |
-| Release state | Clean patch-only release versioning (0.0.1+): releases v0.0.1 through v0.0.13 published with verified cross-architecture binaries |
-| Review / tests | 118 unit & integration tests passing (`cargo test --workspace --locked --all-targets`), zero Clippy warnings, 157 Markdown links verified, 23 CI Python tests passing |
-| Current next action | Merge PR for installer tag discovery and CLI help alignment, releasing v0.0.14 |
+| Release state | Clean patch-only release versioning (0.0.1+): releases v0.0.1 through v0.0.14 published with verified cross-architecture binaries |
+| Review / tests | 119 unit & integration tests passing (`cargo test --workspace --locked --all-targets`), zero Clippy warnings, 157 Markdown links verified, 23 CI Python tests passing |
+| Current next action | Merge PR for interactive Network tab socket scrolling, releasing v0.0.15 |
 | Remaining limits | Bounded history ring buffer capped at 120 samples (~700 KB RAM); route cache bounded at 2048 records; socket tables bounded at 2048 entries; eBPF event queue bounded at 2048 entries |
 
 ## Public scope
