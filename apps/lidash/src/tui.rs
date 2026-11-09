@@ -261,7 +261,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
-        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: show full details for the first visible metric (Metrics tab)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for the selected item (Metrics, Network, eBPF)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
         let help_body = if area.width >= 96 {
             format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
         } else {
@@ -286,26 +286,110 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     let metrics = update.snapshot.metrics();
     let start = view.scroll.min(metrics.len().saturating_sub(1));
     if view.detail {
-        let text = metrics.get(start).map_or_else(
-            || "No metrics collected".into(),
-            |metric| {
-                format!(
-                    "{}\n{}\nunit: {}\nsource: {}\nobservation: {}ns (collector monotonic)",
-                    metric.name(),
-                    value_text(metric),
-                    metric.unit().as_str(),
-                    metric.source(),
-                    metric.monotonic_ns()
-                )
-            },
-        );
-        draw_text(
-            frame,
-            &text,
-            " Metric detail | Enter returns ",
-            &mut view.text_scroll,
-            layout[1],
-        );
+        let (text, title) = match view.tab {
+            Tab::Metrics => {
+                let text = metrics.get(start).map_or_else(
+                    || "No metrics collected".into(),
+                    |metric| {
+                        format!(
+                            "{}\n{}\nunit: {}\nsource: {}\nobservation: {}ns (collector monotonic)",
+                            metric.name(),
+                            value_text(metric),
+                            metric.unit().as_str(),
+                            metric.source(),
+                            metric.monotonic_ns()
+                        )
+                    },
+                );
+                (text, " Metric detail | Enter returns ")
+            }
+            Tab::Network => {
+                let sockets = update.network.as_ref().map(|n| n.sockets()).unwrap_or(&[]);
+                let sock_start = if sockets.is_empty() {
+                    0
+                } else {
+                    view.scroll.min(sockets.len().saturating_sub(1))
+                };
+                let text = sockets.get(sock_start).map_or_else(
+                    || "No sockets collected".into(),
+                    |sock| {
+                        let local = crate::output::format_socket_endpoint(
+                            sock.local_address(),
+                            sock.local_port(),
+                        );
+                        let remote = match (sock.remote_address(), sock.remote_port()) {
+                            (Some(addr), Some(port)) => {
+                                crate::output::format_socket_endpoint(addr, port)
+                            }
+                            _ => "*".to_owned(),
+                        };
+                        let ino = sock.inode().map_or("-".into(), |i| i.to_string());
+                        let ns = update
+                            .network
+                            .as_ref()
+                            .and_then(|n| n.namespace())
+                            .map_or("-".into(), |ns| match ns.inode() {
+                                Some(i) => format!("{} (inode: {i})", ns.name()),
+                                None => ns.name().to_string(),
+                            });
+                        format!(
+                            "Protocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
+                            sock.protocol().as_str(),
+                            local,
+                            remote,
+                            sock.state().as_str(),
+                            ino,
+                            ns
+                        )
+                    },
+                );
+                (text, " Socket detail | Enter returns ")
+            }
+            Tab::Ebpf => {
+                let events = update.ebpf.as_ref().map(|e| e.events()).unwrap_or(&[]);
+                let ebpf_start = if events.is_empty() {
+                    0
+                } else {
+                    view.scroll.min(events.len().saturating_sub(1))
+                };
+                let text = events.get(ebpf_start).map_or_else(
+                    || "No eBPF events observed".into(),
+                    |event| {
+                        let transition = match (event.old_state(), event.new_state()) {
+                            (Some(old), Some(new)) => {
+                                format!("{} -> {}", old.as_str(), new.as_str())
+                            }
+                            (None, Some(new)) => format!("-> {}", new.as_str()),
+                            (Some(old), None) => format!("{} ->", old.as_str()),
+                            (None, None) => "-".to_string(),
+                        };
+                        let rtt = event.round_trip_us().map_or("-".to_string(), |us| {
+                            format!("{:.1}ms ({us} µs)", us as f64 / 1000.0)
+                        });
+                        format!(
+                            "Event: {}\nProcess: {} [PID {}]\nAddress Family: {}\nSource Endpoint: {}:{}\nDestination Endpoint: {}:{}\nState Transition: {}\nRound-Trip Latency: {}\nTracepoint: sock:inet_sock_set_state\nTimestamp: {}ns (collector monotonic)",
+                            event.event_type().as_str(),
+                            event.comm(),
+                            event.pid(),
+                            event.family().as_str(),
+                            event.local_address(),
+                            event.local_port(),
+                            event.remote_address(),
+                            event.remote_port(),
+                            transition,
+                            rtt,
+                            event.timestamp_ns()
+                        )
+                    },
+                );
+                (text, " eBPF Event detail | Enter returns ")
+            }
+            Tab::CpuMemory => (
+                "CPU and Memory overview tabs summarize system metrics.\n\nPress Tab to switch to Metrics, Network, or eBPF tabs to inspect item details.".into(),
+                " Overview | Enter returns ",
+            ),
+        };
+        draw_text(frame, &text, title, &mut view.text_scroll, layout[1]);
         return;
     }
     if view.tab == Tab::CpuMemory {
@@ -1167,34 +1251,38 @@ pub(crate) fn run_with_sampler(
                         view.text_scroll = 0;
                     }
                     KeyCode::Enter => {
-                        if view.detail || view.tab == Tab::Metrics {
-                            view.detail = !view.detail;
-                            view.text_scroll = 0;
-                        }
+                        view.detail = !view.detail;
+                        view.text_scroll = 0;
                     }
                     KeyCode::Tab => {
                         view.tab = view.tab.next();
                         view.scroll = 0;
+                        view.detail = false;
                     }
                     KeyCode::BackTab => {
                         view.tab = view.tab.prev();
                         view.scroll = 0;
+                        view.detail = false;
                     }
                     KeyCode::Char('1') => {
                         view.tab = Tab::Metrics;
                         view.scroll = 0;
+                        view.detail = false;
                     }
                     KeyCode::Char('2') => {
                         view.tab = Tab::CpuMemory;
                         view.scroll = 0;
+                        view.detail = false;
                     }
                     KeyCode::Char('3') => {
                         view.tab = Tab::Network;
                         view.scroll = 0;
+                        view.detail = false;
                     }
                     KeyCode::Char('4') => {
                         view.tab = Tab::Ebpf;
                         view.scroll = 0;
+                        view.detail = false;
                     }
                     KeyCode::Left if !view.help && !view.detail => {
                         view.tab = view.tab.prev();
@@ -1674,6 +1762,86 @@ mod tests {
         assert!(scrolled.contains("of 25"));
         assert!(scrolled.contains("50010"));
         assert!(!scrolled.contains("50000"));
+    }
+
+    #[test]
+    fn network_and_ebpf_tabs_render_detail_modals() {
+        use lidb_core::ebpf::{EbpfEventType, EbpfLifecycleEvent};
+        use lidb_core::network::{
+            NetworkNamespace, NetworkReport, SocketProtocol, SocketRecord, SocketState,
+            SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        // 1. Network detail
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_sockets_status(SourceAvailability::Available);
+        net_report.set_namespace(Some(
+            NetworkNamespace::new("container1", Some(4026532500)).unwrap(),
+        ));
+        let sock = SocketRecord::new(
+            SocketProtocol::Tcp,
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)),
+            8080,
+            SocketState::Established,
+        )
+        .with_remote(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 45678)
+        .unwrap()
+        .with_inode(98765);
+        net_report.push_socket(sock).unwrap();
+
+        let mut view = fixture();
+        view.tab = Tab::Network;
+        view.detail = true;
+        view.update.as_mut().unwrap().network = Some(net_report);
+
+        let net_detail = render(100, 25, &mut view);
+        assert!(net_detail.contains("Socket detail | Enter returns"));
+        assert!(net_detail.contains("Protocol: tcp"));
+        assert!(net_detail.contains("Local Endpoint: 10.0.0.5:8080"));
+        assert!(net_detail.contains("Remote Endpoint: 10.0.0.1:45678"));
+        assert!(net_detail.contains("State: established"));
+        assert!(net_detail.contains("Inode: 98765"));
+        assert!(net_detail.contains("Network Namespace: container1 (inode: 4026532500)"));
+
+        // 2. eBPF detail
+        let mut ebpf_report = EbpfReport::new(SnapshotMode::Fixture, 500);
+        ebpf_report.set_status(SourceAvailability::Available);
+        let event = EbpfLifecycleEvent::new(
+            EbpfEventType::TcpConnect,
+            999888777,
+            5555,
+            "nginx",
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)),
+            80,
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
+            52345,
+        )
+        .unwrap()
+        .with_states(Some(SocketState::Listen), Some(SocketState::Established))
+        .with_round_trip_us(Some(8500));
+        ebpf_report.push_event(event);
+
+        view.tab = Tab::Ebpf;
+        view.update.as_mut().unwrap().ebpf = Some(ebpf_report);
+
+        let ebpf_detail = render(100, 25, &mut view);
+        assert!(ebpf_detail.contains("eBPF Event detail | Enter returns"));
+        assert!(ebpf_detail.contains("Event: tcp_connect"));
+        assert!(ebpf_detail.contains("Process: nginx [PID 5555]"));
+        assert!(ebpf_detail.contains("Address Family: ipv4"));
+        assert!(ebpf_detail.contains("Source Endpoint: 192.168.1.50:80"));
+        assert!(ebpf_detail.contains("Destination Endpoint: 192.168.1.100:52345"));
+        assert!(ebpf_detail.contains("State Transition: listen -> established"));
+        assert!(ebpf_detail.contains("Round-Trip Latency: 8.5ms (8500 µs)"));
+        assert!(ebpf_detail.contains("Tracepoint: sock:inet_sock_set_state"));
+        assert!(ebpf_detail.contains("Timestamp: 999888777ns"));
+
+        // 3. CpuMemory overview detail
+        view.tab = Tab::CpuMemory;
+        let cpu_detail = render(100, 25, &mut view);
+        assert!(cpu_detail.contains("Overview | Enter returns"));
+        assert!(cpu_detail.contains("CPU and Memory overview tabs summarize system metrics"));
     }
 
     #[test]

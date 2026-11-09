@@ -253,7 +253,7 @@ Next action: review/integrate the tested public Core PR, then select one focused
 ## 2026-11-09 — Interactive Network Dashboard Socket Scrolling and Tab Switch Reset
 
 - Actor: Antigravity.
-- Branch & PR: `agent/antigravity/ag-16-network-socket-scroll`, PR targeting `main`.
+- Branch & PR: `agent/antigravity/ag-16-network-socket-scroll`, PR #72 published [**`v0.0.15`**](https://github.com/hami9/LiDB/releases/tag/v0.0.15).
 - Scope & Implementation:
   - Enabled keyboard scrolling for the socket endpoint table on Tab 3 (`3: Network`) in `apps/lidash/src/tui.rs`, passing `view.scroll` to `draw_network`.
   - Added dynamic window range title to socket table block (`Sockets {start}..{end} of {total}`) mirroring the eBPF tab behavior.
@@ -268,6 +268,30 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `cargo test --workspace --locked --all-targets`: PASS (119 tests across workspace)
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
+
+## 2026-11-09 — Universal Interactive Detail Modals Across TUI Tabs
+
+- Actor: Antigravity.
+- Branch & PR: `agent/antigravity/ag-17-universal-detail-view`, PR targeting `main`.
+- Scope & Implementation:
+  - Extended the `Enter` detail inspector modal in `apps/lidash/src/tui.rs` beyond Tab 1 (`Metrics`) to universally support Tab 3 (`Network`) and Tab 4 (`eBPF`).
+  - Tab 1 (`Metrics`): Metric detail (value, unit, source, monotonic timestamp).
+  - Tab 3 (`Network`): Socket detail modal showing Protocol, Local Endpoint, Remote Endpoint, State, Inode, and Network Namespace name/inode.
+  - Tab 4 (`eBPF`): eBPF Event detail modal showing Event type, Process comm & PID, Address Family, Source & Destination endpoints, State Transition (`old -> new`), Round-Trip Latency (in both `ms` and `µs`), Tracepoint name, and Timestamp.
+  - Tab 2 (`CPU/Mem`): Overview modal explaining that tabs 1, 3, and 4 provide item details.
+  - Updated keybinding handlers: `KeyCode::Enter` toggles detail across any tab; switching tabs (`Tab`, `BackTab`, `1-4`, `Left`/`Right`) automatically closes detail mode (`view.detail = false`) and resets scroll.
+  - Updated help overlay text: `"Enter: toggle full details for the selected item (Metrics, Network, eBPF)"`.
+  - Updated `apps/lidash/README.md` to document the universal detail inspector.
+  - Added unit test `network_and_ebpf_tabs_render_detail_modals` in `apps/lidash/src/tui.rs` (120 workspace tests passing).
+- Verification:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (120 tests across workspace)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
+
 
 
 
