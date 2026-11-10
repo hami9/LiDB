@@ -41,7 +41,7 @@ compared between different runs or hosts.
 The TUI is monochrome by default, accepts `--no-color`, and adapts to narrow
 windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, `3`, `4`, or `Left`/`Right` switches
 between the full metric list (`1: Metrics`), the CPU & Memory overview tab (`2: CPU/Mem`),
-the Network overview tab (`3: Network`), and the in-kernel eBPF socket lifecycle tab (`4: eBPF`);
+the Network overview tab (`3: Network`, with live per-interface RX/TX transfer rates, routes, and socket connections), and the in-kernel eBPF socket lifecycle tab (`4: eBPF`);
 `Space` pauses displayed readings; `?` or `h` toggles help; Enter toggles full details of the
 selected item on the Metrics, Network, or eBPF tabs. `Up`/`Down` or `j`/`k` scroll metrics, PageUp/PageDown scroll ten
 metrics or scroll wrapped text while help/details are open,
