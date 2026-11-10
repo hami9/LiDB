@@ -295,7 +295,7 @@ Next action: review/integrate the tested public Core PR, then select one focused
 ## 2026-11-10 — Live Network Interface Bandwidth Rates and Network Health in Dashboard Tab
 
 - Actor: Antigravity.
-- Branch & PR: `agent/antigravity/ag-18-interface-rates`, PR targeting `main`.
+- Branch & PR: `agent/antigravity/ag-18-interface-rates`, PR #74 published [**`v0.0.17`**](https://github.com/hami9/LiDB/releases/tag/v0.0.17).
 - Scope & Implementation:
   - Added `format_rate_value` and `format_metric_rate` in `apps/lidash/src/tui.rs` providing human-readable throughput formatting (`B/s`, `KB/s`, `MB/s`, `GB/s`).
   - Threaded `Snapshot` into `draw_network` and added live `RX Rate` and `TX Rate` columns to the `Interfaces` table on Tab 3 (`3: Network`).
@@ -312,6 +312,29 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
   - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
   - `cargo test --workspace --locked --all-targets`: PASS (122 tests across workspace)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
+
+## 2026-11-10 — CPU and Memory Subsystem Deep-Dive Inspector Modal and Uptime Formatting
+
+- Actor: Antigravity.
+- Branch & PR: `agent/antigravity/ag-19-cpu-mem-detail`, PR targeting `main`.
+- Scope & Implementation:
+  - Implemented `format_uptime_duration` in `apps/lidash/src/tui.rs` converting seconds into human-readable duration strings (`Xd Xh Xm Xs (Xs)`).
+  - Implemented `format_cpu_memory_detail` providing a comprehensive four-section deep-dive modal on Tab 2 (`2: CPU/Mem`):
+    - CPU Subsystem: CPU Busy %, user/sys/idle/iowait/steal/nice/irq/softirq ticks, PSI CPU stall avg10.
+    - Memory Subsystem: Total, Used, Available, utilization %, PSI Memory stall avg10.
+    - Swap Space: Total, Used, Free, utilization %, or explicit unconfigured notice.
+    - System Activity & Pressure: 1m/5m/15m load averages, human-readable uptime, PSI I/O stall avg10, active network & disk device counts, and collector monotonic timestamp.
+  - Aligned TUI help overlay text and `apps/lidash/README.md` to reflect full modal inspector coverage across all four dashboard tabs (`1: Metrics`, `2: CPU/Mem`, `3: Network`, `4: eBPF`).
+  - Documented ADR-035 in `docs/DECISIONS.md`.
+  - Added unit tests `format_uptime_duration_formats_correctly` and `cpu_memory_tab_renders_comprehensive_detail_modal` in `apps/lidash/src/tui.rs` (124 workspace tests passing).
+- Verification:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (124 tests across workspace)
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
 

@@ -262,7 +262,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
-        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for the selected item (Metrics, Network, eBPF)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for the active view (Metrics, CPU/Mem, Network, eBPF)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
         let help_body = if area.width >= 96 {
             format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
         } else {
@@ -306,7 +306,11 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             }
             Tab::Network => {
                 let sockets = update.network.as_ref().map(|n| n.sockets()).unwrap_or(&[]);
-                let ifaces = update.network.as_ref().map(|n| n.interfaces()).unwrap_or(&[]);
+                let ifaces = update
+                    .network
+                    .as_ref()
+                    .map(|n| n.interfaces())
+                    .unwrap_or(&[]);
                 let sock_start = if sockets.is_empty() {
                     0
                 } else {
@@ -324,14 +328,13 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                         _ => "*".to_owned(),
                     };
                     let ino = sock.inode().map_or("-".into(), |i| i.to_string());
-                    let ns = update
-                        .network
-                        .as_ref()
-                        .and_then(|n| n.namespace())
-                        .map_or("-".into(), |ns| match ns.inode() {
+                    let ns = update.network.as_ref().and_then(|n| n.namespace()).map_or(
+                        "-".into(),
+                        |ns| match ns.inode() {
                             Some(i) => format!("{} (inode: {i})", ns.name()),
                             None => ns.name().to_string(),
-                        });
+                        },
+                    );
                     let mut detail = format!(
                         "Protocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
                         sock.protocol().as_str(),
@@ -384,14 +387,13 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                     detail
                 } else if let Some(iface) = ifaces.first() {
                     let name = iface.name();
-                    let ns = update
-                        .network
-                        .as_ref()
-                        .and_then(|n| n.namespace())
-                        .map_or("-".into(), |ns| match ns.inode() {
+                    let ns = update.network.as_ref().and_then(|n| n.namespace()).map_or(
+                        "-".into(),
+                        |ns| match ns.inode() {
                             Some(i) => format!("{} (inode: {i})", ns.name()),
                             None => ns.name().to_string(),
-                        });
+                        },
+                    );
                     let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
                     let mac = iface.mac_address().map_or("-".into(), |m| m.to_string());
                     let speed = iface
@@ -493,8 +495,8 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                 (text, " eBPF Event detail | Enter returns ")
             }
             Tab::CpuMemory => (
-                "CPU and Memory overview tabs summarize system metrics.\n\nPress Tab to switch to Metrics, Network, or eBPF tabs to inspect item details.".into(),
-                " Overview | Enter returns ",
+                format_cpu_memory_detail(&update.snapshot),
+                " CPU & Memory detail | Enter returns ",
             ),
         };
         draw_text(frame, &text, title, &mut view.text_scroll, layout[1]);
@@ -613,6 +615,143 @@ fn format_metric_rate(metric: &MetricObservation<MetricValue>) -> String {
         Some(MetricValue::Integer(int)) => format_rate_value(*int as f64),
         None => "-".to_owned(),
     }
+}
+
+/// Formats uptime in seconds into a human-friendly duration string (e.g. "2d 4h 12m 30s (187950s)").
+fn format_uptime_duration(seconds: f64) -> String {
+    if !seconds.is_finite() || seconds < 0.0 {
+        return "-".to_owned();
+    }
+    let total_secs = seconds as u64;
+    let days = total_secs / 86400;
+    let hours = (total_secs % 86400) / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+    if days > 0 {
+        format!("{days}d {hours}h {minutes}m {secs}s ({seconds:.0}s)")
+    } else if hours > 0 {
+        format!("{hours}h {minutes}m {secs}s ({seconds:.0}s)")
+    } else if minutes > 0 {
+        format!("{minutes}m {secs}s ({seconds:.0}s)")
+    } else {
+        format!("{seconds:.1}s")
+    }
+}
+
+/// Formats a comprehensive deep-dive system resource summary for the CPU and Memory tab.
+fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
+    let cpu_busy = metric_display(find_metric(snapshot, "cpu.busy.percent"));
+    let user = metric_display(find_metric(snapshot, "cpu.user.ticks"));
+    let system = metric_display(find_metric(snapshot, "cpu.system.ticks"));
+    let idle = metric_display(find_metric(snapshot, "cpu.idle.ticks"));
+    let iowait = metric_display(find_metric(snapshot, "cpu.iowait.ticks"));
+    let steal = metric_display(find_metric(snapshot, "cpu.steal.ticks"));
+    let nice = metric_display(find_metric(snapshot, "cpu.nice.ticks"));
+    let irq = metric_display(find_metric(snapshot, "cpu.irq.ticks"));
+    let softirq = metric_display(find_metric(snapshot, "cpu.softirq.ticks"));
+
+    let mem_total = find_metric(snapshot, "memory.total.bytes");
+    let mem_used = find_metric(snapshot, "memory.used.bytes");
+    let mem_avail = find_metric(snapshot, "memory.available.bytes");
+
+    let mem_summary = match (
+        mem_total.map(MetricObservation::state),
+        mem_used.map(MetricObservation::state),
+    ) {
+        (Some(MetricState::Available(total_val)), Some(MetricState::Available(used_val))) => {
+            let total = total_val.as_f64();
+            let used = used_val.as_f64();
+            let total_gib = total / 1_073_741_824.0;
+            let used_gib = used / 1_073_741_824.0;
+            let pct = if total > 0.0 {
+                ((used / total) * 100.0).clamp(0.0, 100.0) as u16
+            } else {
+                0
+            };
+            let avail_str = match mem_avail.map(MetricObservation::state) {
+                Some(MetricState::Available(avail_val)) => {
+                    format!("{:.2} GiB", avail_val.as_f64() / 1_073_741_824.0)
+                }
+                _ => "n/a".to_owned(),
+            };
+            format!(
+                "Total: {total_gib:.2} GiB ({total:.0} B)\nUsed: {used_gib:.2} GiB ({used:.0} B) [{pct}%]\nAvailable: {avail_str}"
+            )
+        }
+        _ => {
+            let total_str = mem_total.map_or_else(|| "not probed".to_owned(), value_text);
+            let used_str = mem_used.map_or_else(|| "not probed".to_owned(), value_text);
+            format!("Total: {total_str}\nUsed: {used_str}")
+        }
+    };
+
+    let swap_total = find_metric(snapshot, "swap.total.bytes");
+    let swap_used = find_metric(snapshot, "swap.used.bytes");
+
+    let swap_summary = match (
+        swap_total.map(MetricObservation::state),
+        swap_used.map(MetricObservation::state),
+    ) {
+        (Some(MetricState::Available(total_val)), Some(MetricState::Available(used_val))) => {
+            let total = total_val.as_f64();
+            let used = used_val.as_f64();
+            if total > 0.0 {
+                let total_gib = total / 1_073_741_824.0;
+                let used_gib = used / 1_073_741_824.0;
+                let pct = ((used / total) * 100.0).clamp(0.0, 100.0) as u16;
+                format!(
+                    "Total: {total_gib:.2} GiB ({total:.0} B)\nUsed: {used_gib:.2} GiB ({used:.0} B) [{pct}%]"
+                )
+            } else {
+                "No swap configured (0 B)".to_owned()
+            }
+        }
+        _ => {
+            let total_str = swap_total.map_or_else(|| "not probed".to_owned(), value_text);
+            let used_str = swap_used.map_or_else(|| "not probed".to_owned(), value_text);
+            format!("Total: {total_str}\nUsed: {used_str}")
+        }
+    };
+
+    let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
+    let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
+    let psi_io = metric_display(find_metric(snapshot, "pressure.io.some.avg10.percent"));
+
+    let load1 = metric_display(find_metric(snapshot, "load.1m"));
+    let load5 = metric_display(find_metric(snapshot, "load.5m"));
+    let load15 = metric_display(find_metric(snapshot, "load.15m"));
+
+    let uptime =
+        match find_metric(snapshot, "uptime.seconds").and_then(|m| m.state().available_value()) {
+            Some(MetricValue::Number(s)) => format_uptime_duration(*s),
+            Some(MetricValue::Integer(s)) => format_uptime_duration(*s as f64),
+            _ => metric_display(find_metric(snapshot, "uptime.seconds")),
+        };
+
+    let net_devs = metric_display(find_metric(snapshot, "network.state"));
+    let disk_devs = metric_display(find_metric(snapshot, "disk.state"));
+
+    format!(
+        "--- CPU Subsystem (/proc/stat) ---\n\
+         CPU Busy: {cpu_busy}\n\
+         Ticks: user {user} | sys {system} | idle {idle}\n\
+         Wait: iowait {iowait} | steal {steal} | nice {nice}\n\
+         Interrupts: irq {irq} | softirq {softirq}\n\
+         PSI CPU Stall (avg10): {psi_cpu}\n\n\
+         --- Memory Subsystem (/proc/meminfo) ---\n\
+         {mem_summary}\n\
+         PSI Memory Stall (avg10): {psi_mem}\n\n\
+         --- Swap Space (/proc/meminfo) ---\n\
+         {swap_summary}\n\n\
+         --- System Activity & Pressure (/proc/loadavg & /proc/uptime) ---\n\
+         Load Average: 1m: {load1} | 5m: {load5} | 15m: {load15}\n\
+         System Uptime: {uptime}\n\
+         PSI I/O Stall (avg10): {psi_io}\n\
+         Active Network Devices: {net_devs}\n\
+         Active Disk Devices: {disk_devs}\n\
+         Collector Monotonic: {}ns",
+        snapshot.monotonic_ns()
+    )
 }
 
 /// Renders the dedicated CPU and Memory overview dashboard tab.
@@ -821,7 +960,12 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
     let load1 = metric_display(find_metric(snapshot, "load.1m"));
     let load5 = metric_display(find_metric(snapshot, "load.5m"));
     let load15 = metric_display(find_metric(snapshot, "load.15m"));
-    let uptime = metric_display(find_metric(snapshot, "uptime.seconds"));
+    let uptime =
+        match find_metric(snapshot, "uptime.seconds").and_then(|m| m.state().available_value()) {
+            Some(MetricValue::Number(s)) => format_uptime_duration(*s),
+            Some(MetricValue::Integer(s)) => format_uptime_duration(*s as f64),
+            _ => metric_display(find_metric(snapshot, "uptime.seconds")),
+        };
 
     let psi_load_lines = if area.width >= 70 {
         vec![
@@ -829,7 +973,7 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
                 "PSI Stall avg10: CPU {psi_cpu}  │  Mem {psi_mem}  │  I/O {psi_io}"
             )),
             Line::from(format!(
-                "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}s"
+                "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}"
             )),
         ]
     } else if area.width >= 48 {
@@ -837,13 +981,13 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
             Line::from(format!(
                 "PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | IO {psi_io}"
             )),
-            Line::from(format!("Load: {load1} {load5} {load15} │ Up: {uptime}s")),
+            Line::from(format!("Load: {load1} {load5} {load15} │ Up: {uptime}")),
         ]
     } else {
         vec![
             Line::from(format!("PSI: C:{psi_cpu} M:{psi_mem} IO:{psi_io}")),
             Line::from(format!("Load: {load1} {load5} {load15}")),
-            Line::from(format!("Uptime: {uptime}s")),
+            Line::from(format!("Uptime: {uptime}")),
         ]
     };
 
@@ -2070,11 +2214,112 @@ mod tests {
         assert!(ebpf_detail.contains("Tracepoint: sock:inet_sock_set_state"));
         assert!(ebpf_detail.contains("Timestamp: 999888777ns"));
 
-        // 3. CpuMemory overview detail
+        // 3. CpuMemory deep-dive detail
         view.tab = Tab::CpuMemory;
         let cpu_detail = render(100, 25, &mut view);
-        assert!(cpu_detail.contains("Overview | Enter returns"));
-        assert!(cpu_detail.contains("CPU and Memory overview tabs summarize system metrics"));
+        assert!(cpu_detail.contains("CPU & Memory detail | Enter returns"));
+        assert!(cpu_detail.contains("--- CPU Subsystem (/proc/stat) ---"));
+        assert!(cpu_detail.contains("--- Memory Subsystem (/proc/meminfo) ---"));
+        assert!(cpu_detail.contains("--- Swap Space (/proc/meminfo) ---"));
+        assert!(cpu_detail
+            .contains("--- System Activity & Pressure (/proc/loadavg & /proc/uptime) ---"));
+    }
+
+    #[test]
+    fn format_uptime_duration_formats_correctly() {
+        assert_eq!(format_uptime_duration(45.5), "45.5s");
+        assert_eq!(format_uptime_duration(125.0), "2m 5s (125s)");
+        assert_eq!(format_uptime_duration(3665.0), "1h 1m 5s (3665s)");
+        assert_eq!(format_uptime_duration(187950.0), "2d 4h 12m 30s (187950s)");
+        assert_eq!(format_uptime_duration(-5.0), "-");
+        assert_eq!(format_uptime_duration(f64::NAN), "-");
+    }
+
+    #[test]
+    fn cpu_memory_tab_renders_comprehensive_detail_modal() {
+        let mut snapshot = Snapshot::new(123456789, 50, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "cpu.busy.percent",
+                    "proc.stat",
+                    Unit::Percent,
+                    0,
+                    MetricState::Available(MetricValue::Number(25.5)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "cpu.user.ticks",
+                    "proc.stat",
+                    Unit::Count,
+                    0,
+                    MetricState::Available(MetricValue::Integer(100000)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "memory.total.bytes",
+                    "proc.meminfo",
+                    Unit::Bytes,
+                    0,
+                    MetricState::Available(MetricValue::Integer(17_179_869_184)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "memory.used.bytes",
+                    "proc.meminfo",
+                    Unit::Bytes,
+                    0,
+                    MetricState::Available(MetricValue::Integer(8_589_934_592)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "uptime.seconds",
+                    "proc.uptime",
+                    Unit::Seconds,
+                    0,
+                    MetricState::Available(MetricValue::Number(187950.0)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        let mut view = View {
+            update: Some(Update {
+                snapshot,
+                network: None,
+                ebpf: None,
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::CpuMemory,
+            detail: true,
+            ..View::default()
+        };
+
+        let detail = render(100, 30, &mut view);
+        assert!(detail.contains("CPU & Memory detail | Enter returns"));
+        assert!(detail.contains("CPU Busy: 25.50"));
+        assert!(detail.contains("Ticks: user 100000"));
+        assert!(detail.contains("Total: 16.00 GiB (17179869184 B)"));
+        assert!(detail.contains("Used: 8.00 GiB (8589934592 B) [50%]"));
+        assert!(detail.contains("System Uptime: 2d 4h 12m 30s (187950s)"));
+        assert!(detail.contains("Collector Monotonic: 123456789ns"));
     }
 
     #[test]

@@ -264,6 +264,26 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Pure additive UX improvement. Completely backward-compatible.
 
+## ADR-035 — CPU and memory subsystem deep-dive inspector modal and uptime formatting (2026-11-10)
+
+**Status:** implemented in Task AG-19.
+
+**Context:** On Tab 2 (`2: CPU/Mem`), operators previously received a generic placeholder message when pressing `Enter` ("CPU and Memory overview tabs summarize system metrics. Press Tab to switch..."), leaving Tab 2 as the only view without a functional detail inspector modal. Operators diagnosing compute saturation, memory leaks, high swap paging, or CPU steal events need an itemized breakdown of kernel tick states (`user`, `system`, `idle`, `iowait`, `steal`, `nice`, `irq`, `softirq`), physical memory vs. swap consumption, PSI stall percentages, system load averages, and hardware device counts. In addition, raw uptime in seconds lacks immediate readability for multi-day incident analysis.
+
+**Decision:**
+1. Implement `format_uptime_duration` converting raw floating-point seconds into human-readable duration strings (e.g. `2d 4h 12m 30s (187950s)`). Use it across both Tab 2 overview and detail inspectors.
+2. Replace the static Tab 2 modal with `format_cpu_memory_detail`, presenting a structured four-section deep-dive:
+   - **CPU Subsystem**: CPU Busy %, tick counters (user, sys, idle, iowait, steal, nice, irq, softirq), and PSI CPU stall avg10.
+   - **Memory Subsystem**: RAM Total, Used, Available, utilization %, and PSI Memory stall avg10.
+   - **Swap Space**: Swap Total, Used, Free, utilization %, or explicit indicator when unconfigured.
+   - **System Activity & Pressure**: 1m/5m/15m load averages, human-readable uptime, PSI I/O stall avg10, active network and disk device counts, and collector monotonic timestamp.
+3. Update keybinding help overlay and documentation to reflect full modal inspector coverage across all four dashboard tabs (`1: Metrics`, `2: CPU/Mem`, `3: Network`, `4: eBPF`).
+
+**Alternatives:** Requiring operators to switch to Tab 1 to inspect ticks or swap paging fragments context during performance triage.
+
+**Migration / limits:** Completely backward-compatible. No breaking API or schema changes.
+
+
 
 
 
