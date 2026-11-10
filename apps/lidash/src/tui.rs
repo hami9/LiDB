@@ -144,10 +144,18 @@ impl View {
         }
     }
 
-    /// Adjusts table scroll position by a signed delta bounded to available metrics.
+    /// Adjusts table scroll position by a signed delta bounded to available items on the active tab.
     fn scroll_by(&mut self, count: isize) {
-        let max = self.update.as_ref().map_or(0, |update| {
-            update.snapshot.metrics().len().saturating_sub(1)
+        let max = self.update.as_ref().map_or(0, |update| match self.tab {
+            Tab::Metrics | Tab::CpuMemory => update.snapshot.metrics().len().saturating_sub(1),
+            Tab::Network => update
+                .network
+                .as_ref()
+                .map_or(0, |n| n.sockets().len().saturating_sub(1)),
+            Tab::Ebpf => update
+                .ebpf
+                .as_ref()
+                .map_or(0, |e| e.events().len().saturating_sub(1)),
         });
         self.scroll = self.scroll.saturating_add_signed(count).min(max);
         self.text_scroll = 0;
@@ -256,13 +264,13 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         );
     }
     let shortcuts = if view.help || view.detail {
-        "q quit | PgUp/PgDn scroll text"
+        "q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
     } else {
         "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
     };
     frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     if view.help {
-        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for the active view (Metrics, CPU/Mem, Network, eBPF)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for the active view (Metrics, CPU/Mem, Network, eBPF)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nn, p: next/previous item (works in table and detail views)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric or start/end of text\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
         let help_body = if area.width >= 96 {
             format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
         } else {
@@ -304,157 +312,10 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                 );
                 (text, " Metric detail | Enter returns ")
             }
-            Tab::Network => {
-                let sockets = update.network.as_ref().map(|n| n.sockets()).unwrap_or(&[]);
-                let ifaces = update
-                    .network
-                    .as_ref()
-                    .map(|n| n.interfaces())
-                    .unwrap_or(&[]);
-                let sock_start = if sockets.is_empty() {
-                    0
-                } else {
-                    view.scroll.min(sockets.len().saturating_sub(1))
-                };
-                let text = if let Some(sock) = sockets.get(sock_start) {
-                    let local = crate::output::format_socket_endpoint(
-                        sock.local_address(),
-                        sock.local_port(),
-                    );
-                    let remote = match (sock.remote_address(), sock.remote_port()) {
-                        (Some(addr), Some(port)) => {
-                            crate::output::format_socket_endpoint(addr, port)
-                        }
-                        _ => "*".to_owned(),
-                    };
-                    let ino = sock.inode().map_or("-".into(), |i| i.to_string());
-                    let ns = update.network.as_ref().and_then(|n| n.namespace()).map_or(
-                        "-".into(),
-                        |ns| match ns.inode() {
-                            Some(i) => format!("{} (inode: {i})", ns.name()),
-                            None => ns.name().to_string(),
-                        },
-                    );
-                    let mut detail = format!(
-                        "Protocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
-                        sock.protocol().as_str(),
-                        local,
-                        remote,
-                        sock.state().as_str(),
-                        ino,
-                        ns
-                    );
-                    if !ifaces.is_empty() {
-                        detail.push_str("\n\n--- Network Interfaces Throughput & Errors ---");
-                        for iface in ifaces {
-                            let name = iface.name();
-                            let rx_rate = find_metric(
-                                &update.snapshot,
-                                &format!("network.{name}.rx.bytes_per_second"),
-                            )
-                            .map_or_else(|| "-".to_owned(), format_metric_rate);
-                            let tx_rate = find_metric(
-                                &update.snapshot,
-                                &format!("network.{name}.tx.bytes_per_second"),
-                            )
-                            .map_or_else(|| "-".to_owned(), format_metric_rate);
-                            let rx_err =
-                                find_metric(&update.snapshot, &format!("network.{name}.rx.errors"))
-                                    .map_or_else(|| "0".to_owned(), value_text);
-                            let tx_err =
-                                find_metric(&update.snapshot, &format!("network.{name}.tx.errors"))
-                                    .map_or_else(|| "0".to_owned(), value_text);
-                            let rx_drop =
-                                find_metric(&update.snapshot, &format!("network.{name}.rx.drops"))
-                                    .map_or_else(|| "0".to_owned(), value_text);
-                            let tx_drop =
-                                find_metric(&update.snapshot, &format!("network.{name}.tx.drops"))
-                                    .map_or_else(|| "0".to_owned(), value_text);
-                            let _ = write!(
-                                detail,
-                                "\n{}: state {} | RX {} (err: {}, drop: {}) | TX {} (err: {}, drop: {})",
-                                name,
-                                iface.oper_state().as_str(),
-                                rx_rate,
-                                rx_err,
-                                rx_drop,
-                                tx_rate,
-                                tx_err,
-                                tx_drop
-                            );
-                        }
-                    }
-                    detail
-                } else if let Some(iface) = ifaces.first() {
-                    let name = iface.name();
-                    let ns = update.network.as_ref().and_then(|n| n.namespace()).map_or(
-                        "-".into(),
-                        |ns| match ns.inode() {
-                            Some(i) => format!("{} (inode: {i})", ns.name()),
-                            None => ns.name().to_string(),
-                        },
-                    );
-                    let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
-                    let mac = iface.mac_address().map_or("-".into(), |m| m.to_string());
-                    let speed = iface
-                        .speed_mbps()
-                        .map_or("-".into(), |s| format!("{s} Mbps"));
-                    let flags = if iface.flags().is_empty() {
-                        "-".to_string()
-                    } else {
-                        format!("<{}>", iface.flags().join(","))
-                    };
-                    let rx_rate = find_metric(
-                        &update.snapshot,
-                        &format!("network.{name}.rx.bytes_per_second"),
-                    )
-                    .map_or_else(|| "-".to_owned(), format_metric_rate);
-                    let tx_rate = find_metric(
-                        &update.snapshot,
-                        &format!("network.{name}.tx.bytes_per_second"),
-                    )
-                    .map_or_else(|| "-".to_owned(), format_metric_rate);
-                    let rx_bytes =
-                        find_metric(&update.snapshot, &format!("network.{name}.rx.bytes"))
-                            .map_or_else(|| "-".to_owned(), value_text);
-                    let tx_bytes =
-                        find_metric(&update.snapshot, &format!("network.{name}.tx.bytes"))
-                            .map_or_else(|| "-".to_owned(), value_text);
-                    let rx_err =
-                        find_metric(&update.snapshot, &format!("network.{name}.rx.errors"))
-                            .map_or_else(|| "0".to_owned(), value_text);
-                    let tx_err =
-                        find_metric(&update.snapshot, &format!("network.{name}.tx.errors"))
-                            .map_or_else(|| "0".to_owned(), value_text);
-                    let rx_drop =
-                        find_metric(&update.snapshot, &format!("network.{name}.rx.drops"))
-                            .map_or_else(|| "0".to_owned(), value_text);
-                    let tx_drop =
-                        find_metric(&update.snapshot, &format!("network.{name}.tx.drops"))
-                            .map_or_else(|| "0".to_owned(), value_text);
-                    format!(
-                        "Interface: {}\nState: {}\nMTU: {}\nMAC: {}\nSpeed: {}\nFlags: {}\nRX Rate: {} (total: {} B, err: {}, drop: {})\nTX Rate: {} (total: {} B, err: {}, drop: {})\nNetwork Namespace: {}",
-                        name,
-                        iface.oper_state().as_str(),
-                        mtu,
-                        mac,
-                        speed,
-                        flags,
-                        rx_rate,
-                        rx_bytes,
-                        rx_err,
-                        rx_drop,
-                        tx_rate,
-                        tx_bytes,
-                        tx_err,
-                        tx_drop,
-                        ns
-                    )
-                } else {
-                    "No network sockets or interfaces collected".into()
-                };
-                (text, " Socket detail | Enter returns ")
-            }
+            Tab::Network => (
+                format_network_detail(update.network.as_ref(), &update.snapshot, view.scroll),
+                " Socket detail | Enter returns ",
+            ),
             Tab::Ebpf => {
                 let events = update.ebpf.as_ref().map(|e| e.events()).unwrap_or(&[]);
                 let ebpf_start = if events.is_empty() {
@@ -752,6 +613,161 @@ fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
          Collector Monotonic: {}ns",
         snapshot.monotonic_ns()
     )
+}
+
+/// Formats a comprehensive deep-dive network subsystem summary for the Network tab.
+fn format_network_detail(
+    report: Option<&lidb_core::network::NetworkReport>,
+    snapshot: &Snapshot,
+    selected_socket_idx: usize,
+) -> String {
+    let Some(report) = report else {
+        return "Reading local procfs network tables; awaiting next sample.".into();
+    };
+
+    let sockets = report.sockets();
+    let ifaces = report.interfaces();
+    let routes = report.routes();
+
+    let mut detail = String::new();
+
+    let ns_desc = match report.namespace() {
+        Some(ns) => match ns.inode() {
+            Some(ino) => format!("{} (inode: {ino})", ns.name()),
+            None => ns.name().to_string(),
+        },
+        None => "default / not identified".to_owned(),
+    };
+
+    // Section 1: Selected Socket Inspection
+    let sock_start = if sockets.is_empty() {
+        0
+    } else {
+        selected_socket_idx.min(sockets.len().saturating_sub(1))
+    };
+
+    if let Some(sock) = sockets.get(sock_start) {
+        let local = crate::output::format_socket_endpoint(sock.local_address(), sock.local_port());
+        let remote = match (sock.remote_address(), sock.remote_port()) {
+            (Some(addr), Some(port)) => crate::output::format_socket_endpoint(addr, port),
+            _ => "*".to_owned(),
+        };
+        let ino = sock.inode().map_or("-".into(), |i| i.to_string());
+        let _ = write!(
+            detail,
+            "--- Selected Socket [{}/{}] ---\nProtocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
+            sock_start + 1,
+            sockets.len(),
+            sock.protocol().as_str(),
+            local,
+            remote,
+            sock.state().as_str(),
+            ino,
+            ns_desc
+        );
+    } else if ifaces.is_empty() && routes.is_empty() {
+        detail.push_str("No network sockets or interfaces collected");
+    } else {
+        detail.push_str("--- Selected Socket ---\nNo network sockets collected");
+    }
+
+    // Section 2: Network Interfaces Throughput & Errors
+    if !ifaces.is_empty() {
+        detail.push_str("\n\n--- Network Interfaces Throughput & Errors ---");
+        for iface in ifaces {
+            let name = iface.name();
+            let rx_rate = find_metric(snapshot, &format!("network.{name}.rx.bytes_per_second"))
+                .map_or_else(|| "-".to_owned(), format_metric_rate);
+            let tx_rate = find_metric(snapshot, &format!("network.{name}.tx.bytes_per_second"))
+                .map_or_else(|| "-".to_owned(), format_metric_rate);
+            let rx_bytes = find_metric(snapshot, &format!("network.{name}.rx.bytes"))
+                .map_or_else(|| "-".to_owned(), value_text);
+            let tx_bytes = find_metric(snapshot, &format!("network.{name}.tx.bytes"))
+                .map_or_else(|| "-".to_owned(), value_text);
+            let rx_err = find_metric(snapshot, &format!("network.{name}.rx.errors"))
+                .map_or_else(|| "0".to_owned(), value_text);
+            let tx_err = find_metric(snapshot, &format!("network.{name}.tx.errors"))
+                .map_or_else(|| "0".to_owned(), value_text);
+            let rx_drop = find_metric(snapshot, &format!("network.{name}.rx.drops"))
+                .map_or_else(|| "0".to_owned(), value_text);
+            let tx_drop = find_metric(snapshot, &format!("network.{name}.tx.drops"))
+                .map_or_else(|| "0".to_owned(), value_text);
+            let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
+            let mac = iface.mac_address().map_or("-".into(), |m| m.to_string());
+            let speed = iface
+                .speed_mbps()
+                .map_or("-".into(), |s| format!("{s} Mbps"));
+            let flags = if iface.flags().is_empty() {
+                "-".to_string()
+            } else {
+                format!("<{}>", iface.flags().join(","))
+            };
+            let _ = write!(
+                detail,
+                "\n\nInterface: {}: state {}\nState: {}\nMTU: {}\nMAC: {}\nSpeed: {}\nFlags: {}\nRX Rate: {} (total: {} B, err: {}, drop: {})\nTX Rate: {} (total: {} B, err: {}, drop: {})",
+                name,
+                iface.oper_state().as_str(),
+                iface.oper_state().as_str(),
+                mtu,
+                mac,
+                speed,
+                flags,
+                rx_rate,
+                rx_bytes,
+                rx_err,
+                rx_drop,
+                tx_rate,
+                tx_bytes,
+                tx_err,
+                tx_drop,
+            );
+        }
+    }
+
+    // Section 3: Active Routing Table
+    if !routes.is_empty() {
+        let _ = write!(
+            detail,
+            "\n\n--- Active Routing Table ({} routes) ---",
+            routes.len()
+        );
+        for (i, route) in routes.iter().enumerate() {
+            let dst = format!("{}/{}", route.destination(), route.prefix_len());
+            let gw = route
+                .gateway()
+                .map_or("direct / on-link".into(), |g| g.to_string());
+            let iface = route.interface();
+            let metric = route.metric().map_or("-".into(), |m| m.to_string());
+            let family = route.family().as_str();
+            let _ = write!(
+                detail,
+                "\n[{}] {} via {} dev {} metric {} ({})",
+                i + 1,
+                dst,
+                gw,
+                iface,
+                metric,
+                family
+            );
+        }
+    } else {
+        detail.push_str("\n\n--- Active Routing Table ---\nNo routes observed");
+    }
+
+    // Section 4: Diagnostics Status & Namespace Attribution
+    let _ = write!(
+        detail,
+        "\n\n--- Diagnostics Status & Namespace Attribution ---\nNetwork Namespace: {}\nInterfaces: {} (dropped: {})\nRoutes: {} (dropped: {})\nSockets: {} (dropped: {})",
+        ns_desc,
+        report.interfaces_status().as_str(),
+        report.dropped_interfaces(),
+        report.routes_status().as_str(),
+        report.dropped_routes(),
+        report.sockets_status().as_str(),
+        report.dropped_sockets(),
+    );
+
+    detail
 }
 
 /// Renders the dedicated CPU and Memory overview dashboard tab.
@@ -1071,10 +1087,6 @@ fn draw_network(
     );
     frame.render_widget(summary_widget, rows[0]);
 
-    let iface_block = Block::default()
-        .title(format!(" Interfaces ({}) ", report.interfaces().len()))
-        .borders(Borders::ALL);
-
     let iface_inner_height = rows[1].height.saturating_sub(2) as usize;
     let iface_width = if rows[1].width >= 80 {
         rows[1].width / 2
@@ -1156,13 +1168,20 @@ fn draw_network(
         )
     };
 
+    let iface_title = if report.interfaces().len() > iface_rows.len() {
+        format!(
+            " Interfaces (showing {} of {}) ",
+            iface_rows.len(),
+            report.interfaces().len()
+        )
+    } else {
+        format!(" Interfaces ({}) ", report.interfaces().len())
+    };
+    let iface_block = Block::default().title(iface_title).borders(Borders::ALL);
+
     let iface_table = Table::new(iface_rows, widths)
         .header(Row::new(headers).style(Style::default().add_modifier(Modifier::BOLD)))
         .block(iface_block);
-
-    let route_block = Block::default()
-        .title(format!(" Routes ({}) ", report.routes().len()))
-        .borders(Borders::ALL);
 
     let route_rows: Vec<Row> = report
         .routes()
@@ -1176,6 +1195,17 @@ fn draw_network(
             Row::new(vec![dst, gw, iface, metric])
         })
         .collect();
+
+    let route_title = if report.routes().len() > route_rows.len() {
+        format!(
+            " Routes (showing {} of {}) ",
+            route_rows.len(),
+            report.routes().len()
+        )
+    } else {
+        format!(" Routes ({}) ", report.routes().len())
+    };
+    let route_block = Block::default().title(route_title).borders(Borders::ALL);
 
     let route_table = Table::new(
         route_rows,
@@ -1629,21 +1659,29 @@ pub(crate) fn run_with_sampler(
                         view.tab = view.tab.next();
                         view.scroll = 0;
                     }
-                    KeyCode::Down | KeyCode::Char('j') if view.help => {
-                        view.text_scroll = view.text_scroll.saturating_add(1)
+                    KeyCode::Down | KeyCode::Char('j') if view.help || view.detail => {
+                        view.text_scroll = view.text_scroll.saturating_add(1);
                     }
-                    KeyCode::Up | KeyCode::Char('k') if view.help => {
-                        view.text_scroll = view.text_scroll.saturating_sub(1)
+                    KeyCode::Up | KeyCode::Char('k') if view.help || view.detail => {
+                        view.text_scroll = view.text_scroll.saturating_sub(1);
                     }
                     KeyCode::Down | KeyCode::Char('j') => view.scroll_by(1),
                     KeyCode::Up | KeyCode::Char('k') => view.scroll_by(-1),
+                    KeyCode::Char('n') => view.scroll_by(1),
+                    KeyCode::Char('p') => view.scroll_by(-1),
                     KeyCode::PageDown if view.help || view.detail => view.scroll_text_page(true),
                     KeyCode::PageUp if view.help || view.detail => view.scroll_text_page(false),
                     KeyCode::PageDown => view.scroll_by(10),
                     KeyCode::PageUp => view.scroll_by(-10),
+                    KeyCode::Home if view.help || view.detail => {
+                        view.text_scroll = 0;
+                    }
                     KeyCode::Home => {
                         view.scroll = 0;
                         view.text_scroll = 0;
+                    }
+                    KeyCode::End if view.help || view.detail => {
+                        view.text_scroll = u16::MAX;
                     }
                     KeyCode::End => view.scroll_by(isize::MAX),
                     _ => {}
@@ -2504,5 +2542,179 @@ mod tests {
         view.update = view.history.back().cloned();
         assert_eq!(view.update.as_ref().unwrap().snapshot.monotonic_ns(), 129);
         assert!(!render(120, 30, &mut view).contains("PAUSED"));
+    }
+
+    #[test]
+    fn tab_aware_scroll_by_bounds_against_active_tab_items() {
+        use lidb_core::ebpf::{EbpfEventType, EbpfLifecycleEvent, EbpfReport};
+        use lidb_core::network::{
+            NetworkReport, SocketProtocol, SocketRecord, SocketState, SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut snapshot = Snapshot::new(100, 10, SnapshotMode::Fixture);
+        for i in 0..3 {
+            snapshot
+                .push(
+                    MetricObservation::new(
+                        format!("metric.{i}"),
+                        "proc.test",
+                        Unit::Count,
+                        0,
+                        MetricState::Available(MetricValue::Integer(i as u64)),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_sockets_status(SourceAvailability::Available);
+        for i in 0..15 {
+            let sock = SocketRecord::new(
+                SocketProtocol::Tcp,
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                2000 + i as u16,
+                SocketState::Listen,
+            );
+            net_report.push_socket(sock).unwrap();
+        }
+
+        let mut ebpf_report = EbpfReport::new(SnapshotMode::Fixture, 500);
+        ebpf_report.set_status(SourceAvailability::Available);
+        for i in 0..6 {
+            let event = EbpfLifecycleEvent::new(
+                EbpfEventType::TcpConnect,
+                1000 + i as u64,
+                100 + i as u32,
+                "app",
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+                80,
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+                5000 + i as u16,
+            )
+            .unwrap();
+            ebpf_report.push_event(event);
+        }
+
+        let mut view = View {
+            update: Some(Update {
+                snapshot,
+                network: Some(net_report),
+                ebpf: Some(ebpf_report),
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::Metrics,
+            ..View::default()
+        };
+
+        // 1. Tab::Metrics has 3 metrics (max index = 2)
+        view.scroll_by(10);
+        assert_eq!(view.scroll, 2);
+        view.scroll_by(-1);
+        assert_eq!(view.scroll, 1);
+
+        // 2. Tab::Network has 15 sockets (max index = 14)
+        view.tab = Tab::Network;
+        view.scroll = 0;
+        view.scroll_by(8);
+        assert_eq!(view.scroll, 8);
+        view.scroll_by(20);
+        assert_eq!(view.scroll, 14);
+
+        // 3. Tab::Ebpf has 6 events (max index = 5)
+        view.tab = Tab::Ebpf;
+        view.scroll = 0;
+        view.scroll_by(4);
+        assert_eq!(view.scroll, 4);
+        view.scroll_by(10);
+        assert_eq!(view.scroll, 5);
+    }
+
+    #[test]
+    fn network_tab_detail_modal_renders_complete_routes_and_diagnostics() {
+        use lidb_core::network::{
+            InterfaceRecord, NetworkNamespace, NetworkReport, RouteRecord, SocketProtocol,
+            SocketRecord, SocketState, SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_sockets_status(SourceAvailability::Available);
+        net_report.set_interfaces_status(SourceAvailability::Available);
+        net_report.set_routes_status(SourceAvailability::Available);
+        net_report.set_namespace(Some(
+            NetworkNamespace::new("corp-vpn", Some(4026533000)).unwrap(),
+        ));
+
+        let iface = InterfaceRecord::new("wg0", lidb_core::network::InterfaceOperState::Up)
+            .unwrap()
+            .with_mtu(1420);
+        net_report.push_interface(iface).unwrap();
+
+        let route1 = RouteRecord::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)), 8, "wg0")
+            .unwrap()
+            .with_gateway(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)))
+            .unwrap()
+            .with_metric(50);
+        let route2 = RouteRecord::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0, "eth0").unwrap();
+        net_report.push_route(route1).unwrap();
+        net_report.push_route(route2).unwrap();
+
+        let sock = SocketRecord::new(
+            SocketProtocol::Udp,
+            IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            51820,
+            SocketState::Closed,
+        );
+        net_report.push_socket(sock).unwrap();
+
+        let mut view = fixture();
+        view.tab = Tab::Network;
+        view.detail = true;
+        view.update.as_mut().unwrap().network = Some(net_report);
+
+        let output = render(110, 30, &mut view);
+        assert!(output.contains("Socket detail | Enter returns"));
+        assert!(output.contains("--- Selected Socket [1/1] ---"));
+        assert!(output.contains("Protocol: udp"));
+        assert!(output.contains("Local Endpoint: 0.0.0.0:51820"));
+        assert!(output.contains("--- Network Interfaces Throughput & Errors ---"));
+        assert!(output.contains("Interface: wg0"));
+        assert!(output.contains("MTU: 1420"));
+        assert!(output.contains("--- Active Routing Table (2 routes) ---"));
+        assert!(output.contains("10.0.0.0/8 via 10.0.0.1 dev wg0 metric 50 (ipv4)"));
+        assert!(output.contains("0.0.0.0/0 via direct / on-link dev eth0 metric - (ipv4)"));
+        assert!(output.contains("--- Diagnostics Status & Namespace Attribution ---"));
+        assert!(output.contains("Network Namespace: corp-vpn (inode: 4026533000)"));
+    }
+
+    #[test]
+    fn detail_modal_text_scrolling_and_paging_behavior() {
+        let mut view = fixture();
+        view.detail = true;
+        view.text_scroll = 0;
+        view.text_page_size = 10;
+
+        // Line-by-line scrolling
+        view.text_scroll = view.text_scroll.saturating_add(1);
+        assert_eq!(view.text_scroll, 1);
+        view.text_scroll = view.text_scroll.saturating_add(1);
+        assert_eq!(view.text_scroll, 2);
+        view.text_scroll = view.text_scroll.saturating_sub(1);
+        assert_eq!(view.text_scroll, 1);
+
+        // Page scroll
+        view.scroll_text_page(true);
+        assert_eq!(view.text_scroll, 11);
+        view.scroll_text_page(false);
+        assert_eq!(view.text_scroll, 1);
+
+        // Home and End text scrolling
+        view.text_scroll = u16::MAX;
+        assert_eq!(view.text_scroll, u16::MAX);
+        view.text_scroll = 0;
+        assert_eq!(view.text_scroll, 0);
     }
 }

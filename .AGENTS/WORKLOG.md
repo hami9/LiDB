@@ -338,10 +338,31 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
 
+## 2026-11-10 — Tab-Aware Navigation, Complete Network Subsystem Inspection, and Modal Text Scrolling
 
-
-
-
+- Actor: Antigravity.
+- Branch & PR: `agent/antigravity/ag-20-network-routing-detail`, PR targeting `main`.
+- Scope & Implementation:
+  - Made `scroll_by` tab-aware, clamping table scroll indices dynamically against active tab item counts (metrics for Tab 1/2, sockets for Tab 3, and eBPF events for Tab 4) rather than hardcoding against `metrics.len()`.
+  - Fixed modal text scrolling: `Down`, `Up`, `j`, and `k` now smoothly scroll modal text line-by-line when `view.help` or `view.detail` is active, matching documentation and user expectation.
+  - Added dedicated `n` (next) and `p` (previous) keys for stepping through items both in normal table views and inside active detail modals.
+  - Added `Home` and `End` support for text scrolling inside help and detail modals (`text_scroll = 0` / `u16::MAX`).
+  - Implemented `format_network_detail` in `apps/lidash/src/tui.rs`, transforming the Tab 3 detail modal into a four-section network inspector:
+    - Selected Socket: protocol, local/remote endpoints, state, inode, and network namespace.
+    - Interfaces Throughput & Errors: name, state, MTU, MAC, speed, flags, live RX/TX rates, total bytes, drops, and errors.
+    - Active Routing Table: lists all routes with destination, gateway/on-link, interface, metric, and address family.
+    - Diagnostics Status & Namespace Attribution: namespace name/inode, interface/route/socket collection status, and drop counters.
+  - Added overflow indicator to interface and route table headers on Tab 3 (e.g. `Routes (showing X of Y)`).
+  - Documented ADR-036 in `docs/DECISIONS.md` and updated `apps/lidash/README.md`.
+  - Added unit tests `tab_aware_scroll_by_bounds_against_active_tab_items`, `network_tab_detail_modal_renders_complete_routes_and_diagnostics`, and `detail_modal_text_scrolling_and_paging_behavior` (127 workspace tests passing).
+- Verification:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (127 tests across workspace)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
 
 
 
