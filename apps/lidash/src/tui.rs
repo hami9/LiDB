@@ -23,6 +23,7 @@ use ratatui::{
 };
 use std::{
     collections::VecDeque,
+    fmt::Write as _,
     io, panic,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -305,44 +306,151 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             }
             Tab::Network => {
                 let sockets = update.network.as_ref().map(|n| n.sockets()).unwrap_or(&[]);
+                let ifaces = update.network.as_ref().map(|n| n.interfaces()).unwrap_or(&[]);
                 let sock_start = if sockets.is_empty() {
                     0
                 } else {
                     view.scroll.min(sockets.len().saturating_sub(1))
                 };
-                let text = sockets.get(sock_start).map_or_else(
-                    || "No sockets collected".into(),
-                    |sock| {
-                        let local = crate::output::format_socket_endpoint(
-                            sock.local_address(),
-                            sock.local_port(),
-                        );
-                        let remote = match (sock.remote_address(), sock.remote_port()) {
-                            (Some(addr), Some(port)) => {
-                                crate::output::format_socket_endpoint(addr, port)
-                            }
-                            _ => "*".to_owned(),
-                        };
-                        let ino = sock.inode().map_or("-".into(), |i| i.to_string());
-                        let ns = update
-                            .network
-                            .as_ref()
-                            .and_then(|n| n.namespace())
-                            .map_or("-".into(), |ns| match ns.inode() {
-                                Some(i) => format!("{} (inode: {i})", ns.name()),
-                                None => ns.name().to_string(),
-                            });
-                        format!(
-                            "Protocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
-                            sock.protocol().as_str(),
-                            local,
-                            remote,
-                            sock.state().as_str(),
-                            ino,
-                            ns
-                        )
-                    },
-                );
+                let text = if let Some(sock) = sockets.get(sock_start) {
+                    let local = crate::output::format_socket_endpoint(
+                        sock.local_address(),
+                        sock.local_port(),
+                    );
+                    let remote = match (sock.remote_address(), sock.remote_port()) {
+                        (Some(addr), Some(port)) => {
+                            crate::output::format_socket_endpoint(addr, port)
+                        }
+                        _ => "*".to_owned(),
+                    };
+                    let ino = sock.inode().map_or("-".into(), |i| i.to_string());
+                    let ns = update
+                        .network
+                        .as_ref()
+                        .and_then(|n| n.namespace())
+                        .map_or("-".into(), |ns| match ns.inode() {
+                            Some(i) => format!("{} (inode: {i})", ns.name()),
+                            None => ns.name().to_string(),
+                        });
+                    let mut detail = format!(
+                        "Protocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
+                        sock.protocol().as_str(),
+                        local,
+                        remote,
+                        sock.state().as_str(),
+                        ino,
+                        ns
+                    );
+                    if !ifaces.is_empty() {
+                        detail.push_str("\n\n--- Network Interfaces Throughput & Errors ---");
+                        for iface in ifaces {
+                            let name = iface.name();
+                            let rx_rate = find_metric(
+                                &update.snapshot,
+                                &format!("network.{name}.rx.bytes_per_second"),
+                            )
+                            .map_or_else(|| "-".to_owned(), format_metric_rate);
+                            let tx_rate = find_metric(
+                                &update.snapshot,
+                                &format!("network.{name}.tx.bytes_per_second"),
+                            )
+                            .map_or_else(|| "-".to_owned(), format_metric_rate);
+                            let rx_err =
+                                find_metric(&update.snapshot, &format!("network.{name}.rx.errors"))
+                                    .map_or_else(|| "0".to_owned(), value_text);
+                            let tx_err =
+                                find_metric(&update.snapshot, &format!("network.{name}.tx.errors"))
+                                    .map_or_else(|| "0".to_owned(), value_text);
+                            let rx_drop =
+                                find_metric(&update.snapshot, &format!("network.{name}.rx.drops"))
+                                    .map_or_else(|| "0".to_owned(), value_text);
+                            let tx_drop =
+                                find_metric(&update.snapshot, &format!("network.{name}.tx.drops"))
+                                    .map_or_else(|| "0".to_owned(), value_text);
+                            let _ = write!(
+                                detail,
+                                "\n{}: state {} | RX {} (err: {}, drop: {}) | TX {} (err: {}, drop: {})",
+                                name,
+                                iface.oper_state().as_str(),
+                                rx_rate,
+                                rx_err,
+                                rx_drop,
+                                tx_rate,
+                                tx_err,
+                                tx_drop
+                            );
+                        }
+                    }
+                    detail
+                } else if let Some(iface) = ifaces.first() {
+                    let name = iface.name();
+                    let ns = update
+                        .network
+                        .as_ref()
+                        .and_then(|n| n.namespace())
+                        .map_or("-".into(), |ns| match ns.inode() {
+                            Some(i) => format!("{} (inode: {i})", ns.name()),
+                            None => ns.name().to_string(),
+                        });
+                    let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
+                    let mac = iface.mac_address().map_or("-".into(), |m| m.to_string());
+                    let speed = iface
+                        .speed_mbps()
+                        .map_or("-".into(), |s| format!("{s} Mbps"));
+                    let flags = if iface.flags().is_empty() {
+                        "-".to_string()
+                    } else {
+                        format!("<{}>", iface.flags().join(","))
+                    };
+                    let rx_rate = find_metric(
+                        &update.snapshot,
+                        &format!("network.{name}.rx.bytes_per_second"),
+                    )
+                    .map_or_else(|| "-".to_owned(), format_metric_rate);
+                    let tx_rate = find_metric(
+                        &update.snapshot,
+                        &format!("network.{name}.tx.bytes_per_second"),
+                    )
+                    .map_or_else(|| "-".to_owned(), format_metric_rate);
+                    let rx_bytes =
+                        find_metric(&update.snapshot, &format!("network.{name}.rx.bytes"))
+                            .map_or_else(|| "-".to_owned(), value_text);
+                    let tx_bytes =
+                        find_metric(&update.snapshot, &format!("network.{name}.tx.bytes"))
+                            .map_or_else(|| "-".to_owned(), value_text);
+                    let rx_err =
+                        find_metric(&update.snapshot, &format!("network.{name}.rx.errors"))
+                            .map_or_else(|| "0".to_owned(), value_text);
+                    let tx_err =
+                        find_metric(&update.snapshot, &format!("network.{name}.tx.errors"))
+                            .map_or_else(|| "0".to_owned(), value_text);
+                    let rx_drop =
+                        find_metric(&update.snapshot, &format!("network.{name}.rx.drops"))
+                            .map_or_else(|| "0".to_owned(), value_text);
+                    let tx_drop =
+                        find_metric(&update.snapshot, &format!("network.{name}.tx.drops"))
+                            .map_or_else(|| "0".to_owned(), value_text);
+                    format!(
+                        "Interface: {}\nState: {}\nMTU: {}\nMAC: {}\nSpeed: {}\nFlags: {}\nRX Rate: {} (total: {} B, err: {}, drop: {})\nTX Rate: {} (total: {} B, err: {}, drop: {})\nNetwork Namespace: {}",
+                        name,
+                        iface.oper_state().as_str(),
+                        mtu,
+                        mac,
+                        speed,
+                        flags,
+                        rx_rate,
+                        rx_bytes,
+                        rx_err,
+                        rx_drop,
+                        tx_rate,
+                        tx_bytes,
+                        tx_err,
+                        tx_drop,
+                        ns
+                    )
+                } else {
+                    "No network sockets or interfaces collected".into()
+                };
                 (text, " Socket detail | Enter returns ")
             }
             Tab::Ebpf => {
@@ -397,7 +505,13 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         return;
     }
     if view.tab == Tab::Network {
-        draw_network(frame, update.network.as_ref(), view.scroll, layout[1]);
+        draw_network(
+            frame,
+            update.network.as_ref(),
+            Some(&update.snapshot),
+            view.scroll,
+            layout[1],
+        );
         return;
     }
     if view.tab == Tab::Ebpf {
@@ -474,6 +588,31 @@ fn find_metric<'a>(
 /// Formats a metric observation for display, or returns "not probed" if absent.
 fn metric_display(m: Option<&MetricObservation<MetricValue>>) -> String {
     m.map_or_else(|| "not probed".to_owned(), value_text)
+}
+
+/// Formats a byte rate (bytes per second) into a human-readable throughput string.
+fn format_rate_value(value: f64) -> String {
+    if !value.is_finite() || value < 0.0 {
+        return "-".to_owned();
+    }
+    if value < 1024.0 {
+        format!("{value:.0} B/s")
+    } else if value < 1024.0 * 1024.0 {
+        format!("{:.1} KB/s", value / 1024.0)
+    } else if value < 1024.0 * 1024.0 * 1024.0 {
+        format!("{:.1} MB/s", value / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GB/s", value / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+/// Extracts and formats a metric value as a transfer rate if available.
+fn format_metric_rate(metric: &MetricObservation<MetricValue>) -> String {
+    match metric.state().available_value() {
+        Some(MetricValue::Number(num)) => format_rate_value(*num),
+        Some(MetricValue::Integer(int)) => format_rate_value(*int as f64),
+        None => "-".to_owned(),
+    }
 }
 
 /// Renders the dedicated CPU and Memory overview dashboard tab.
@@ -722,6 +861,7 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
 fn draw_network(
     frame: &mut Frame<'_>,
     network: Option<&lidb_core::network::NetworkReport>,
+    snapshot: Option<&Snapshot>,
     scroll: usize,
     area: Rect,
 ) {
@@ -792,36 +932,89 @@ fn draw_network(
         .borders(Borders::ALL);
 
     let iface_inner_height = rows[1].height.saturating_sub(2) as usize;
-    let iface_rows: Vec<Row> = report
-        .interfaces()
-        .iter()
-        .take(iface_inner_height.max(1))
-        .map(|iface| {
-            let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
-            let mac = iface.mac_address().map_or("-".into(), |m| m.to_string());
-            Row::new(vec![
-                iface.name().to_string(),
-                iface.oper_state().as_str().to_string(),
-                mtu,
-                mac,
-            ])
-        })
-        .collect();
+    let iface_width = if rows[1].width >= 80 {
+        rows[1].width / 2
+    } else {
+        rows[1].width
+    };
 
-    let iface_table = Table::new(
-        iface_rows,
-        [
-            Constraint::Percentage(25),
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
-            Constraint::Percentage(35),
-        ],
-    )
-    .header(
-        Row::new(["Name", "State", "MTU", "MAC"])
-            .style(Style::default().add_modifier(Modifier::BOLD)),
-    )
-    .block(iface_block);
+    let (headers, widths, iface_rows): (Vec<&str>, Vec<Constraint>, Vec<Row>) = if iface_width >= 60
+    {
+        (
+            vec!["Name", "State", "MTU", "RX Rate", "TX Rate"],
+            vec![
+                Constraint::Percentage(22),
+                Constraint::Percentage(16),
+                Constraint::Percentage(14),
+                Constraint::Percentage(24),
+                Constraint::Percentage(24),
+            ],
+            report
+                .interfaces()
+                .iter()
+                .take(iface_inner_height.max(1))
+                .map(|iface| {
+                    let name = iface.name();
+                    let rx_rate = snapshot
+                        .and_then(|s| {
+                            find_metric(s, &format!("network.{name}.rx.bytes_per_second"))
+                        })
+                        .map_or_else(|| "-".to_owned(), format_metric_rate);
+                    let tx_rate = snapshot
+                        .and_then(|s| {
+                            find_metric(s, &format!("network.{name}.tx.bytes_per_second"))
+                        })
+                        .map_or_else(|| "-".to_owned(), format_metric_rate);
+                    let mtu = iface.mtu().map_or("-".into(), |m| m.to_string());
+                    Row::new(vec![
+                        name.to_string(),
+                        iface.oper_state().as_str().to_string(),
+                        mtu,
+                        rx_rate,
+                        tx_rate,
+                    ])
+                })
+                .collect(),
+        )
+    } else {
+        (
+            vec!["Name", "State", "RX Rate", "TX Rate"],
+            vec![
+                Constraint::Percentage(28),
+                Constraint::Percentage(20),
+                Constraint::Percentage(26),
+                Constraint::Percentage(26),
+            ],
+            report
+                .interfaces()
+                .iter()
+                .take(iface_inner_height.max(1))
+                .map(|iface| {
+                    let name = iface.name();
+                    let rx_rate = snapshot
+                        .and_then(|s| {
+                            find_metric(s, &format!("network.{name}.rx.bytes_per_second"))
+                        })
+                        .map_or_else(|| "-".to_owned(), format_metric_rate);
+                    let tx_rate = snapshot
+                        .and_then(|s| {
+                            find_metric(s, &format!("network.{name}.tx.bytes_per_second"))
+                        })
+                        .map_or_else(|| "-".to_owned(), format_metric_rate);
+                    Row::new(vec![
+                        name.to_string(),
+                        iface.oper_state().as_str().to_string(),
+                        rx_rate,
+                        tx_rate,
+                    ])
+                })
+                .collect(),
+        )
+    };
+
+    let iface_table = Table::new(iface_rows, widths)
+        .header(Row::new(headers).style(Style::default().add_modifier(Modifier::BOLD)))
+        .block(iface_block);
 
     let route_block = Block::default()
         .title(format!(" Routes ({}) ", report.routes().len()))
@@ -1682,9 +1875,35 @@ mod tests {
         .with_inode(12345);
         net_report.push_socket(sock).unwrap();
 
+        let mut snapshot = Snapshot::new(0, 0, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.eth0.rx.bytes_per_second",
+                    "proc.net.dev",
+                    lidb_core::Unit::BytesPerSecond,
+                    0,
+                    MetricState::Available(MetricValue::Number(24_576.0)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.eth0.tx.bytes_per_second",
+                    "proc.net.dev",
+                    lidb_core::Unit::BytesPerSecond,
+                    0,
+                    MetricState::Available(MetricValue::Number(1_048_576.0)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
         let mut view = View {
             update: Some(Update {
-                snapshot: Snapshot::new(0, 0, SnapshotMode::Fixture),
+                snapshot,
                 network: Some(net_report),
                 ebpf: None,
                 collected_at: Instant::now(),
@@ -1703,6 +1922,10 @@ mod tests {
             assert!(output.contains("eth0"));
             assert!(output.contains("12345"));
             assert!(output.contains("Sockets 1..1 of 1"));
+            if width >= 85 {
+                assert!(output.contains("24.0 KB/s"));
+                assert!(output.contains("1.0 MB/s"));
+            }
         }
 
         // Test small screen
@@ -1779,6 +2002,14 @@ mod tests {
         net_report.set_namespace(Some(
             NetworkNamespace::new("container1", Some(4026532500)).unwrap(),
         ));
+        let iface = lidb_core::network::InterfaceRecord::new(
+            "eth0",
+            lidb_core::network::InterfaceOperState::Up,
+        )
+        .unwrap()
+        .with_mtu(1500);
+        net_report.push_interface(iface).unwrap();
+
         let sock = SocketRecord::new(
             SocketProtocol::Tcp,
             IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)),
@@ -1803,6 +2034,8 @@ mod tests {
         assert!(net_detail.contains("State: established"));
         assert!(net_detail.contains("Inode: 98765"));
         assert!(net_detail.contains("Network Namespace: container1 (inode: 4026532500)"));
+        assert!(net_detail.contains("--- Network Interfaces Throughput & Errors ---"));
+        assert!(net_detail.contains("eth0: state up"));
 
         // 2. eBPF detail
         let mut ebpf_report = EbpfReport::new(SnapshotMode::Fixture, 500);
@@ -1842,6 +2075,121 @@ mod tests {
         let cpu_detail = render(100, 25, &mut view);
         assert!(cpu_detail.contains("Overview | Enter returns"));
         assert!(cpu_detail.contains("CPU and Memory overview tabs summarize system metrics"));
+    }
+
+    #[test]
+    fn network_tab_renders_interface_detail_modal_when_sockets_empty() {
+        use lidb_core::network::{
+            InterfaceOperState, InterfaceRecord, NetworkNamespace, NetworkReport,
+            SourceAvailability,
+        };
+
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_interfaces_status(SourceAvailability::Available);
+        net_report.set_sockets_status(SourceAvailability::Available);
+        net_report.set_namespace(Some(
+            NetworkNamespace::new("container2", Some(4026532800)).unwrap(),
+        ));
+
+        let iface = InterfaceRecord::new("eth0", InterfaceOperState::Up)
+            .unwrap()
+            .with_ifindex(2)
+            .with_mtu(9000)
+            .with_mac_address("aa:bb:cc:dd:ee:ff")
+            .unwrap()
+            .with_speed_mbps(10000)
+            .with_flags(vec!["UP".into(), "RUNNING".into()])
+            .unwrap();
+        net_report.push_interface(iface).unwrap();
+
+        let mut snapshot = Snapshot::new(0, 0, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.eth0.rx.bytes_per_second",
+                    "proc.net.dev",
+                    lidb_core::Unit::BytesPerSecond,
+                    0,
+                    MetricState::Available(MetricValue::Number(52_428_800.0)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.eth0.tx.bytes_per_second",
+                    "proc.net.dev",
+                    lidb_core::Unit::BytesPerSecond,
+                    0,
+                    MetricState::Available(MetricValue::Number(104_857_600.0)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.eth0.rx.bytes",
+                    "proc.net.dev",
+                    lidb_core::Unit::Bytes,
+                    0,
+                    MetricState::Available(MetricValue::Integer(100_000_000)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "network.eth0.tx.bytes",
+                    "proc.net.dev",
+                    lidb_core::Unit::Bytes,
+                    0,
+                    MetricState::Available(MetricValue::Integer(200_000_000)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        let mut view = fixture();
+        view.tab = Tab::Network;
+        view.detail = true;
+        view.update = Some(Update {
+            snapshot,
+            network: Some(net_report),
+            ebpf: None,
+            collected_at: Instant::now(),
+            skipped_updates: 0,
+        });
+
+        let output = render(100, 25, &mut view);
+        assert!(output.contains("Socket detail | Enter returns"));
+        assert!(output.contains("Interface: eth0"));
+        assert!(output.contains("State: up"));
+        assert!(output.contains("MTU: 9000"));
+        assert!(output.contains("MAC: aa:bb:cc:dd:ee:ff"));
+        assert!(output.contains("Speed: 10000 Mbps"));
+        assert!(output.contains("<UP,RUNNING>"));
+        assert!(output.contains("RX Rate: 50.0 MB/s"));
+        assert!(output.contains("TX Rate: 100.0 MB/s"));
+        assert!(output.contains("total: 100000000 B"));
+        assert!(output.contains("total: 200000000 B"));
+        assert!(output.contains("Network Namespace: container2 (inode: 4026532800)"));
+    }
+
+    #[test]
+    fn format_rate_value_formats_rates_cleanly() {
+        assert_eq!(format_rate_value(0.0), "0 B/s");
+        assert_eq!(format_rate_value(500.0), "500 B/s");
+        assert_eq!(format_rate_value(1024.0), "1.0 KB/s");
+        assert_eq!(format_rate_value(2048.0), "2.0 KB/s");
+        assert_eq!(format_rate_value(1_048_576.0), "1.0 MB/s");
+        assert_eq!(format_rate_value(1_572_864.0), "1.5 MB/s");
+        assert_eq!(format_rate_value(1_073_741_824.0), "1.0 GB/s");
+        assert_eq!(format_rate_value(-10.0), "-");
+        assert_eq!(format_rate_value(f64::NAN), "-");
+        assert_eq!(format_rate_value(f64::INFINITY), "-");
     }
 
     #[test]

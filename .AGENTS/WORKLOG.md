@@ -272,7 +272,7 @@ Next action: review/integrate the tested public Core PR, then select one focused
 ## 2026-11-09 — Universal Interactive Detail Modals Across TUI Tabs
 
 - Actor: Antigravity.
-- Branch & PR: `agent/antigravity/ag-17-universal-detail-view`, PR targeting `main`.
+- Branch & PR: `agent/antigravity/ag-17-universal-detail-view`, PR #73 published [**`v0.0.16`**](https://github.com/hami9/LiDB/releases/tag/v0.0.16).
 - Scope & Implementation:
   - Extended the `Enter` detail inspector modal in `apps/lidash/src/tui.rs` beyond Tab 1 (`Metrics`) to universally support Tab 3 (`Network`) and Tab 4 (`eBPF`).
   - Tab 1 (`Metrics`): Metric detail (value, unit, source, monotonic timestamp).
@@ -289,6 +289,29 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
   - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
   - `cargo test --workspace --locked --all-targets`: PASS (120 tests across workspace)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
+
+## 2026-11-10 — Live Network Interface Bandwidth Rates and Network Health in Dashboard Tab
+
+- Actor: Antigravity.
+- Branch & PR: `agent/antigravity/ag-18-interface-rates`, PR targeting `main`.
+- Scope & Implementation:
+  - Added `format_rate_value` and `format_metric_rate` in `apps/lidash/src/tui.rs` providing human-readable throughput formatting (`B/s`, `KB/s`, `MB/s`, `GB/s`).
+  - Threaded `Snapshot` into `draw_network` and added live `RX Rate` and `TX Rate` columns to the `Interfaces` table on Tab 3 (`3: Network`).
+  - Dynamically adjusted table layout on wide (>= 60 cols) vs compact (< 60 cols) viewports.
+  - Expanded `Enter` detail modal on Tab 3:
+    - Appends a network interfaces throughput & error breakdown when sockets are present.
+    - Displays full interface details (Name, State, MTU, MAC, Speed, Flags, cumulative transfer volume, and error/drop counters) when sockets are empty.
+  - Documented ADR-034 in `docs/DECISIONS.md`.
+  - Updated `apps/lidash/README.md` and `.AGENTS/STATE.md`.
+  - Added unit tests `network_tab_renders_interface_detail_modal_when_sockets_empty` and `format_rate_value_formats_rates_cleanly` (122 workspace tests passing).
+- Verification:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (122 tests across workspace)
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
 

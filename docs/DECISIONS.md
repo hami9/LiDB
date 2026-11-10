@@ -244,6 +244,27 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Completely backward compatible. Purely additive to TUI navigation. Defaults to disabled unless `--ebpf` flag is supplied.
 
+## ADR-034 — live interface bandwidth rates and network health in dashboard tab (2026-11-10)
+
+**Status:** implemented in Task AG-18.
+
+**Context:** Operators using `lidash tui` to troubleshoot network saturation, packet loss, or abnormal traffic spikes require immediate visibility into per-interface transfer rates (`RX Rate` and `TX Rate` in B/s, KB/s, MB/s, or GB/s) and transmission error/drop counts directly on the `3: Network` dashboard tab, rather than having to hunt through the raw unformatted metric stream on Tab 1. Additionally, on quiet, containerized, or unprivileged nodes where no sockets are active, pressing `Enter` previously displayed a minimal "No sockets collected" placeholder instead of providing diagnostic interface metadata.
+
+**Decision:**
+1. Thread `Snapshot` into `draw_network` and implement `format_rate_value` and `format_metric_rate` for human-readable bandwidth rates (`B/s`, `KB/s`, `MB/s`, `GB/s`).
+2. Dynamically surface live `RX Rate` and `TX Rate` in the `Interfaces` table on Tab 3 (`3: Network`), adjusting layout based on available width:
+   - On standard/wide views (width >= 60 chars for the interface widget): `["Name", "State", "MTU", "RX Rate", "TX Rate"]`.
+   - On compact views (width < 60 chars): `["Name", "State", "RX Rate", "TX Rate"]`.
+3. Expand the `Enter` detail modal on Tab 3:
+   - When sockets are present, show selected socket details with an appended network interfaces throughput & error breakdown (`state`, `RX Rate`, `TX Rate`, `errors`, `drops`).
+   - When sockets are absent, render the full interface record (state, MTU, MAC, speed, flags, cumulative transfer volume, and error/drop counters).
+4. Ensure `#![forbid(unsafe_code)]` compliance, zero heap allocation bottlenecks on the render loop, and graceful handling of missing or unprobed rates.
+
+**Alternatives:** Adding a separate interface-only tab would fragment the network overview. Unformatted raw byte counters require mental arithmetic during high-pressure incident response.
+
+**Migration / limits:** Pure additive UX improvement. Completely backward-compatible.
+
+
 
 
 
