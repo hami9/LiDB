@@ -283,8 +283,23 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Completely backward-compatible. No breaking API or schema changes.
 
+## ADR-036 — Tab-aware navigation, complete network subsystem inspection, and modal text scrolling (2026-11-10)
 
+**Status:** implemented in Task AG-20.
 
+**Context:** Several usability limitations existed across dashboard navigation and Tab 3 (`3: Network`):
+1. `scroll_by` bounded table scroll indices strictly against `snapshot.metrics().len()`, preventing operators from scrolling past metric list bounds when viewing large socket tables or eBPF event rings.
+2. In modal views (`view.detail`), pressing `Down`, `Up`, `j`, or `k` inadvertently altered underlying table item selection and reset text scroll, rather than scrolling the open modal text line-by-line as documented.
+3. On Tab 3, routing tables were omitted from the modal view entirely, and truncated when fitting into the main view without indicating that additional routes existed.
 
+**Decision:**
+1. Make `scroll_by` tab-aware, clamping scroll offsets to `metrics.len()` on Tab 1/2, `sockets.len()` on Tab 3, and `events.len()` on Tab 4.
+2. Fix modal navigation so `Down`, `Up`, `j`, and `k` scroll wrapped text line-by-line when `view.help` or `view.detail` is active. Provide `Home` and `End` text jump support (`text_scroll = 0` / `u16::MAX`).
+3. Add dedicated `n` (next) and `p` (previous) keys allowing operators to step through items seamlessly both in normal table views and inside active detail modals.
+4. Enhance Tab 3 detail modal with `format_network_detail`, structured into four rich sections: Selected Socket, Network Interfaces Throughput & Errors, Active Routing Table (with destination, gateway/on-link, interface, metric, and family), and Diagnostics Status & Namespace Attribution.
+5. Update table headers on Tab 3 to indicate when items are clipped (e.g. `Routes (showing 4 of 12)`).
 
+**Alternatives:** Adding separate sub-tabs or complex modal focus trees would increase visual noise and cognitive load during triage.
+
+**Migration / limits:** Completely backward-compatible additive enhancements. `#![forbid(unsafe_code)]` preserved across all crates.
 

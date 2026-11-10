@@ -43,9 +43,8 @@ windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, `3`, `4`, or `L
 between the full metric list (`1: Metrics`), the CPU & Memory overview tab (`2: CPU/Mem`),
 the Network overview tab (`3: Network`, with live per-interface RX/TX transfer rates, routes, and socket connections), and the in-kernel eBPF socket lifecycle tab (`4: eBPF`);
 `Space` pauses displayed readings; `?` or `h` toggles help; Enter toggles full details of the
-selected view on the Metrics, CPU/Mem, Network, or eBPF tabs. `Up`/`Down` or `j`/`k` scroll metrics, PageUp/PageDown scroll ten
-metrics or scroll wrapped text while help/details are open,
-and Home/End jump to the first/last. Windows below 35x10 show a resize prompt.
+selected view on the Metrics, CPU/Mem, Network, or eBPF tabs. `Up`/`Down` or `j`/`k` scroll table entries or scroll wrapped text while help/details are open; `n`/`p` step to the next/previous item; PageUp/PageDown scroll ten entries or one page of text;
+and Home/End jump to the first/last entry or start/end of text. Windows below 35x10 show a resize prompt.
 Sampling continues while paused; resume immediately displays the latest retained
 snapshot. The age
 indicator shows the displayed snapshot getting older. A bounded slot retains
