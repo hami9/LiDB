@@ -49,7 +49,7 @@ TUI exits on a 5s collection timeout; quitting allows 100ms for worker cleanup.
 Timeout exits 2 after terminal restoration. Snapshot/doctor reads have no deadline.
 Doctor is read-only. Exit: 0 usable (possibly degraded), 1 no available metrics,
 2 invalid arguments or runtime failure. Snapshot preserves unavailable states.
-TUI keys: q/Esc/Ctrl-C quit, Tab/1-4/Left/Right tabs, Space pause, [ / ] history, ?/h help, Enter detail, Up/Down scroll.
+TUI keys: q/Esc/Ctrl-C quit, / search, c clear, Tab/1-4/Left/Right tabs, Space pause, [ / ] history, ?/h help, Enter detail, Up/Down scroll.
 "#;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

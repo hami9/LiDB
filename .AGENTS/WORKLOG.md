@@ -364,7 +364,33 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests)
 
+## 2026-11-11T18:40:00Z — Task AG-21: Interactive real-time search and substring filtering (`/`) in TUI
 
-
-
+- **Metadata**:
+  - Branch: `agent/antigravity/ag-21-interactive-filter` (base: `main` at `428e727`, release `v0.0.19`)
+  - Environment: Windows host (`cargo fmt`, `cargo clippy`, `cargo test`, Python doc/CI checks) plus cross-target Linux compilation (`clippy` for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`); native Linux CI/CodeQL pending PR execution.
+  - Changed files: `apps/lidash/src/tui.rs`, `apps/lidash/src/config.rs`, `apps/lidash/README.md`, `docs/DECISIONS.md` (ADR-037), `.AGENTS/STATE.md`, `.AGENTS/WORKLOG.md`.
+- **Summary**:
+  - Added interactive `/` search and case-insensitive substring filtering to `apps/lidash/src/tui.rs`:
+    - Added `filter: String`, `filtering: bool`, `MAX_FILTER_LEN` (`128`), `filter_display()`, `is_filtered()`, `clear_filter()`, and extracted `pub(crate) fn handle_key(&mut self, key: event::KeyEvent) -> bool` on `View`.
+    - Pressing `/` on filterable tabs (`Tab::Metrics`, `Tab::Network`, `Tab::Ebpf`, when `!help`) opens the interactive search input prompt at the bottom bar (`/{query}█`); printable non-control characters without `Ctrl`/`Alt` modifiers update filtered results in real time, `Backspace` erases, `Enter` trims/normalizes whitespace-only queries and locks the filter for navigation, and `Esc` cancels input. Outside input mode, `c` clears the active filter (including inside Detail/Help modals), and `Esc` clears any active filter before quitting.
+    - Implemented allocation-free ASCII case-insensitive helper `contains_case_insensitive` and matching helpers (`filter_matches_metric`, `filter_matches_socket`, `filter_matches_ebpf`) across Tab 1 (`1: Metrics`: name, source, unit, rendered value/state), Tab 3 (`3: Network`: socket protocol, family `ipv4`/`ipv6`, rendered `ip:port` and bracketed IPv6 `[ip]:port` local/remote endpoints, state, inode), and Tab 4 (`4: eBPF`: process comm, PID, event type, family `ipv4`/`ipv6`, rendered `ip:port` and bracketed IPv6 `[ip]:port` endpoints, old/new states).
+    - Bounded `view.scroll_by` against filtered item counts (`filtered_metrics`, `filtered_sockets`, `filtered_ebpf_events`), clamping stale scroll offsets before stepping so upward navigation does not stick when a filter shrinks the list.
+    - Rendered active filter state (preserving trimmed user casing via `filter_display()`) and matched/total ratios across header, bottom status bar, compact & full widget titles, empty-match messages, and detail modals (`Enter`) on Tab 1, Tab 3, and Tab 4.
+    - Documented keybindings in `HELP_TEXT`, `apps/lidash/src/config.rs`, `apps/lidash/README.md`, and ADR-037 in `docs/DECISIONS.md`.
+  - Added unit tests `filter_matching_metrics_sockets_and_ebpf_events`, `scroll_by_clamps_dynamically_against_filtered_results`, `handle_key_search_and_filter_state_machine`, and `tui_renders_search_prompt_and_filtered_tables_and_modals` (131 workspace tests passing).
+- **Five-axis quality-gate review**:
+  1. Architecture & layering: Core crates (`lidb-core`, `lidb-collect`, `lidb-protocol`) unchanged; UI filter state, matching, and `handle_key` transition logic cleanly scoped inside `apps/lidash/src/tui.rs`.
+  2. Safety, privacy & security: `#![forbid(unsafe_code)]` preserved; read-only in-memory matching over already collected non-sensitive telemetry; interactive input restricted to non-control printable characters without `Ctrl`/`Alt`, capped at `MAX_FILTER_LEN = 128`, with whitespace normalization on commit.
+  3. Linux runtime & hardware truthfulness: Verified compilation and static/fixture logic on Windows host plus `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` cross-target `clippy`; no simulated fixture claimed as hardware Linux evidence; full Linux runner execution & CodeQL occur on GitHub Actions upon PR open.
+  4. Code quality & maintainability: Avoided regex dependencies and per-check lowercase heap allocations (`contains_case_insensitive`), extracted testable `handle_key`, fixed stale-scroll sticky-up boundary in `scroll_by`, unified title/detail filter badge casing (`filter_display()`).
+  5. Test & release gate coverage: Verified post-edit `cargo fmt`, `clippy` (host + both Linux targets), `131` workspace tests, `157` Markdown links, and `23` CI Python tests; PR titled with `feat(tui):` targets patch release `v0.0.20` (`scripts/release/version.py`).
+- **Verification**:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (131 tests: 34 lidash lib, 10 lidash cli, 52 lidb-collect, 33 lidb-core, 2 lidb-protocol)
+  - `python scripts/check_docs.py`: PASS (157 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests in 11.398s)
 
