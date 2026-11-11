@@ -10,8 +10,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use lidb_core::{
-    EbpfReport, MetricObservation, MetricState, MetricValue, NetworkReport, Snapshot,
-    SourceAvailability,
+    EbpfLifecycleEvent, EbpfReport, MetricObservation, MetricState, MetricValue, NetworkReport,
+    Snapshot, SocketRecord, SourceAvailability,
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -74,6 +74,29 @@ impl Tab {
 /// Maximum number of historical updates retained in memory for TUI time-travel inspection.
 pub const MAX_VIEW_HISTORY: usize = 120;
 
+/// Maximum length (in Unicode scalar values) accepted for interactive search queries.
+pub const MAX_FILTER_LEN: usize = 128;
+
+/// Clamps a table scroll position safely into `0..len`.
+fn clamp_scroll(scroll: usize, len: usize) -> usize {
+    scroll.min(len.saturating_sub(1))
+}
+
+/// Returns true if `haystack` contains `needle` case-insensitively without allocating on ASCII inputs.
+fn contains_case_insensitive(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.is_ascii() && needle.is_ascii() {
+        let needle_bytes = needle.as_bytes();
+        return haystack
+            .as_bytes()
+            .windows(needle_bytes.len())
+            .any(|window| window.eq_ignore_ascii_case(needle_bytes));
+    }
+    haystack.to_lowercase().contains(&needle.to_lowercase())
+}
+
 /// In-memory interactive state for the terminal UI.
 #[derive(Default)]
 pub struct View {
@@ -88,9 +111,146 @@ pub struct View {
     pub(crate) text_page_size: u16,
     pub fixture: bool,
     pub tab: Tab,
+    pub filter: String,
+    pub filtering: bool,
+}
+
+/// Returns true if a metric observation matches the filter query string.
+fn filter_matches_metric(metric: &MetricObservation<MetricValue>, needle: &str) -> bool {
+    contains_case_insensitive(metric.name(), needle)
+        || contains_case_insensitive(metric.source(), needle)
+        || contains_case_insensitive(metric.unit().as_str(), needle)
+        || contains_case_insensitive(&value_text(metric), needle)
+}
+
+/// Returns true if a socket record matches the filter query string.
+fn filter_matches_socket(sock: &SocketRecord, needle: &str) -> bool {
+    if contains_case_insensitive(sock.protocol().as_str(), needle)
+        || contains_case_insensitive(sock.state().as_str(), needle)
+        || contains_case_insensitive(sock.family().as_str(), needle)
+    {
+        return true;
+    }
+    let local = crate::output::format_socket_endpoint(sock.local_address(), sock.local_port());
+    if contains_case_insensitive(&local, needle) {
+        return true;
+    }
+    if let (Some(addr), Some(port)) = (sock.remote_address(), sock.remote_port()) {
+        let remote = crate::output::format_socket_endpoint(addr, port);
+        if contains_case_insensitive(&remote, needle) {
+            return true;
+        }
+    }
+    if let Some(inode) = sock.inode() {
+        let mut buf = String::new();
+        let _ = write!(buf, "{inode}");
+        if contains_case_insensitive(&buf, needle) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns true if an eBPF lifecycle event matches the filter query string.
+fn filter_matches_ebpf(event: &EbpfLifecycleEvent, needle: &str) -> bool {
+    if contains_case_insensitive(event.comm(), needle)
+        || contains_case_insensitive(event.event_type().as_str(), needle)
+        || contains_case_insensitive(event.family().as_str(), needle)
+        || event
+            .old_state()
+            .is_some_and(|s| contains_case_insensitive(s.as_str(), needle))
+        || event
+            .new_state()
+            .is_some_and(|s| contains_case_insensitive(s.as_str(), needle))
+    {
+        return true;
+    }
+    let mut buf = String::with_capacity(64);
+    let _ = write!(
+        buf,
+        "{}\n{}:{}\n{}:{}",
+        event.pid(),
+        event.local_address(),
+        event.local_port(),
+        event.remote_address(),
+        event.remote_port()
+    );
+    if contains_case_insensitive(&buf, needle) {
+        return true;
+    }
+    if event.local_address().is_ipv6() || event.remote_address().is_ipv6() {
+        buf.clear();
+        let local =
+            crate::output::format_socket_endpoint(event.local_address(), event.local_port());
+        let remote =
+            crate::output::format_socket_endpoint(event.remote_address(), event.remote_port());
+        let _ = write!(buf, "{local}\n{remote}");
+        return contains_case_insensitive(&buf, needle);
+    }
+    false
 }
 
 impl View {
+    /// Returns the trimmed active filter query string, or `None` when empty or whitespace-only.
+    #[must_use]
+    pub fn filter_display(&self) -> Option<&str> {
+        let trimmed = self.filter.trim();
+        (!trimmed.is_empty()).then_some(trimmed)
+    }
+
+    /// Returns true if an active non-empty search filter query is configured.
+    #[must_use]
+    pub fn is_filtered(&self) -> bool {
+        self.filter_display().is_some()
+    }
+
+    /// Clears the active search filter and resets scroll offsets.
+    pub fn clear_filter(&mut self) {
+        self.filter.clear();
+        self.filtering = false;
+        self.scroll = 0;
+        self.text_scroll = 0;
+    }
+
+    /// Returns all metrics matching the active filter query, or all metrics if unfiltered.
+    pub fn filtered_metrics<'a>(
+        &self,
+        metrics: &'a [MetricObservation<MetricValue>],
+    ) -> Vec<&'a MetricObservation<MetricValue>> {
+        match self.filter_display() {
+            Some(query) => metrics
+                .iter()
+                .filter(|m| filter_matches_metric(m, query))
+                .collect(),
+            None => metrics.iter().collect(),
+        }
+    }
+
+    /// Returns all sockets matching the active filter query, or all sockets if unfiltered.
+    pub fn filtered_sockets<'a>(&self, sockets: &'a [SocketRecord]) -> Vec<&'a SocketRecord> {
+        match self.filter_display() {
+            Some(query) => sockets
+                .iter()
+                .filter(|s| filter_matches_socket(s, query))
+                .collect(),
+            None => sockets.iter().collect(),
+        }
+    }
+
+    /// Returns all eBPF events matching the active filter query, or all events if unfiltered.
+    pub fn filtered_ebpf_events<'a>(
+        &self,
+        events: &'a [EbpfLifecycleEvent],
+    ) -> Vec<&'a EbpfLifecycleEvent> {
+        match self.filter_display() {
+            Some(query) => events
+                .iter()
+                .filter(|e| filter_matches_ebpf(e, query))
+                .collect(),
+            None => events.iter().collect(),
+        }
+    }
+
     /// Pushes a new update into bounded history and updates current view if live.
     pub fn push_update(&mut self, update: Update) {
         if self.history.len() >= MAX_VIEW_HISTORY {
@@ -144,20 +304,42 @@ impl View {
         }
     }
 
+    /// Counts matching items for the active tab without allocating a filtered vector.
+    fn filtered_item_count(&self) -> usize {
+        let query = self.filter_display();
+        self.update.as_ref().map_or(0, |update| match self.tab {
+            Tab::Metrics | Tab::CpuMemory => match query {
+                Some(q) => update
+                    .snapshot
+                    .metrics()
+                    .iter()
+                    .filter(|m| filter_matches_metric(m, q))
+                    .count(),
+                None => update.snapshot.metrics().len(),
+            },
+            Tab::Network => update.network.as_ref().map_or(0, |n| match query {
+                Some(q) => n
+                    .sockets()
+                    .iter()
+                    .filter(|s| filter_matches_socket(s, q))
+                    .count(),
+                None => n.sockets().len(),
+            }),
+            Tab::Ebpf => update.ebpf.as_ref().map_or(0, |e| match query {
+                Some(q) => e
+                    .events()
+                    .iter()
+                    .filter(|ev| filter_matches_ebpf(ev, q))
+                    .count(),
+                None => e.events().len(),
+            }),
+        })
+    }
+
     /// Adjusts table scroll position by a signed delta bounded to available items on the active tab.
     fn scroll_by(&mut self, count: isize) {
-        let max = self.update.as_ref().map_or(0, |update| match self.tab {
-            Tab::Metrics | Tab::CpuMemory => update.snapshot.metrics().len().saturating_sub(1),
-            Tab::Network => update
-                .network
-                .as_ref()
-                .map_or(0, |n| n.sockets().len().saturating_sub(1)),
-            Tab::Ebpf => update
-                .ebpf
-                .as_ref()
-                .map_or(0, |e| e.events().len().saturating_sub(1)),
-        });
-        self.scroll = self.scroll.saturating_add_signed(count).min(max);
+        let max = self.filtered_item_count().saturating_sub(1);
+        self.scroll = self.scroll.min(max).saturating_add_signed(count).min(max);
         self.text_scroll = 0;
     }
 
@@ -169,6 +351,161 @@ impl View {
         } else {
             self.text_scroll.saturating_sub(page)
         };
+    }
+
+    /// Processes a single terminal key event and returns `true` when the UI should quit.
+    pub(crate) fn handle_key(&mut self, key: event::KeyEvent) -> bool {
+        if key.kind == KeyEventKind::Release {
+            return false;
+        }
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return true;
+        }
+        if self.filtering {
+            match key.code {
+                KeyCode::Esc => {
+                    self.clear_filter();
+                }
+                KeyCode::Enter => {
+                    self.filtering = false;
+                    if self.filter.trim().is_empty() {
+                        self.filter.clear();
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.filter.pop();
+                    self.scroll = 0;
+                    self.text_scroll = 0;
+                }
+                KeyCode::Char(c)
+                    if !c.is_control()
+                        && !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                        && self.filter.chars().count() < MAX_FILTER_LEN =>
+                {
+                    self.filter.push(c);
+                    self.scroll = 0;
+                    self.text_scroll = 0;
+                }
+                _ => {}
+            }
+            return false;
+        }
+        match key.code {
+            KeyCode::Char('q') => return true,
+            KeyCode::Esc => {
+                if self.is_filtered() {
+                    self.clear_filter();
+                } else {
+                    return true;
+                }
+            }
+            KeyCode::Char('/') if !self.help && self.tab != Tab::CpuMemory => {
+                self.filtering = true;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::Char('c') if self.is_filtered() => {
+                self.clear_filter();
+            }
+            KeyCode::Char(' ') => {
+                self.paused = !self.paused;
+                if !self.paused {
+                    self.history_cursor = None;
+                    if let Some(latest) = self.history.back() {
+                        self.update = Some(latest.clone());
+                    }
+                }
+            }
+            KeyCode::Char('[') | KeyCode::Char(',') => {
+                self.step_history_back();
+            }
+            KeyCode::Char(']') | KeyCode::Char('.') => {
+                self.step_history_forward();
+            }
+            KeyCode::Char('?') | KeyCode::Char('h') => {
+                self.help = !self.help;
+                self.text_scroll = 0;
+            }
+            KeyCode::Enter => {
+                self.detail = !self.detail;
+                self.text_scroll = 0;
+            }
+            KeyCode::Tab => {
+                self.tab = self.tab.next();
+                self.scroll = 0;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::BackTab => {
+                self.tab = self.tab.prev();
+                self.scroll = 0;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::Char('1') => {
+                self.tab = Tab::Metrics;
+                self.scroll = 0;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::Char('2') => {
+                self.tab = Tab::CpuMemory;
+                self.scroll = 0;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::Char('3') => {
+                self.tab = Tab::Network;
+                self.scroll = 0;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::Char('4') => {
+                self.tab = Tab::Ebpf;
+                self.scroll = 0;
+                self.detail = false;
+                self.text_scroll = 0;
+            }
+            KeyCode::Left if !self.help && !self.detail => {
+                self.tab = self.tab.prev();
+                self.scroll = 0;
+                self.text_scroll = 0;
+            }
+            KeyCode::Right if !self.help && !self.detail => {
+                self.tab = self.tab.next();
+                self.scroll = 0;
+                self.text_scroll = 0;
+            }
+            KeyCode::Down | KeyCode::Char('j') if self.help || self.detail => {
+                self.text_scroll = self.text_scroll.saturating_add(1);
+            }
+            KeyCode::Up | KeyCode::Char('k') if self.help || self.detail => {
+                self.text_scroll = self.text_scroll.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => self.scroll_by(1),
+            KeyCode::Up | KeyCode::Char('k') => self.scroll_by(-1),
+            KeyCode::Char('n') => self.scroll_by(1),
+            KeyCode::Char('p') => self.scroll_by(-1),
+            KeyCode::PageDown if self.help || self.detail => self.scroll_text_page(true),
+            KeyCode::PageUp if self.help || self.detail => self.scroll_text_page(false),
+            KeyCode::PageDown => self.scroll_by(10),
+            KeyCode::PageUp => self.scroll_by(-10),
+            KeyCode::Home if self.help || self.detail => {
+                self.text_scroll = 0;
+            }
+            KeyCode::Home => {
+                self.scroll = 0;
+                self.text_scroll = 0;
+            }
+            KeyCode::End if self.help || self.detail => {
+                self.text_scroll = u16::MAX;
+            }
+            KeyCode::End => self.scroll_by(isize::MAX),
+            _ => {}
+        }
+        false
     }
 }
 
@@ -240,9 +577,15 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         );
         (state_str, freshness_str)
     };
-    let header_block = Block::default()
-        .title(format!(" LiDB {mode} | read-only host metrics "))
-        .borders(Borders::ALL);
+    let filter_label = view.filter_display();
+    let header_title = match filter_label {
+        Some(q) if view.tab == Tab::CpuMemory => {
+            format!(" LiDB {mode} | filter: \"{q}\" (Tabs 1/3/4) | read-only host metrics ")
+        }
+        Some(q) => format!(" LiDB {mode} | filter: \"{q}\" | read-only host metrics "),
+        None => format!(" LiDB {mode} | read-only host metrics "),
+    };
+    let header_block = Block::default().title(header_title).borders(Borders::ALL);
     let inner_header = header_block.inner(layout[0]);
     frame.render_widget(header_block, layout[0]);
 
@@ -263,14 +606,42 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             inner_header,
         );
     }
-    let shortcuts = if view.help || view.detail {
-        "q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
+    if view.filtering {
+        let prompt = format!(
+            "/{}█  [Enter: apply | Esc: cancel | Backspace: erase]",
+            view.filter
+        );
+        frame.render_widget(
+            Paragraph::new(prompt).style(Style::default().add_modifier(Modifier::BOLD)),
+            layout[2],
+        );
+    } else if let Some(q) = filter_label {
+        let shortcuts = if view.help || view.detail {
+            format!(
+                "[Filter: \"{q}\" (c to clear)] | q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
+            )
+        } else if view.tab == Tab::CpuMemory {
+            format!(
+                "[Filter: \"{q}\" (c to clear)] | q quit | Tab / 1-4 tab | ? help | Enter detail"
+            )
+        } else {
+            format!(
+                "[Filter: \"{q}\" (c to clear)] | q quit | / search | Tab / 1-4 tab | ? help | Enter detail | Up/Down scroll"
+            )
+        };
+        frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     } else {
-        "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
-    };
-    frame.render_widget(Paragraph::new(shortcuts), layout[2]);
+        let shortcuts = if view.help || view.detail {
+            "q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
+        } else if view.tab == Tab::CpuMemory {
+            "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail"
+        } else {
+            "q quit | / search | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
+        };
+        frame.render_widget(Paragraph::new(shortcuts), layout[2]);
+    }
     if view.help {
-        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for the active view (Metrics, CPU/Mem, Network, eBPF)\nUp/Down, j/k: scroll metrics (scroll text in help/details)\nn, p: next/previous item (works in table and detail views)\nPageUp/PageDown: scroll ten metrics or one page of text\nHome/End: first/last metric or start/end of text\n\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\n/: interactive substring search filter across Metrics, Sockets, and eBPF events\nc: clear active search filter (or Esc when not in search input mode)\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for active item (or confirm search query in filter mode)\nUp/Down, j/k: scroll items (scroll text in help/details)\nn, p: next/previous item (works in table and detail views)\nPageUp/PageDown: scroll ten items or one page of text\nHome/End: first/last item or start/end of text\n\nSearch queries match case-insensitively across metric names, sources, units, endpoints, family, and states.\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
         let help_body = if area.width >= 96 {
             format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
         } else {
@@ -293,12 +664,18 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         return;
     };
     let metrics = update.snapshot.metrics();
-    let start = view.scroll.min(metrics.len().saturating_sub(1));
+    let filtered_metrics = view.filtered_metrics(metrics);
+    let total_metrics = metrics.len();
+    let matched_metrics = filtered_metrics.len();
+    let start = clamp_scroll(view.scroll, matched_metrics);
     if view.detail {
         let (text, title) = match view.tab {
             Tab::Metrics => {
-                let text = metrics.get(start).map_or_else(
-                    || "No metrics collected".into(),
+                let text = filtered_metrics.get(start).map_or_else(
+                    || match filter_label {
+                        Some(q) => format!("No metrics match filter \"{q}\""),
+                        None => "No metrics collected".into(),
+                    },
                     |metric| {
                         format!(
                             "{}\n{}\nunit: {}\nsource: {}\nobservation: {}ns (collector monotonic)",
@@ -310,21 +687,36 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                         )
                     },
                 );
-                (text, " Metric detail | Enter returns ")
+                let title = match filter_label {
+                    Some(q) => format!(" Metric detail [Filter: \"{q}\"] | Enter returns "),
+                    None => " Metric detail | Enter returns ".to_string(),
+                };
+                (text, title)
             }
-            Tab::Network => (
-                format_network_detail(update.network.as_ref(), &update.snapshot, view.scroll),
-                " Socket detail | Enter returns ",
-            ),
+            Tab::Network => {
+                let title = match filter_label {
+                    Some(q) => format!(" Socket detail [Filter: \"{q}\"] | Enter returns "),
+                    None => " Socket detail | Enter returns ".to_string(),
+                };
+                (
+                    format_network_detail(
+                        update.network.as_ref(),
+                        &update.snapshot,
+                        view.scroll,
+                        filter_label,
+                    ),
+                    title,
+                )
+            }
             Tab::Ebpf => {
                 let events = update.ebpf.as_ref().map(|e| e.events()).unwrap_or(&[]);
-                let ebpf_start = if events.is_empty() {
-                    0
-                } else {
-                    view.scroll.min(events.len().saturating_sub(1))
-                };
-                let text = events.get(ebpf_start).map_or_else(
-                    || "No eBPF events observed".into(),
+                let filtered_events = view.filtered_ebpf_events(events);
+                let ebpf_start = clamp_scroll(view.scroll, filtered_events.len());
+                let text = filtered_events.get(ebpf_start).map_or_else(
+                    || match filter_label {
+                        Some(q) => format!("No eBPF events match filter \"{q}\""),
+                        None => "No eBPF events observed".into(),
+                    },
                     |event| {
                         let transition = match (event.old_state(), event.new_state()) {
                             (Some(old), Some(new)) => {
@@ -353,14 +745,18 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                         )
                     },
                 );
-                (text, " eBPF Event detail | Enter returns ")
+                let title = match filter_label {
+                    Some(q) => format!(" eBPF Event detail [Filter: \"{q}\"] | Enter returns "),
+                    None => " eBPF Event detail | Enter returns ".to_string(),
+                };
+                (text, title)
             }
             Tab::CpuMemory => (
                 format_cpu_memory_detail(&update.snapshot),
-                " CPU & Memory detail | Enter returns ",
+                " CPU & Memory detail | Enter returns ".to_string(),
             ),
         };
-        draw_text(frame, &text, title, &mut view.text_scroll, layout[1]);
+        draw_text(frame, &text, &title, &mut view.text_scroll, layout[1]);
         return;
     }
     if view.tab == Tab::CpuMemory {
@@ -373,16 +769,39 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             update.network.as_ref(),
             Some(&update.snapshot),
             view.scroll,
+            filter_label,
             layout[1],
         );
         return;
     }
     if view.tab == Tab::Ebpf {
-        draw_ebpf(frame, update.ebpf.as_ref(), view.scroll, layout[1]);
+        draw_ebpf(
+            frame,
+            update.ebpf.as_ref(),
+            view.scroll,
+            filter_label,
+            layout[1],
+        );
         return;
     }
+    if matched_metrics == 0 {
+        if let Some(q) = filter_label {
+            let title = format!(
+                " Metrics (0 of {total_metrics}) [Filter: \"{q}\"] | {}ns ",
+                update.snapshot.monotonic_ns()
+            );
+            frame.render_widget(
+                Paragraph::new(format!(
+                    "No metrics match filter \"{q}\" ({total_metrics} total metrics)."
+                ))
+                .block(Block::default().title(title).borders(Borders::ALL)),
+                layout[1],
+            );
+            return;
+        }
+    }
     if area.width >= 90 {
-        let rows = metrics.iter().skip(start).map(|metric| {
+        let rows = filtered_metrics.iter().skip(start).map(|metric| {
             Row::new(vec![
                 metric.name().to_owned(),
                 value_text(metric),
@@ -390,6 +809,22 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                 metric.source().to_owned(),
             ])
         });
+        let title = match filter_label {
+            Some(q) => format!(
+                " Metrics {}..{} of {} [Filter: \"{q}\" ({matched_metrics}/{total_metrics} matched)] | {}ns ",
+                start.saturating_add(1),
+                (start + layout[1].height.saturating_sub(3) as usize).min(matched_metrics),
+                matched_metrics,
+                update.snapshot.monotonic_ns()
+            ),
+            None => format!(
+                " Metrics {}..{} of {} | {}ns ",
+                if total_metrics == 0 { 0 } else { start.saturating_add(1) },
+                (start + layout[1].height.saturating_sub(3) as usize).min(total_metrics),
+                total_metrics,
+                update.snapshot.monotonic_ns()
+            ),
+        };
         let table = Table::new(
             rows,
             [
@@ -403,21 +838,15 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             Row::new(["Metric", "Value / state", "Unit", "Source"])
                 .style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .block(
-            Block::default()
-                .title(format!(
-                    " Metrics {}..{} of {} | {}ns ",
-                    start.saturating_add(1),
-                    (start + layout[1].height.saturating_sub(3) as usize).min(metrics.len()),
-                    metrics.len(),
-                    update.snapshot.monotonic_ns()
-                ))
-                .borders(Borders::ALL),
-        );
+        .block(Block::default().title(title).borders(Borders::ALL));
         frame.render_widget(table, layout[1]);
     } else {
         let mut lines = Vec::new();
-        for metric in metrics.iter().skip(start).take(layout[1].height as usize) {
+        for metric in filtered_metrics
+            .iter()
+            .skip(start)
+            .take(layout[1].height as usize)
+        {
             lines.push(
                 Line::from(metric.name().to_owned())
                     .style(Style::default().add_modifier(Modifier::BOLD)),
@@ -429,12 +858,17 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             )));
             lines.push(Line::from(format!("source: {}", metric.source())));
         }
-        frame.render_widget(
-            Paragraph::new(lines).wrap(Wrap { trim: false }).block(
-                Block::default()
-                    .title(format!(" Metrics | {}ns ", update.snapshot.monotonic_ns()))
-                    .borders(Borders::ALL),
+        let title = match filter_label {
+            Some(q) => format!(
+                " Metrics [Filter: \"{q}\" ({matched_metrics}/{total_metrics})] | {}ns ",
+                update.snapshot.monotonic_ns()
             ),
+            None => format!(" Metrics | {}ns ", update.snapshot.monotonic_ns()),
+        };
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .block(Block::default().title(title).borders(Borders::ALL)),
             layout[1],
         );
     }
@@ -620,6 +1054,7 @@ fn format_network_detail(
     report: Option<&lidb_core::network::NetworkReport>,
     snapshot: &Snapshot,
     selected_socket_idx: usize,
+    filter_query: Option<&str>,
 ) -> String {
     let Some(report) = report else {
         return "Reading local procfs network tables; awaiting next sample.".into();
@@ -639,31 +1074,45 @@ fn format_network_detail(
         None => "default / not identified".to_owned(),
     };
 
-    // Section 1: Selected Socket Inspection
-    let sock_start = if sockets.is_empty() {
-        0
-    } else {
-        selected_socket_idx.min(sockets.len().saturating_sub(1))
+    let filtered_sockets: Vec<&SocketRecord> = match filter_query {
+        Some(q) => sockets
+            .iter()
+            .filter(|s| filter_matches_socket(s, q))
+            .collect(),
+        None => sockets.iter().collect(),
     };
 
-    if let Some(sock) = sockets.get(sock_start) {
+    // Section 1: Selected Socket Inspection
+    let sock_start = clamp_scroll(selected_socket_idx, filtered_sockets.len());
+
+    if let Some(sock) = filtered_sockets.get(sock_start) {
         let local = crate::output::format_socket_endpoint(sock.local_address(), sock.local_port());
         let remote = match (sock.remote_address(), sock.remote_port()) {
             (Some(addr), Some(port)) => crate::output::format_socket_endpoint(addr, port),
             _ => "*".to_owned(),
         };
         let ino = sock.inode().map_or("-".into(), |i| i.to_string());
+        let filter_tag = match filter_query {
+            Some(q) => format!(" [Filter: \"{q}\"]"),
+            None => String::new(),
+        };
         let _ = write!(
             detail,
-            "--- Selected Socket [{}/{}] ---\nProtocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
+            "--- Selected Socket [{}/{}]{filter_tag} ---\nProtocol: {}\nLocal Endpoint: {}\nRemote Endpoint: {}\nState: {}\nInode: {}\nNetwork Namespace: {}",
             sock_start + 1,
-            sockets.len(),
+            filtered_sockets.len(),
             sock.protocol().as_str(),
             local,
             remote,
             sock.state().as_str(),
             ino,
             ns_desc
+        );
+    } else if let Some(q) = filter_query {
+        let _ = write!(
+            detail,
+            "--- Selected Socket ---\nNo network sockets match filter \"{q}\" ({} total sockets)",
+            sockets.len()
         );
     } else if ifaces.is_empty() && routes.is_empty() {
         detail.push_str("No network sockets or interfaces collected");
@@ -1023,6 +1472,7 @@ fn draw_network(
     network: Option<&lidb_core::network::NetworkReport>,
     snapshot: Option<&Snapshot>,
     scroll: usize,
+    filter_query: Option<&str>,
     area: Rect,
 ) {
     let Some(report) = network else {
@@ -1033,6 +1483,17 @@ fn draw_network(
         );
         return;
     };
+
+    let sockets = report.sockets();
+    let filtered_sockets: Vec<&SocketRecord> = match filter_query {
+        Some(q) => sockets
+            .iter()
+            .filter(|s| filter_matches_socket(s, q))
+            .collect(),
+        None => sockets.iter().collect(),
+    };
+    let socket_count = filtered_sockets.len();
+    let total_socket_count = sockets.len();
 
     let ns_desc = match report.namespace() {
         Some(ns) => match ns.inode() {
@@ -1053,14 +1514,22 @@ fn draw_network(
     );
 
     if area.height <= 10 {
+        let sock_desc = match filter_query {
+            Some(q) => format!(
+                "{socket_count}/{total_socket_count} matching \"{q}\" ({})",
+                report.sockets_status().as_str()
+            ),
+            None => format!(
+                "{total_socket_count} ({})",
+                report.sockets_status().as_str()
+            ),
+        };
         let text = format!(
-            "Ifaces: {} ({}) │ Routes: {} ({})\nSockets: {} ({})\n{ns_desc}",
+            "Ifaces: {} ({}) │ Routes: {} ({})\nSockets: {sock_desc}\n{ns_desc}",
             report.interfaces().len(),
             report.interfaces_status().as_str(),
             report.routes().len(),
             report.routes_status().as_str(),
-            report.sockets().len(),
-            report.sockets_status().as_str(),
         );
         frame.render_widget(
             Paragraph::new(text).wrap(Wrap { trim: true }).block(
@@ -1234,24 +1703,47 @@ fn draw_network(
         frame.render_widget(route_table, split_rows[1]);
     }
 
-    let socket_count = report.sockets().len();
     let sock_inner_height = rows[2].height.saturating_sub(2) as usize;
-    let start = if socket_count == 0 {
-        0
-    } else {
-        scroll.min(socket_count.saturating_sub(1))
-    };
+    let start = clamp_scroll(scroll, socket_count);
     let end = (start + sock_inner_height).min(socket_count);
-    let title = if socket_count == 0 {
-        " Sockets (0) ".to_string()
-    } else {
-        format!(" Sockets {}..{} of {} ", start + 1, end, socket_count)
+    let title = match filter_query {
+        Some(q) => {
+            if socket_count == 0 {
+                format!(" Sockets (0 of {total_socket_count}) [Filter: \"{q}\"] ")
+            } else {
+                format!(
+                    " Sockets {}..{} of {} [Filter: \"{q}\" ({socket_count}/{total_socket_count} matched)] ",
+                    start + 1,
+                    end,
+                    socket_count
+                )
+            }
+        }
+        None => {
+            if socket_count == 0 {
+                " Sockets (0) ".to_string()
+            } else {
+                format!(" Sockets {}..{} of {} ", start + 1, end, socket_count)
+            }
+        }
     };
 
     let socket_block = Block::default().title(title).borders(Borders::ALL);
 
-    let sock_rows: Vec<Row> = report
-        .sockets()
+    if socket_count == 0 {
+        if let Some(q) = filter_query {
+            frame.render_widget(
+                Paragraph::new(format!(
+                    "No network sockets match filter \"{q}\" ({total_socket_count} total sockets)."
+                ))
+                .block(socket_block),
+                rows[2],
+            );
+            return;
+        }
+    }
+
+    let sock_rows: Vec<Row> = filtered_sockets
         .iter()
         .skip(start)
         .take(sock_inner_height.max(1))
@@ -1280,7 +1772,7 @@ fn draw_network(
             Constraint::Percentage(32),
             Constraint::Percentage(32),
             Constraint::Percentage(18),
-            Constraint::Percentage(12),
+            Constraint::Length(12),
         ],
     )
     .header(
@@ -1292,7 +1784,13 @@ fn draw_network(
     frame.render_widget(sock_table, rows[2]);
 }
 
-fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, area: Rect) {
+fn draw_ebpf(
+    frame: &mut Frame<'_>,
+    ebpf: Option<&EbpfReport>,
+    scroll: usize,
+    filter_query: Option<&str>,
+    area: Rect,
+) {
     let Some(report) = ebpf else {
         frame.render_widget(
             Paragraph::new(
@@ -1364,17 +1862,30 @@ fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, ar
         _ => {}
     }
 
+    let events = report.events();
+    let filtered_events: Vec<&EbpfLifecycleEvent> = match filter_query {
+        Some(q) => events
+            .iter()
+            .filter(|e| filter_matches_ebpf(e, q))
+            .collect(),
+        None => events.iter().collect(),
+    };
+    let event_count = filtered_events.len();
+    let total_event_count = events.len();
+    let events_label = match filter_query {
+        Some(q) => format!("{event_count}/{total_event_count} matching \"{q}\""),
+        None => format!("{total_event_count}"),
+    };
+
     let summary_text = format!(
-        "Tracepoint: sock:inet_sock_set_state │ Status: {} │ Events: {} (dropped: {}) │ Ringbuf: 256KB",
+        "Tracepoint: sock:inet_sock_set_state │ Status: {} │ Events: {events_label} (dropped: {}) │ Ringbuf: 256KB",
         report.status().as_str(),
-        report.events().len(),
         report.dropped_events(),
     );
 
     if area.height <= 10 {
         let text = format!(
-            "{summary_text}\nEvents: {}\nMode: {}",
-            report.events().len(),
+            "{summary_text}\nEvents: {events_label}\nMode: {}",
             mode_name(report.mode())
         );
         frame.render_widget(
@@ -1397,7 +1908,6 @@ fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, ar
     );
     frame.render_widget(summary_widget, rows[0]);
 
-    let events = report.events();
     if events.is_empty() {
         frame.render_widget(
             Paragraph::new("No TCP lifecycle events observed yet. Monitoring tracepoint sock:inet_sock_set_state...").block(
@@ -1410,9 +1920,27 @@ fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, ar
         return;
     }
 
+    if event_count == 0 {
+        let q = filter_query.unwrap_or("");
+        let msg = format!(
+            "No eBPF events match filter \"{q}\" ({total_event_count} total events observed)."
+        );
+        frame.render_widget(
+            Paragraph::new(msg).block(
+                Block::default()
+                    .title(format!(
+                        " Events (0 of {total_event_count}) [Filter: \"{q}\"] "
+                    ))
+                    .borders(Borders::ALL),
+            ),
+            rows[1],
+        );
+        return;
+    }
+
     let inner_height = rows[1].height.saturating_sub(2) as usize;
-    let start = scroll.min(events.len().saturating_sub(1));
-    let table_rows: Vec<Row> = events
+    let start = clamp_scroll(scroll, event_count);
+    let table_rows: Vec<Row> = filtered_events
         .iter()
         .skip(start)
         .take(inner_height.max(1))
@@ -1434,6 +1962,21 @@ fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, ar
             Row::new(vec![event_type, comm_pid, family, src, dst, states, rtt])
         })
         .collect();
+
+    let title = match filter_query {
+        Some(q) => format!(
+            " Events {}..{} of {} [Filter: \"{q}\" ({event_count}/{total_event_count} matched)] ",
+            start.saturating_add(1),
+            (start + inner_height).min(event_count),
+            event_count
+        ),
+        None => format!(
+            " Events {}..{} of {} ",
+            start.saturating_add(1),
+            (start + inner_height).min(event_count),
+            event_count
+        ),
+    };
 
     let table = Table::new(
         table_rows,
@@ -1459,16 +2002,7 @@ fn draw_ebpf(frame: &mut Frame<'_>, ebpf: Option<&EbpfReport>, scroll: usize, ar
         ])
         .style(Style::default().add_modifier(Modifier::BOLD)),
     )
-    .block(
-        Block::default()
-            .title(format!(
-                " Events {}..{} of {} ",
-                start.saturating_add(1),
-                (start + inner_height).min(events.len()),
-                events.len()
-            ))
-            .borders(Borders::ALL),
-    );
+    .block(Block::default().title(title).borders(Borders::ALL));
     frame.render_widget(table, rows[1]);
 }
 
@@ -1590,101 +2124,8 @@ pub(crate) fn run_with_sampler(
         terminal.draw(|frame| draw(frame, &mut view))?;
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Release {
-                    continue;
-                }
-                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                if view.handle_key(key) {
                     break;
-                }
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Char(' ') => {
-                        view.paused = !view.paused;
-                        if !view.paused {
-                            view.history_cursor = None;
-                            if let Some(latest) = view.history.back() {
-                                view.update = Some(latest.clone());
-                            }
-                        }
-                    }
-                    KeyCode::Char('[') | KeyCode::Char(',') => {
-                        view.step_history_back();
-                    }
-                    KeyCode::Char(']') | KeyCode::Char('.') => {
-                        view.step_history_forward();
-                    }
-                    KeyCode::Char('?') | KeyCode::Char('h') => {
-                        view.help = !view.help;
-                        view.text_scroll = 0;
-                    }
-                    KeyCode::Enter => {
-                        view.detail = !view.detail;
-                        view.text_scroll = 0;
-                    }
-                    KeyCode::Tab => {
-                        view.tab = view.tab.next();
-                        view.scroll = 0;
-                        view.detail = false;
-                    }
-                    KeyCode::BackTab => {
-                        view.tab = view.tab.prev();
-                        view.scroll = 0;
-                        view.detail = false;
-                    }
-                    KeyCode::Char('1') => {
-                        view.tab = Tab::Metrics;
-                        view.scroll = 0;
-                        view.detail = false;
-                    }
-                    KeyCode::Char('2') => {
-                        view.tab = Tab::CpuMemory;
-                        view.scroll = 0;
-                        view.detail = false;
-                    }
-                    KeyCode::Char('3') => {
-                        view.tab = Tab::Network;
-                        view.scroll = 0;
-                        view.detail = false;
-                    }
-                    KeyCode::Char('4') => {
-                        view.tab = Tab::Ebpf;
-                        view.scroll = 0;
-                        view.detail = false;
-                    }
-                    KeyCode::Left if !view.help && !view.detail => {
-                        view.tab = view.tab.prev();
-                        view.scroll = 0;
-                    }
-                    KeyCode::Right if !view.help && !view.detail => {
-                        view.tab = view.tab.next();
-                        view.scroll = 0;
-                    }
-                    KeyCode::Down | KeyCode::Char('j') if view.help || view.detail => {
-                        view.text_scroll = view.text_scroll.saturating_add(1);
-                    }
-                    KeyCode::Up | KeyCode::Char('k') if view.help || view.detail => {
-                        view.text_scroll = view.text_scroll.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => view.scroll_by(1),
-                    KeyCode::Up | KeyCode::Char('k') => view.scroll_by(-1),
-                    KeyCode::Char('n') => view.scroll_by(1),
-                    KeyCode::Char('p') => view.scroll_by(-1),
-                    KeyCode::PageDown if view.help || view.detail => view.scroll_text_page(true),
-                    KeyCode::PageUp if view.help || view.detail => view.scroll_text_page(false),
-                    KeyCode::PageDown => view.scroll_by(10),
-                    KeyCode::PageUp => view.scroll_by(-10),
-                    KeyCode::Home if view.help || view.detail => {
-                        view.text_scroll = 0;
-                    }
-                    KeyCode::Home => {
-                        view.scroll = 0;
-                        view.text_scroll = 0;
-                    }
-                    KeyCode::End if view.help || view.detail => {
-                        view.text_scroll = u16::MAX;
-                    }
-                    KeyCode::End => view.scroll_by(isize::MAX),
-                    _ => {}
                 }
             }
         }
@@ -2716,5 +3157,439 @@ mod tests {
         assert_eq!(view.text_scroll, u16::MAX);
         view.text_scroll = 0;
         assert_eq!(view.text_scroll, 0);
+    }
+
+    #[test]
+    fn filter_matching_metrics_sockets_and_ebpf_events() {
+        use lidb_core::ebpf::{EbpfEventType, EbpfLifecycleEvent};
+        use lidb_core::network::{SocketProtocol, SocketRecord, SocketState};
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+        // 1. Metric matching
+        let metric = MetricObservation::new(
+            "memory.active.bytes",
+            "procfs/meminfo",
+            Unit::Bytes,
+            0,
+            MetricState::Available(MetricValue::Integer(12345)),
+        )
+        .unwrap();
+
+        assert!(filter_matches_metric(&metric, "memory"));
+        assert!(filter_matches_metric(&metric, "ACTIVE"));
+        assert!(filter_matches_metric(&metric, "meminfo"));
+        assert!(filter_matches_metric(&metric, "bytes"));
+        assert!(!filter_matches_metric(&metric, "cpu"));
+
+        // 2. Socket matching (IPv4, endpoints, family, IPv6 bracketed endpoints)
+        let sock = SocketRecord::new(
+            SocketProtocol::Tcp,
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            8080,
+            SocketState::Listen,
+        )
+        .with_inode(99999);
+
+        assert!(filter_matches_socket(&sock, "tcp"));
+        assert!(filter_matches_socket(&sock, "TCP"));
+        assert!(filter_matches_socket(&sock, "ipv4"));
+        assert!(filter_matches_socket(&sock, "8080"));
+        assert!(filter_matches_socket(&sock, ":8080"));
+        assert!(filter_matches_socket(&sock, "127.0.0.1"));
+        assert!(filter_matches_socket(&sock, "127.0.0.1:8080"));
+        assert!(filter_matches_socket(&sock, "listen"));
+        assert!(filter_matches_socket(&sock, "99999"));
+        assert!(!filter_matches_socket(&sock, "udp"));
+        assert!(!filter_matches_socket(&sock, "ipv6"));
+
+        let sock_v6 = SocketRecord::new(
+            SocketProtocol::Tcp,
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+            8443,
+            SocketState::Listen,
+        );
+        assert!(filter_matches_socket(&sock_v6, "ipv6"));
+        assert!(filter_matches_socket(&sock_v6, "[::1]:8443"));
+
+        // 3. eBPF event matching (IPv4 & IPv6 endpoints, family, states, comm, pid)
+        let event = EbpfLifecycleEvent::new(
+            EbpfEventType::TcpClose,
+            500000,
+            1337,
+            "nginx",
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            443,
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)),
+            54321,
+        )
+        .unwrap()
+        .with_states(Some(SocketState::Established), Some(SocketState::Closed));
+
+        assert!(filter_matches_ebpf(&event, "nginx"));
+        assert!(filter_matches_ebpf(&event, "1337"));
+        assert!(filter_matches_ebpf(&event, "tcp_close"));
+        assert!(filter_matches_ebpf(&event, "ipv4"));
+        assert!(filter_matches_ebpf(&event, "443"));
+        assert!(filter_matches_ebpf(&event, "10.0.0.2:443"));
+        assert!(filter_matches_ebpf(&event, "192.168.1.50"));
+        assert!(filter_matches_ebpf(&event, "192.168.1.50:54321"));
+        assert!(filter_matches_ebpf(&event, "established"));
+        assert!(filter_matches_ebpf(&event, "closed"));
+        assert!(!filter_matches_ebpf(&event, "redis"));
+
+        let event_v6 = EbpfLifecycleEvent::new(
+            EbpfEventType::TcpConnect,
+            600000,
+            4242,
+            "curl",
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+            8443,
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+            443,
+        )
+        .unwrap();
+        assert!(filter_matches_ebpf(&event_v6, "ipv6"));
+        assert!(filter_matches_ebpf(&event_v6, "[::1]:8443"));
+        assert!(filter_matches_ebpf(&event_v6, "[2001:db8::1]:443"));
+    }
+
+    #[test]
+    fn scroll_by_clamps_dynamically_against_filtered_results() {
+        use lidb_core::ebpf::{EbpfEventType, EbpfLifecycleEvent, EbpfReport};
+        use lidb_core::network::{
+            NetworkReport, SocketProtocol, SocketRecord, SocketState, SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut snapshot = Snapshot::new(0, 0, SnapshotMode::Fixture);
+        for i in 0..10 {
+            let name = if i < 3 {
+                format!("cpu.core{i}.usage")
+            } else {
+                format!("disk.sda{i}.bytes")
+            };
+            snapshot
+                .push(
+                    MetricObservation::new(
+                        name,
+                        "procfs",
+                        Unit::Count,
+                        0,
+                        MetricState::Available(MetricValue::Integer(i as u64)),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        for port in [80, 443, 8080, 9000, 9090] {
+            let sock = SocketRecord::new(
+                SocketProtocol::Tcp,
+                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                port,
+                SocketState::Listen,
+            );
+            net_report.push_socket(sock).unwrap();
+        }
+
+        let mut ebpf_report = EbpfReport::new(SnapshotMode::Fixture, 500);
+        ebpf_report.set_status(SourceAvailability::Available);
+        for (idx, comm) in ["nginx", "nginx", "nginx", "sshd", "sshd"]
+            .iter()
+            .enumerate()
+        {
+            let event = EbpfLifecycleEvent::new(
+                EbpfEventType::TcpConnect,
+                1000 + idx as u64,
+                2000 + idx as u32,
+                *comm,
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                1000 + idx as u16,
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)),
+                443,
+            )
+            .unwrap();
+            ebpf_report.push_event(event);
+        }
+
+        let mut view = View {
+            update: Some(Update {
+                snapshot,
+                network: Some(net_report),
+                ebpf: Some(ebpf_report),
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::Metrics,
+            ..View::default()
+        };
+
+        // Without filter: 10 metrics (max index = 9)
+        view.scroll_by(50);
+        assert_eq!(view.scroll, 9);
+
+        // Filter for "cpu": only 3 metrics match (max index = 2).
+        // Verify Up from stale large scroll clamps to max (2) before decrementing to 1.
+        view.filter = "cpu".to_string();
+        view.scroll = 10;
+        view.scroll_by(-1);
+        assert_eq!(view.scroll, 1);
+        view.scroll_by(50);
+        assert_eq!(view.scroll, 2);
+
+        // Zero matches clamps scroll to 0.
+        view.filter = "nonexistent".to_string();
+        view.scroll_by(10);
+        assert_eq!(view.scroll, 0);
+
+        // Switch to Tab::Network with filter "80" (matches 80 and 8080 => 2 sockets, max index = 1)
+        view.tab = Tab::Network;
+        view.filter = "80".to_string();
+        view.scroll = 0;
+        view.scroll_by(50);
+        assert_eq!(view.scroll, 1);
+
+        // Clear filter on Network tab: all 5 sockets (max index = 4)
+        view.filter.clear();
+        view.scroll_by(50);
+        assert_eq!(view.scroll, 4);
+
+        // Switch to Tab::Ebpf: 5 events total (max index = 4), filter "nginx" leaves 3 (max index = 2)
+        view.tab = Tab::Ebpf;
+        view.scroll = 0;
+        view.scroll_by(50);
+        assert_eq!(view.scroll, 4);
+        view.filter = "nginx".to_string();
+        view.scroll_by(-1);
+        assert_eq!(view.scroll, 1);
+    }
+
+    #[test]
+    fn handle_key_search_and_filter_state_machine() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+        let press = |code: KeyCode| KeyEvent::new(code, KeyModifiers::NONE);
+        let with_mods = |code: KeyCode, modifiers: KeyModifiers| KeyEvent::new(code, modifiers);
+
+        let mut view = fixture();
+        view.tab = Tab::Metrics;
+
+        // Ignore key release events.
+        let release_q = KeyEvent {
+            code: KeyCode::Char('q'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Release,
+            state: KeyEventState::NONE,
+        };
+        assert!(!view.handle_key(release_q));
+
+        // '/' opens search prompt on Metrics tab.
+        assert!(!view.handle_key(press(KeyCode::Char('/'))));
+        assert!(view.filtering);
+
+        // Append printable characters, ignore control/alt modifiers and control chars.
+        assert!(!view.handle_key(press(KeyCode::Char('M'))));
+        assert!(!view.handle_key(press(KeyCode::Char('e'))));
+        assert!(!view.handle_key(press(KeyCode::Char('m'))));
+        assert!(!view.handle_key(with_mods(KeyCode::Char('x'), KeyModifiers::CONTROL)));
+        assert!(!view.handle_key(with_mods(KeyCode::Char('y'), KeyModifiers::ALT)));
+        assert!(!view.handle_key(press(KeyCode::Char('\n'))));
+        assert_eq!(view.filter, "Mem");
+
+        // Backspace removes one character; Enter applies and trims/normalizes.
+        assert!(!view.handle_key(press(KeyCode::Backspace)));
+        assert_eq!(view.filter, "Me");
+        assert!(!view.handle_key(press(KeyCode::Char('m'))));
+        assert!(!view.handle_key(press(KeyCode::Enter)));
+        assert!(!view.filtering);
+        assert!(view.is_filtered());
+        assert_eq!(view.filter_display(), Some("Mem"));
+
+        // Max length cap enforced at MAX_FILTER_LEN.
+        assert!(!view.handle_key(press(KeyCode::Char('/'))));
+        view.filter.clear();
+        for _ in 0..(MAX_FILTER_LEN + 20) {
+            assert!(!view.handle_key(press(KeyCode::Char('a'))));
+        }
+        assert_eq!(view.filter.chars().count(), MAX_FILTER_LEN);
+
+        // Esc in prompt mode cancels prompt and clears filter without quitting.
+        assert!(!view.handle_key(press(KeyCode::Esc)));
+        assert!(!view.filtering);
+        assert!(!view.is_filtered());
+
+        // Whitespace-only input normalizes to empty filter on Enter.
+        assert!(!view.handle_key(press(KeyCode::Char('/'))));
+        assert!(!view.handle_key(press(KeyCode::Char(' '))));
+        assert!(!view.handle_key(press(KeyCode::Char(' '))));
+        assert_eq!(view.filter_display(), None);
+        assert!(!view.is_filtered());
+        assert!(!view.handle_key(press(KeyCode::Enter)));
+        assert!(!view.filtering);
+        assert!(view.filter.is_empty());
+
+        // Esc outside prompt clears an active filter first before quitting.
+        view.filter = "mem".to_string();
+        assert!(!view.handle_key(press(KeyCode::Esc)));
+        assert!(!view.is_filtered());
+        assert!(view.handle_key(press(KeyCode::Esc)));
+
+        // 'c' clears active filter even when Help or Detail modals are open.
+        view.filter = "tcp".to_string();
+        view.detail = true;
+        assert!(!view.handle_key(press(KeyCode::Char('c'))));
+        assert!(!view.is_filtered());
+        assert!(view.detail);
+
+        view.detail = false;
+        view.help = true;
+        view.filter = "udp".to_string();
+        assert!(!view.handle_key(press(KeyCode::Char('c'))));
+        assert!(!view.is_filtered());
+        assert!(view.help);
+
+        // '/' is ignored when Help modal is open or on CpuMemory tab.
+        assert!(!view.handle_key(press(KeyCode::Char('/'))));
+        assert!(!view.filtering);
+        view.help = false;
+        view.tab = Tab::CpuMemory;
+        assert!(!view.handle_key(press(KeyCode::Char('/'))));
+        assert!(!view.filtering);
+
+        // Ctrl-C exits immediately even while typing inside search prompt.
+        let mut quit_view = fixture();
+        quit_view.tab = Tab::Metrics;
+        assert!(!quit_view.handle_key(press(KeyCode::Char('/'))));
+        assert!(quit_view.filtering);
+        assert!(quit_view.handle_key(with_mods(KeyCode::Char('c'), KeyModifiers::CONTROL)));
+    }
+
+    #[test]
+    fn tui_renders_search_prompt_and_filtered_tables_and_modals() {
+        use lidb_core::ebpf::{EbpfEventType, EbpfLifecycleEvent, EbpfReport};
+        use lidb_core::network::{
+            NetworkReport, SocketProtocol, SocketRecord, SocketState, SourceAvailability,
+        };
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let mut view = fixture();
+
+        // 1. Render active search prompt mode with original case preserved in display
+        view.filtering = true;
+        view.filter = "Mem".to_string();
+        let prompt_out = render(100, 30, &mut view);
+        assert!(prompt_out.contains("/Mem█"));
+        assert!(prompt_out.contains("Enter: apply"));
+        assert!(prompt_out.contains("Esc: cancel"));
+        view.filtering = false;
+
+        // 2. Render filtered metrics table (wide and narrow)
+        let filtered_table = render(100, 30, &mut view);
+        assert!(filtered_table.contains("[Filter: \"Mem\" (c to clear)]"));
+        assert!(filtered_table.contains("memory.total.bytes"));
+        assert!(!filtered_table.contains("pressure.cpu"));
+
+        let narrow_filtered = render(70, 30, &mut view);
+        assert!(narrow_filtered.contains("Metrics [Filter: \"Mem\""));
+        assert!(narrow_filtered.contains("memory.total.bytes"));
+
+        // 3. Render filtered metric detail modal preserving original filter case
+        view.detail = true;
+        let detail_out = render(100, 30, &mut view);
+        assert!(detail_out.contains("Metric detail [Filter: \"Mem\"]"));
+        assert!(detail_out.contains("memory.total.bytes"));
+
+        // 4. Render Metrics filter matching 0 items (wide and narrow)
+        view.filter = "nonexistent".to_string();
+        let empty_detail = render(100, 30, &mut view);
+        assert!(empty_detail.contains("No metrics match filter \"nonexistent\""));
+        view.detail = false;
+        let empty_table = render(100, 30, &mut view);
+        assert!(empty_table.contains("No metrics match filter \"nonexistent\""));
+        let narrow_empty = render(70, 30, &mut view);
+        assert!(narrow_empty.contains("Metrics (0 of"));
+
+        // 5. Network tab filtered rendering (wide, compact, 0-match, detail modal)
+        view.tab = Tab::Network;
+        view.filter = "51820".to_string();
+        let mut net_report = NetworkReport::new(100, 20, SnapshotMode::Fixture);
+        net_report.set_sockets_status(SourceAvailability::Available);
+        let sock = SocketRecord::new(
+            SocketProtocol::Udp,
+            IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            51820,
+            SocketState::Closed,
+        );
+        net_report.push_socket(sock).unwrap();
+        view.update.as_mut().unwrap().network = Some(net_report);
+
+        let net_out = render(100, 30, &mut view);
+        assert!(net_out.contains("Sockets 1..1 of 1 [Filter: \"51820\" (1/1 matched)]"));
+        assert!(net_out.contains("51820"));
+
+        let net_compact = render(80, 10, &mut view);
+        assert!(net_compact.contains("1/1 matching \"51820\""));
+
+        view.detail = true;
+        let net_detail = render(100, 30, &mut view);
+        assert!(net_detail.contains("--- Selected Socket [1/1] [Filter: \"51820\"] ---"));
+        assert!(net_detail.contains("0.0.0.0:51820"));
+
+        view.detail = false;
+        view.filter = "no_such_socket".to_string();
+        let net_empty = render(100, 30, &mut view);
+        assert!(net_empty.contains("No network sockets match filter \"no_such_socket\""));
+
+        // 6. eBPF tab filtered rendering (table, compact, 0-match, detail modal)
+        let mut ebpf_report = EbpfReport::new(SnapshotMode::Fixture, 500);
+        ebpf_report.set_status(SourceAvailability::Available);
+        let ev1 = EbpfLifecycleEvent::new(
+            EbpfEventType::TcpConnect,
+            1000,
+            101,
+            "nginx",
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            80,
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            5001,
+        )
+        .unwrap();
+        let ev2 = EbpfLifecycleEvent::new(
+            EbpfEventType::TcpClose,
+            2000,
+            202,
+            "sshd",
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            22,
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3)),
+            5002,
+        )
+        .unwrap();
+        ebpf_report.push_event(ev1);
+        ebpf_report.push_event(ev2);
+        view.update.as_mut().unwrap().ebpf = Some(ebpf_report);
+
+        view.tab = Tab::Ebpf;
+        view.filter = "Nginx".to_string();
+        let ebpf_out = render(120, 30, &mut view);
+        assert!(ebpf_out.contains("nginx"));
+        assert!(!ebpf_out.contains("sshd"));
+        assert!(ebpf_out.contains("[Filter: \"Nginx\" (1/2 matched)]"));
+
+        let ebpf_compact = render(80, 10, &mut view);
+        assert!(ebpf_compact.contains("eBPF Lifecycle Overview"));
+        assert!(ebpf_compact.contains("1/2 matching \"Nginx\""));
+
+        view.detail = true;
+        let ebpf_detail = render(100, 30, &mut view);
+        assert!(ebpf_detail.contains("nginx"));
+        assert!(ebpf_detail.contains("eBPF Event detail [Filter: \"Nginx\"]"));
+
+        view.detail = false;
+        view.filter = "no_such_event".to_string();
+        let ebpf_empty = render(120, 30, &mut view);
+        assert!(ebpf_empty.contains("No eBPF events match filter \"no_such_event\""));
+        assert!(ebpf_empty.contains("Events (0 of 2) [Filter: \"no_such_event\"]"));
     }
 }

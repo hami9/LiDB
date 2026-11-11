@@ -303,3 +303,26 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Completely backward-compatible additive enhancements. `#![forbid(unsafe_code)]` preserved across all crates.
 
+## ADR-037 — Interactive real-time search and substring filtering in terminal dashboard (2026-11-11)
+
+**Status:** implemented in Task AG-21.
+
+**Context:** On hosts with dozens to hundreds of active metrics (Tab 1), sockets (Tab 3), or eBPF lifecycle events (Tab 4), operators troubleshooting active incidents must rapidly locate specific targets (e.g. `eth0`, `cpu`, `swap`, `80`, `listen`, `5432`, `nginx`, `close`) without having to manually scroll through long unorganized tables. Previously, no search or filtering facility existed in `lidash tui`.
+
+**Decision:**
+1. Introduce real-time substring filtering in `apps/lidash/src/tui.rs` managed by `view.filter: String` and `view.filtering: bool` (with `View::handle_key`).
+2. Bind `/` to activate interactive search mode on filterable tabs (`Metrics`, `Network`, `eBPF`):
+   - While `view.filtering`: printable non-control keystrokes (without `Ctrl`/`Alt` modifiers, bounded to `MAX_FILTER_LEN = 128` characters) append to `view.filter`, `Backspace` deletes characters, `Enter` trims/normalizes whitespace-only queries and confirms table navigation, and `Esc` cancels search input and clears the query. Table results update incrementally in real time on every character typed.
+   - When not in input mode, `c` clears the active filter (including inside detail/help modals), and `Esc` clears any active filter before quitting.
+3. Apply case-insensitive substring matching across:
+   - **Tab 1 (`1: Metrics`)**: matches metric name, source, unit, and rendered state/value.
+   - **Tab 3 (`3: Network`)**: matches socket protocol, address family (`ipv4`/`ipv6`), rendered local/remote endpoints (`ip:port` and bracketed IPv6 `[ip]:port`), state, and inode.
+   - **Tab 4 (`4: eBPF`)**: matches process command, PID, event type, address family (`ipv4`/`ipv6`), rendered local/remote endpoints (`ip:port` and bracketed IPv6 `[ip]:port`), and old/new state transitions.
+4. Dynamically bound `view.scroll_by` against the filtered item counts (`view.filtered_metrics`, `view.filtered_sockets`, `view.filtered_ebpf_events`), clamping stale scroll offsets before stepping so navigation does not stick after list shrinking.
+5. Display active filter status (preserving original trimmed casing in `filter_display()`) and match ratios across widget titles (e.g. `Metrics 1..10 of 12 [Filter: "cpu" (12/85 matched)]` and `Sockets (0 of 25) [Filter: "5432"]`), the top header block, and bottom shortcuts bar.
+6. Support filter-aware deep-dive detail modals on Tab 1, Tab 3, and Tab 4, inspecting the currently selected filtered item or indicating when zero items match.
+
+**Alternatives:** Regex-based filtering adds complex dependencies and error states. Incremental substring search is low-overhead in-memory, intuitive, and matches standard terminal tools (`less`, `htop`, `lazygit`).
+
+**Migration / limits:** Completely backward-compatible additive feature. `#![forbid(unsafe_code)]` preserved across all crates.
+
