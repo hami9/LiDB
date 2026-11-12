@@ -21,4 +21,4 @@ crossterm = "=0.29.0"
 signal-hook = "=0.4.6"
 # Ratatui's broad transitive ranges otherwise select versions above Rust 1.85.
 unicode-segmentation = "=1.13.3"
-instability = "=0.3.1"
+instability = "=0.3.14"
