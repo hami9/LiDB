@@ -40,7 +40,7 @@ compared between different runs or hosts.
 
 The TUI is monochrome by default, accepts `--no-color`, and adapts to narrow
 windows. Press `q`, `Esc`, or `Ctrl-C` to quit; `Tab`, `1`, `2`, `3`, `4`, or `Left`/`Right` switches
-between the full metric list (`1: Metrics`), the CPU & Memory overview tab (`2: CPU/Mem`),
+between the full metric list (`1: Metrics`), the CPU, Memory & Disk I/O overview tab (`2: CPU/Mem`, with live `/proc/diskstats` device read/write throughput and cumulative totals),
 the Network overview tab (`3: Network`, with live per-interface RX/TX transfer rates, routes, and socket connections), and the in-kernel eBPF socket lifecycle tab (`4: eBPF`);
 `/` activates interactive substring search filtering across Metrics, Sockets, and eBPF events with live updates; `c` (or `Esc` outside input mode) clears the active filter;
 `Space` pauses displayed readings; `?` or `h` toggles help; Enter toggles full details of the

@@ -22,7 +22,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     fmt::Write as _,
     io, panic,
     sync::{
@@ -308,7 +308,7 @@ impl View {
     fn filtered_item_count(&self) -> usize {
         let query = self.filter_display();
         self.update.as_ref().map_or(0, |update| match self.tab {
-            Tab::Metrics | Tab::CpuMemory => match query {
+            Tab::Metrics => match query {
                 Some(q) => update
                     .snapshot
                     .metrics()
@@ -317,6 +317,7 @@ impl View {
                     .count(),
                 None => update.snapshot.metrics().len(),
             },
+            Tab::CpuMemory => collect_disk_io_rows(&update.snapshot).len(),
             Tab::Network => update.network.as_ref().map_or(0, |n| match query {
                 Some(q) => n
                     .sockets()
@@ -486,8 +487,12 @@ impl View {
             }
             KeyCode::Down | KeyCode::Char('j') => self.scroll_by(1),
             KeyCode::Up | KeyCode::Char('k') => self.scroll_by(-1),
-            KeyCode::Char('n') => self.scroll_by(1),
-            KeyCode::Char('p') => self.scroll_by(-1),
+            KeyCode::Char('n') if !(self.help || (self.detail && self.tab == Tab::CpuMemory)) => {
+                self.scroll_by(1);
+            }
+            KeyCode::Char('p') if !(self.help || (self.detail && self.tab == Tab::CpuMemory)) => {
+                self.scroll_by(-1);
+            }
             KeyCode::PageDown if self.help || self.detail => self.scroll_text_page(true),
             KeyCode::PageUp if self.help || self.detail => self.scroll_text_page(false),
             KeyCode::PageDown => self.scroll_by(10),
@@ -616,13 +621,21 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             layout[2],
         );
     } else if let Some(q) = filter_label {
-        let shortcuts = if view.help || view.detail {
-            format!(
-                "[Filter: \"{q}\" (c to clear)] | q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
-            )
+        let shortcuts = if view.help {
+            format!("[Filter: \"{q}\" (c to clear)] | q quit | Up/Dn / PgUp/PgDn scroll text")
+        } else if view.detail {
+            if view.tab == Tab::CpuMemory {
+                format!(
+                    "[Filter: \"{q}\" (c to clear)] | q quit | Up/Dn / PgUp/PgDn scroll text | Enter returns"
+                )
+            } else {
+                format!(
+                    "[Filter: \"{q}\" (c to clear)] | q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
+                )
+            }
         } else if view.tab == Tab::CpuMemory {
             format!(
-                "[Filter: \"{q}\" (c to clear)] | q quit | Tab / 1-4 tab | ? help | Enter detail"
+                "[Filter: \"{q}\" (c to clear)] | q quit | Tab / 1-4 tab | ? help | Enter detail | Up/Down scroll"
             )
         } else {
             format!(
@@ -631,10 +644,16 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         };
         frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     } else {
-        let shortcuts = if view.help || view.detail {
-            "q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
+        let shortcuts = if view.help {
+            "q quit | Up/Dn / PgUp/PgDn scroll text"
+        } else if view.detail {
+            if view.tab == Tab::CpuMemory {
+                "q quit | Up/Dn / PgUp/PgDn scroll text | Enter returns"
+            } else {
+                "q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
+            }
         } else if view.tab == Tab::CpuMemory {
-            "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail"
+            "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
         } else {
             "q quit | / search | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
         };
@@ -760,7 +779,7 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
         return;
     }
     if view.tab == Tab::CpuMemory {
-        draw_cpu_mem(frame, &update.snapshot, layout[1]);
+        draw_cpu_mem(frame, &update.snapshot, view.scroll, layout[1]);
         return;
     }
     if view.tab == Tab::Network {
@@ -887,28 +906,125 @@ fn metric_display(m: Option<&MetricObservation<MetricValue>>) -> String {
     m.map_or_else(|| "not probed".to_owned(), value_text)
 }
 
-/// Formats a byte rate (bytes per second) into a human-readable throughput string.
-fn format_rate_value(value: f64) -> String {
+/// Formats a non-negative finite byte quantity or rate with binary (1024) scaling.
+fn format_binary_scaled(value: f64, units: &[&str; 5]) -> String {
     if !value.is_finite() || value < 0.0 {
         return "-".to_owned();
     }
-    if value < 1024.0 {
-        format!("{value:.0} B/s")
-    } else if value < 1024.0 * 1024.0 {
-        format!("{:.1} KB/s", value / 1024.0)
-    } else if value < 1024.0 * 1024.0 * 1024.0 {
-        format!("{:.1} MB/s", value / (1024.0 * 1024.0))
+    let value = if value == 0.0 { 0.0 } else { value };
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    const TIB: f64 = GIB * 1024.0;
+    if value < KIB {
+        format!("{value:.0} {}", units[0])
+    } else if value < MIB {
+        format!("{:.1} {}", value / KIB, units[1])
+    } else if value < GIB {
+        format!("{:.1} {}", value / MIB, units[2])
+    } else if value < TIB {
+        format!("{:.1} {}", value / GIB, units[3])
     } else {
-        format!("{:.1} GB/s", value / (1024.0 * 1024.0 * 1024.0))
+        format!("{:.1} {}", value / TIB, units[4])
+    }
+}
+
+/// Formats a byte rate (bytes per second) into a human-readable throughput string.
+fn format_rate_value(value: f64) -> String {
+    format_binary_scaled(value, &["B/s", "KB/s", "MB/s", "GB/s", "TB/s"])
+}
+
+/// Formats a cumulative byte count into a human-readable IEC quantity string.
+fn format_bytes_value(value: f64) -> String {
+    format_binary_scaled(value, &["B", "KiB", "MiB", "GiB", "TiB"])
+}
+
+/// Returns the available numeric value of a metric observation, if present.
+fn metric_as_f64(metric: &MetricObservation<MetricValue>) -> Option<f64> {
+    match metric.state().available_value() {
+        Some(MetricValue::Number(num)) => Some(*num),
+        Some(MetricValue::Integer(int)) => Some(*int as f64),
+        None => None,
     }
 }
 
 /// Extracts and formats a metric value as a transfer rate if available.
 fn format_metric_rate(metric: &MetricObservation<MetricValue>) -> String {
-    match metric.state().available_value() {
-        Some(MetricValue::Number(num)) => format_rate_value(*num),
-        Some(MetricValue::Integer(int)) => format_rate_value(*int as f64),
-        None => "-".to_owned(),
+    metric_as_f64(metric).map_or_else(|| "-".to_owned(), format_rate_value)
+}
+
+/// Extracts and formats a metric value as a binary byte total if available.
+fn format_metric_bytes(metric: &MetricObservation<MetricValue>) -> String {
+    metric_as_f64(metric).map_or_else(|| "-".to_owned(), format_bytes_value)
+}
+
+/// Grouped `/proc/diskstats` observations for a single block device.
+#[derive(Default)]
+struct DiskIoRow<'a> {
+    device: &'a str,
+    read_rate: Option<&'a MetricObservation<MetricValue>>,
+    write_rate: Option<&'a MetricObservation<MetricValue>>,
+    read_bytes: Option<&'a MetricObservation<MetricValue>>,
+    write_bytes: Option<&'a MetricObservation<MetricValue>>,
+}
+
+/// Collects per-device Disk I/O metric groups sorted deterministically by device name.
+fn collect_disk_io_rows(snapshot: &Snapshot) -> Vec<DiskIoRow<'_>> {
+    enum DiskField {
+        ReadRate,
+        WriteRate,
+        ReadBytes,
+        WriteBytes,
+    }
+
+    const SUFFIXES: [(&str, DiskField); 4] = [
+        (".read.bytes_per_second", DiskField::ReadRate),
+        (".write.bytes_per_second", DiskField::WriteRate),
+        (".read.bytes", DiskField::ReadBytes),
+        (".write.bytes", DiskField::WriteBytes),
+    ];
+
+    let mut rows = BTreeMap::<&str, DiskIoRow<'_>>::new();
+    for metric in snapshot.metrics() {
+        let Some(rest) = metric.name().strip_prefix("disk.") else {
+            continue;
+        };
+        for (suffix, field) in &SUFFIXES {
+            if let Some(dev) = rest.strip_suffix(suffix).filter(|d| !d.is_empty()) {
+                let row = rows.entry(dev).or_insert_with(|| DiskIoRow {
+                    device: dev,
+                    ..DiskIoRow::default()
+                });
+                match field {
+                    DiskField::ReadRate => row.read_rate = Some(metric),
+                    DiskField::WriteRate => row.write_rate = Some(metric),
+                    DiskField::ReadBytes => row.read_bytes = Some(metric),
+                    DiskField::WriteBytes => row.write_bytes = Some(metric),
+                }
+                break;
+            }
+        }
+    }
+    rows.into_values().collect()
+}
+
+/// Formats a rate metric for detail view, preserving typed unavailability reasons.
+fn format_disk_rate_detail(metric: Option<&MetricObservation<MetricValue>>) -> String {
+    match metric {
+        Some(obs) if obs.state().available_value().is_some() => format_metric_rate(obs),
+        Some(obs) => value_text(obs),
+        None => "not probed".to_owned(),
+    }
+}
+
+/// Formats a byte counter metric for detail view, preserving exact bytes and typed reasons.
+fn format_disk_bytes_detail(metric: Option<&MetricObservation<MetricValue>>) -> String {
+    match metric {
+        Some(obs) if obs.state().available_value().is_some() => {
+            format!("{} ({} B)", format_metric_bytes(obs), value_text(obs))
+        }
+        Some(obs) => value_text(obs),
+        None => "not probed".to_owned(),
     }
 }
 
@@ -1025,6 +1141,40 @@ fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
 
     let net_devs = metric_display(find_metric(snapshot, "network.state"));
     let disk_devs = metric_display(find_metric(snapshot, "disk.state"));
+    let disk_rows = collect_disk_io_rows(snapshot);
+    let disk_section = if disk_rows.is_empty() {
+        format!(
+            "\n\n--- Block Devices / Disk I/O (/proc/diskstats) ---\n{}",
+            format_disk_io_unavailable_message(snapshot)
+        )
+    } else {
+        let disk_source_status = match find_metric(snapshot, "disk.state") {
+            Some(obs) => match obs.state().available_value() {
+                Some(MetricValue::Integer(n)) => {
+                    let noun = device_noun(usize::try_from(*n).unwrap_or(2));
+                    format!("available ({n} {noun})")
+                }
+                Some(MetricValue::Number(n)) => format!("available ({n} devices)"),
+                None => value_text(obs),
+            },
+            None => "not probed".to_owned(),
+        };
+        let mut section = format!(
+            "\n\n--- Block Devices / Disk I/O (/proc/diskstats) ---\nSource Status: {disk_source_status}"
+        );
+        for row in &disk_rows {
+            let read_rate = format_disk_rate_detail(row.read_rate);
+            let write_rate = format_disk_rate_detail(row.write_rate);
+            let read_total = format_disk_bytes_detail(row.read_bytes);
+            let write_total = format_disk_bytes_detail(row.write_bytes);
+            let _ = write!(
+                section,
+                "\n\nDevice: {}\nRead Rate: {read_rate} (total: {read_total})\nWrite Rate: {write_rate} (total: {write_total})",
+                row.device
+            );
+        }
+        section
+    };
 
     format!(
         "--- CPU Subsystem (/proc/stat) ---\n\
@@ -1044,7 +1194,7 @@ fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
          PSI I/O Stall (avg10): {psi_io}\n\
          Active Network Devices: {net_devs}\n\
          Active Disk Devices: {disk_devs}\n\
-         Collector Monotonic: {}ns",
+         Collector Monotonic: {}ns{disk_section}",
         snapshot.monotonic_ns()
     )
 }
@@ -1219,8 +1369,245 @@ fn format_network_detail(
     detail
 }
 
+/// Returns singular/plural noun for a block-device count.
+const fn device_noun(count: usize) -> &'static str {
+    if count == 1 {
+        "device"
+    } else {
+        "devices"
+    }
+}
+
+/// Consolidated rate-calculation status across observed block devices.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DiskRateStatus {
+    Available,
+    AwaitingBaseline,
+    Unavailable(&'static str),
+}
+
+/// Returns an explicit availability/empty explanation when no Disk I/O rows exist.
+fn format_disk_io_unavailable_message(snapshot: &Snapshot) -> String {
+    match find_metric(snapshot, "disk.state") {
+        Some(obs) => match obs.state().available_value() {
+            Some(MetricValue::Integer(0)) => {
+                "No block devices observed in /proc/diskstats.".to_owned()
+            }
+            Some(_) => "Block-device entries omitted or absent from this snapshot.".to_owned(),
+            None => format!(
+                "Disk I/O {}: {}",
+                obs.state().name(),
+                obs.state().reason().unwrap_or("no reason reported")
+            ),
+        },
+        None => "Block-device I/O telemetry not probed in this snapshot.".to_owned(),
+    }
+}
+
+/// Classifies aggregate rate availability across block-device rows.
+fn classify_disk_rate_status(disks: &[DiskIoRow<'_>]) -> DiskRateStatus {
+    let any_rate_available = disks.iter().any(|row| {
+        row.read_rate
+            .and_then(metric_as_f64)
+            .or_else(|| row.write_rate.and_then(metric_as_f64))
+            .is_some()
+    });
+    if any_rate_available {
+        return DiskRateStatus::Available;
+    }
+    let mut awaiting = false;
+    let mut error_label: Option<&'static str> = None;
+    for obs in disks
+        .iter()
+        .flat_map(|row| [row.read_rate, row.write_rate])
+        .flatten()
+    {
+        match obs.state() {
+            MetricState::TemporarilyUnavailable(_) => awaiting = true,
+            MetricState::Error(_) => error_label = Some("rate error"),
+            MetricState::PermissionDenied(_) if error_label.is_none() => {
+                error_label = Some("rate denied");
+            }
+            MetricState::Unsupported(_) | MetricState::Disabled(_) | MetricState::Stale(_)
+                if error_label.is_none() =>
+            {
+                error_label = Some("rate unavailable");
+            }
+            _ => {}
+        }
+    }
+    if awaiting {
+        DiskRateStatus::AwaitingBaseline
+    } else if let Some(label) = error_label {
+        DiskRateStatus::Unavailable(label)
+    } else {
+        DiskRateStatus::Available
+    }
+}
+
+/// Formats a single-line Disk I/O summary for medium-height CPU & Memory layouts.
+fn format_disk_io_compact_line(snapshot: &Snapshot, disks: &[DiskIoRow<'_>]) -> String {
+    if disks.is_empty() {
+        return format_disk_io_unavailable_message(snapshot);
+    }
+    let noun = device_noun(disks.len());
+    match classify_disk_rate_status(disks) {
+        DiskRateStatus::AwaitingBaseline => {
+            return format!("Disk I/O: {} {noun} (awaiting rate baseline)", disks.len());
+        }
+        DiskRateStatus::Unavailable(label) => {
+            return format!("Disk I/O: {} {noun} ({label})", disks.len());
+        }
+        DiskRateStatus::Available => {}
+    }
+    let lead = disks
+        .iter()
+        .find(|row| {
+            row.read_rate
+                .and_then(metric_as_f64)
+                .or_else(|| row.write_rate.and_then(metric_as_f64))
+                .is_some()
+        })
+        .unwrap_or(&disks[0]);
+    let read_rate = lead
+        .read_rate
+        .map_or_else(|| "-".into(), format_metric_rate);
+    let write_rate = lead
+        .write_rate
+        .map_or_else(|| "-".into(), format_metric_rate);
+    format!(
+        "Disk I/O ({} {noun}): {} R {read_rate} / W {write_rate}",
+        disks.len(),
+        lead.device
+    )
+}
+
+/// Renders the scrollable Block Devices / Disk I/O panel inside Tab 2 (`CPU/Mem`).
+fn draw_disk_io_panel(
+    frame: &mut Frame<'_>,
+    snapshot: &Snapshot,
+    disks: &[DiskIoRow<'_>],
+    scroll: usize,
+    area: Rect,
+) {
+    if disks.is_empty() {
+        let msg = format_disk_io_unavailable_message(snapshot);
+        frame.render_widget(
+            Paragraph::new(msg).wrap(Wrap { trim: true }).block(
+                Block::default()
+                    .title(" Disk I/O (/proc/diskstats) ")
+                    .borders(Borders::ALL),
+            ),
+            area,
+        );
+        return;
+    }
+
+    let visible_cap = area.height.saturating_sub(3).max(1) as usize;
+    let total = disks.len();
+    let start = clamp_scroll(scroll, total);
+    let end = start.saturating_add(visible_cap).min(total);
+    let (rate_tag, short_tag) = match classify_disk_rate_status(disks) {
+        DiskRateStatus::Available => ("", ""),
+        DiskRateStatus::AwaitingBaseline => (" [awaiting rate baseline]", " [baseline]"),
+        DiskRateStatus::Unavailable("rate error") => (" [rate error]", " [rate err]"),
+        DiskRateStatus::Unavailable("rate denied") => (" [rate denied]", " [denied]"),
+        DiskRateStatus::Unavailable(_) => (" [rate unavailable]", " [no rate]"),
+    };
+    let full_title = if total > visible_cap || start > 0 {
+        format!(
+            " Disk I/O {}..{} of {} (/proc/diskstats){rate_tag} ",
+            start + 1,
+            end,
+            total
+        )
+    } else {
+        let noun = device_noun(total);
+        format!(" Disk I/O ({total} {noun}, /proc/diskstats){rate_tag} ")
+    };
+    let title = if full_title.len() <= area.width as usize {
+        full_title
+    } else if total > visible_cap || start > 0 {
+        format!(" Disk I/O {}..{} of {}{short_tag} ", start + 1, end, total)
+    } else {
+        let noun = device_noun(total);
+        format!(" Disk I/O ({total} {noun}){short_tag} ")
+    };
+
+    let (headers, widths, table_rows): (Vec<&str>, Vec<Constraint>, Vec<Row>) = if area.width >= 70
+    {
+        (
+            vec![
+                "Device",
+                "Read Rate",
+                "Write Rate",
+                "Total Read",
+                "Total Write",
+            ],
+            vec![
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+            ],
+            disks
+                .iter()
+                .skip(start)
+                .take(visible_cap)
+                .map(|disk| {
+                    Row::new(vec![
+                        disk.device.to_string(),
+                        disk.read_rate
+                            .map_or_else(|| "-".to_owned(), format_metric_rate),
+                        disk.write_rate
+                            .map_or_else(|| "-".to_owned(), format_metric_rate),
+                        disk.read_bytes
+                            .map_or_else(|| "-".to_owned(), format_metric_bytes),
+                        disk.write_bytes
+                            .map_or_else(|| "-".to_owned(), format_metric_bytes),
+                    ])
+                })
+                .collect(),
+        )
+    } else {
+        let headers = if area.width >= 48 {
+            vec!["Device", "Read/s", "Write/s"]
+        } else {
+            vec!["Dev", "R/s", "W/s"]
+        };
+        (
+            headers,
+            vec![
+                Constraint::Percentage(34),
+                Constraint::Percentage(33),
+                Constraint::Percentage(33),
+            ],
+            disks
+                .iter()
+                .skip(start)
+                .take(visible_cap)
+                .map(|disk| {
+                    Row::new(vec![
+                        disk.device.to_string(),
+                        disk.read_rate
+                            .map_or_else(|| "-".to_owned(), format_metric_rate),
+                        disk.write_rate
+                            .map_or_else(|| "-".to_owned(), format_metric_rate),
+                    ])
+                })
+                .collect(),
+        )
+    };
+
+    let table = Table::new(table_rows, widths)
+        .header(Row::new(headers).style(Style::default().add_modifier(Modifier::BOLD)))
+        .block(Block::default().title(title).borders(Borders::ALL));
+    frame.render_widget(table, area);
+}
+
 /// Renders the dedicated CPU and Memory overview dashboard tab.
-fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
+fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, scroll: usize, area: Rect) {
     let cpu_busy = find_metric(snapshot, "cpu.busy.percent");
     let (cpu_pct, cpu_label) = match cpu_busy.map(MetricObservation::state) {
         Some(MetricState::Available(val)) => {
@@ -1366,13 +1753,80 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
         return;
     }
 
-    let rows = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Length(3),
-        Constraint::Length(4),
-        Constraint::Min(4),
-    ])
-    .split(area);
+    let disk_rows = collect_disk_io_rows(snapshot);
+
+    let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
+    let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
+    let psi_io = metric_display(find_metric(snapshot, "pressure.io.some.avg10.percent"));
+
+    let load1 = metric_display(find_metric(snapshot, "load.1m"));
+    let load5 = metric_display(find_metric(snapshot, "load.5m"));
+    let load15 = metric_display(find_metric(snapshot, "load.15m"));
+    let uptime =
+        match find_metric(snapshot, "uptime.seconds").and_then(|m| m.state().available_value()) {
+            Some(MetricValue::Number(s)) => format_uptime_duration(*s),
+            Some(MetricValue::Integer(s)) => format_uptime_duration(*s as f64),
+            _ => metric_display(find_metric(snapshot, "uptime.seconds")),
+        };
+
+    let mut psi_load_lines = if area.width >= 70 {
+        vec![
+            Line::from(format!(
+                "PSI Stall avg10: CPU {psi_cpu}  │  Mem {psi_mem}  │  I/O {psi_io}"
+            )),
+            Line::from(format!(
+                "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}"
+            )),
+        ]
+    } else if area.width >= 48 {
+        vec![
+            Line::from(format!(
+                "PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | IO {psi_io}"
+            )),
+            Line::from(format!("Load: {load1} {load5} {load15} │ Up: {uptime}")),
+        ]
+    } else {
+        vec![
+            Line::from(format!("PSI: C:{psi_cpu} M:{psi_mem} IO:{psi_io}")),
+            Line::from(format!("Load: {load1} {load5} {load15}")),
+            Line::from(format!("Uptime: {uptime}")),
+        ]
+    };
+
+    let inner_width = area.width.saturating_sub(2);
+    let psi_base_lines = Paragraph::new(psi_load_lines.clone())
+        .wrap(Wrap { trim: true })
+        .line_count(inner_width) as u16;
+    let psi_height = psi_base_lines.saturating_add(2);
+    // Reserve 10 fixed rows (CPU 3, Mem/Swap 3, CPU Ticks 4) + psi_height + min 5 for Disk I/O.
+    let show_disk_panel = area.height >= 10_u16.saturating_add(psi_height).saturating_add(5);
+    if !show_disk_panel {
+        let compact = Line::from(format_disk_io_compact_line(snapshot, &disk_rows));
+        let compact_lines = Paragraph::new(compact.clone())
+            .wrap(Wrap { trim: true })
+            .line_count(inner_width) as u16;
+        if area.height.saturating_sub(12) >= psi_base_lines.saturating_add(compact_lines) {
+            psi_load_lines.push(compact);
+        }
+    }
+
+    let constraints: Vec<Constraint> = if show_disk_panel {
+        vec![
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(4),
+            Constraint::Length(psi_height),
+            Constraint::Min(5),
+        ]
+    } else {
+        vec![
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(4),
+            Constraint::Min(4),
+        ]
+    };
+    let rows = Layout::vertical(constraints).split(area);
 
     frame.render_widget(cpu_gauge, rows[0]);
 
@@ -1418,44 +1872,6 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
     );
     frame.render_widget(ticks_paragraph, rows[2]);
 
-    let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
-    let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
-    let psi_io = metric_display(find_metric(snapshot, "pressure.io.some.avg10.percent"));
-
-    let load1 = metric_display(find_metric(snapshot, "load.1m"));
-    let load5 = metric_display(find_metric(snapshot, "load.5m"));
-    let load15 = metric_display(find_metric(snapshot, "load.15m"));
-    let uptime =
-        match find_metric(snapshot, "uptime.seconds").and_then(|m| m.state().available_value()) {
-            Some(MetricValue::Number(s)) => format_uptime_duration(*s),
-            Some(MetricValue::Integer(s)) => format_uptime_duration(*s as f64),
-            _ => metric_display(find_metric(snapshot, "uptime.seconds")),
-        };
-
-    let psi_load_lines = if area.width >= 70 {
-        vec![
-            Line::from(format!(
-                "PSI Stall avg10: CPU {psi_cpu}  │  Mem {psi_mem}  │  I/O {psi_io}"
-            )),
-            Line::from(format!(
-                "Load Average: 1m: {load1}  5m: {load5}  15m: {load15}  │  Uptime: {uptime}"
-            )),
-        ]
-    } else if area.width >= 48 {
-        vec![
-            Line::from(format!(
-                "PSI avg10: CPU {psi_cpu} | Mem {psi_mem} | IO {psi_io}"
-            )),
-            Line::from(format!("Load: {load1} {load5} {load15} │ Up: {uptime}")),
-        ]
-    } else {
-        vec![
-            Line::from(format!("PSI: C:{psi_cpu} M:{psi_mem} IO:{psi_io}")),
-            Line::from(format!("Load: {load1} {load5} {load15}")),
-            Line::from(format!("Uptime: {uptime}")),
-        ]
-    };
-
     let psi_load_paragraph = Paragraph::new(psi_load_lines)
         .wrap(Wrap { trim: true })
         .block(
@@ -1464,6 +1880,10 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, area: Rect) {
                 .borders(Borders::ALL),
         );
     frame.render_widget(psi_load_paragraph, rows[3]);
+
+    if show_disk_panel {
+        draw_disk_io_panel(frame, snapshot, &disk_rows, scroll, rows[4]);
+    }
 }
 
 /// Renders the dedicated Network overview dashboard tab.
@@ -3591,5 +4011,331 @@ mod tests {
         let ebpf_empty = render(120, 30, &mut view);
         assert!(ebpf_empty.contains("No eBPF events match filter \"no_such_event\""));
         assert!(ebpf_empty.contains("Events (0 of 2) [Filter: \"no_such_event\"]"));
+    }
+
+    #[test]
+    fn format_bytes_value_and_binary_scaling() {
+        assert_eq!(format_bytes_value(0.0), "0 B");
+        assert_eq!(format_bytes_value(-0.0), "0 B");
+        assert_eq!(format_rate_value(-0.0), "0 B/s");
+        assert_eq!(format_bytes_value(512.0), "512 B");
+        assert_eq!(format_bytes_value(1024.0), "1.0 KiB");
+        assert_eq!(format_bytes_value(1_048_576.0), "1.0 MiB");
+        assert_eq!(format_bytes_value(2_147_483_648.0), "2.0 GiB");
+        assert_eq!(format_bytes_value(2.0 * 1_099_511_627_776.0), "2.0 TiB");
+        assert_eq!(format_rate_value(1_099_511_627_776.0), "1.0 TB/s");
+        assert_eq!(format_bytes_value(-1.0), "-");
+        assert_eq!(format_bytes_value(f64::NAN), "-");
+        assert_eq!(format_bytes_value(f64::INFINITY), "-");
+    }
+
+    #[test]
+    fn collect_disk_io_rows_handles_dotted_names_and_ignores_state() {
+        let mut snapshot = Snapshot::new(0, 10, SnapshotMode::Fixture);
+        for (name, unit, val) in [
+            ("disk.state", Unit::Count, MetricValue::Integer(2)),
+            (
+                "disk.nvme0n1.read.bytes",
+                Unit::Bytes,
+                MetricValue::Integer(1_048_576),
+            ),
+            (
+                "disk.nvme0n1.read.bytes_per_second",
+                Unit::BytesPerSecond,
+                MetricValue::Number(2048.0),
+            ),
+            (
+                "disk.nvme0n1.write.bytes",
+                Unit::Bytes,
+                MetricValue::Integer(2_097_152),
+            ),
+            (
+                "disk.nvme0n1.write.bytes_per_second",
+                Unit::BytesPerSecond,
+                MetricValue::Number(4096.0),
+            ),
+            (
+                "disk.loop.0.read.bytes",
+                Unit::Bytes,
+                MetricValue::Integer(512),
+            ),
+            (
+                "disk.loop.0.write.bytes",
+                Unit::Bytes,
+                MetricValue::Integer(0),
+            ),
+        ] {
+            snapshot
+                .push(
+                    MetricObservation::new(
+                        name,
+                        "proc.diskstats",
+                        unit,
+                        0,
+                        MetricState::Available(val),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+
+        let rows = collect_disk_io_rows(&snapshot);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].device, "loop.0");
+        assert!(rows[0].read_bytes.is_some());
+        assert!(rows[0].read_rate.is_none());
+        assert_eq!(rows[1].device, "nvme0n1");
+        assert_eq!(
+            rows[1].read_rate.map(format_metric_rate).as_deref(),
+            Some("2.0 KB/s")
+        );
+        assert_eq!(
+            rows[1].write_bytes.map(format_metric_bytes).as_deref(),
+            Some("2.0 MiB")
+        );
+    }
+
+    #[test]
+    fn cpu_memory_tab_renders_disk_io_panel_scrolling_and_detail_modal() {
+        let mut snapshot = Snapshot::new(500, 25, SnapshotMode::Fixture);
+        snapshot
+            .push(
+                MetricObservation::new(
+                    "disk.state",
+                    "proc.diskstats",
+                    Unit::Count,
+                    500,
+                    MetricState::Available(MetricValue::Integer(4)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        for (dev, r_bps, w_bps, r_tot, w_tot) in [
+            ("dm-0", 1_048_576.0, 524_288.0, 10_485_760, 5_242_880),
+            ("loop.0", 0.0, 0.0, 4096, 0),
+            (
+                "nvme0n1",
+                52_428_800.0,
+                10_485_760.0,
+                1_073_741_824,
+                536_870_912,
+            ),
+            ("sda", 2048.0, 4096.0, 65536, 131_072),
+        ] {
+            for (suffix, unit, state) in [
+                (
+                    "read.bytes_per_second",
+                    Unit::BytesPerSecond,
+                    MetricState::Available(MetricValue::Number(r_bps)),
+                ),
+                (
+                    "write.bytes_per_second",
+                    Unit::BytesPerSecond,
+                    MetricState::Available(MetricValue::Number(w_bps)),
+                ),
+                (
+                    "read.bytes",
+                    Unit::Bytes,
+                    MetricState::Available(MetricValue::Integer(r_tot)),
+                ),
+                (
+                    "write.bytes",
+                    Unit::Bytes,
+                    MetricState::Available(MetricValue::Integer(w_tot)),
+                ),
+            ] {
+                snapshot
+                    .push(
+                        MetricObservation::new(
+                            format!("disk.{dev}.{suffix}"),
+                            "proc.diskstats",
+                            unit,
+                            500,
+                            state,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+        }
+
+        let mut view = View {
+            update: Some(Update {
+                snapshot,
+                network: None,
+                ebpf: None,
+                collected_at: Instant::now(),
+                skipped_updates: 0,
+            }),
+            tab: Tab::CpuMemory,
+            fixture: true,
+            ..View::default()
+        };
+
+        // 1. Wide layout (>= 19 body rows, width 120) renders full Disk I/O table
+        let wide = render(120, 30, &mut view);
+        assert!(wide.contains("Disk I/O (4 devices, /proc/diskstats)"));
+        assert!(wide.contains("nvme0n1"));
+        assert!(wide.contains("50.0 MB/s"));
+        assert!(wide.contains("10.0 MB/s"));
+        assert!(wide.contains("1.0 GiB"));
+        assert!(wide.contains("512.0 MiB"));
+        assert!(wide.contains("loop.0"));
+
+        // 2. Narrow layout (< 70 width) and medium-short layout (height 20 => body 16)
+        let narrow = render(50, 30, &mut view);
+        assert!(narrow.contains("Disk I/O (4 devices, /proc/diskstats)"));
+        assert!(narrow.contains("nvme0n1"));
+
+        let narrow_40 = render(40, 30, &mut view);
+        assert!(narrow_40.contains("Uptime"));
+        assert!(narrow_40.contains("Disk I/O (4 devices"));
+
+        let medium_short = render(100, 20, &mut view);
+        assert!(medium_short.contains("Disk I/O (4 devices): dm-0 R 1.0 MB/s / W 512.0 KB/s"));
+
+        // Narrow medium-height suppresses compact line that would wrap & clip mid-rate
+        let narrow_compact = render(45, 20, &mut view);
+        assert!(narrow_compact.contains("Uptime"));
+        assert!(!narrow_compact.contains("dm-0 R 1.0 MB/s"));
+
+        // 3. Tab::CpuMemory scrolling bounds cleanly against disk device count (4 => max 3)
+        view.scroll = 1;
+        let mid_scrolled = render(120, 24, &mut view);
+        assert!(mid_scrolled.contains("Disk I/O 2..4 of 4 (/proc/diskstats)"));
+        assert!(mid_scrolled.contains("loop.0"));
+        assert!(!mid_scrolled.contains("dm-0"));
+
+        view.scroll_by(10);
+        assert_eq!(view.scroll, 3);
+        let scrolled = render(120, 23, &mut view);
+        assert!(scrolled.contains("Disk I/O 4..4 of 4 (/proc/diskstats)"));
+        assert!(scrolled.contains("sda"));
+        assert!(!scrolled.contains("dm-0"));
+        view.scroll = 0;
+
+        // 4. Detail modal shows Section 5 Block Devices / Disk I/O with human + exact bytes
+        view.detail = true;
+        view.text_scroll = 2;
+        assert!(!view.handle_key(event::KeyEvent::from(KeyCode::Char('n'))));
+        assert_eq!(view.text_scroll, 2);
+        assert_eq!(view.scroll, 0);
+        let detail_out = render(100, 60, &mut view);
+        assert!(detail_out.contains("--- Block Devices / Disk I/O (/proc/diskstats) ---"));
+        assert!(detail_out.contains("Source Status: available (4 devices)"));
+        assert!(detail_out.contains("Device: nvme0n1"));
+        assert!(detail_out.contains("Read Rate: 50.0 MB/s (total: 1.0 GiB (1073741824 B))"));
+        assert!(detail_out.contains("Write Rate: 10.0 MB/s (total: 512.0 MiB (536870912 B))"));
+        assert!(!detail_out.contains("n/p item"));
+        view.text_scroll = 0;
+
+        // 5. Sample #1 awaiting rate baseline marks status truthfully (never zero!)
+        let mut first_snap = Snapshot::new(100, 5, SnapshotMode::Fixture);
+        first_snap
+            .push(
+                MetricObservation::new(
+                    "disk.state",
+                    "proc.diskstats",
+                    Unit::Count,
+                    100,
+                    MetricState::Available(MetricValue::Integer(1)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        first_snap
+            .push(
+                MetricObservation::new(
+                    "disk.sda.read.bytes_per_second",
+                    "proc.diskstats",
+                    Unit::BytesPerSecond,
+                    100,
+                    MetricState::TemporarilyUnavailable(
+                        "rate requires a second successful observation".into(),
+                    ),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        first_snap
+            .push(
+                MetricObservation::new(
+                    "disk.sda.read.bytes",
+                    "proc.diskstats",
+                    Unit::Bytes,
+                    100,
+                    MetricState::Available(MetricValue::Integer(4096)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        view.detail = false;
+        view.update.as_mut().unwrap().snapshot = first_snap;
+        let awaiting = render(110, 30, &mut view);
+        assert!(awaiting.contains("Disk I/O (1 device, /proc/diskstats) [awaiting rate baseline]"));
+        assert!(awaiting.contains("4.0 KiB"));
+        let awaiting_narrow = render(50, 30, &mut view);
+        assert!(awaiting_narrow.contains("Disk I/O (1 device) [baseline]"));
+        view.detail = true;
+        let awaiting_detail = render(110, 45, &mut view);
+        assert!(awaiting_detail.contains("Source Status: available (1 device)"));
+        assert!(awaiting_detail.contains("rate requires a second successful observation"));
+
+        // 6. Rate counter reset / error surfaces clear status cue
+        let mut rate_err_snap = Snapshot::new(150, 5, SnapshotMode::Fixture);
+        rate_err_snap
+            .push(
+                MetricObservation::new(
+                    "disk.state",
+                    "proc.diskstats",
+                    Unit::Count,
+                    150,
+                    MetricState::Available(MetricValue::Integer(1)),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        rate_err_snap
+            .push(
+                MetricObservation::new(
+                    "disk.sda.read.bytes_per_second",
+                    "proc.diskstats",
+                    Unit::BytesPerSecond,
+                    150,
+                    MetricState::Error("transfer counter decreased; baseline reset".into()),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        view.detail = false;
+        view.update.as_mut().unwrap().snapshot = rate_err_snap;
+        let rate_err = render(100, 30, &mut view);
+        assert!(rate_err.contains("[rate error]"));
+        let rate_err_compact = render(100, 20, &mut view);
+        assert!(rate_err_compact.contains("Disk I/O: 1 device (rate error)"));
+
+        // 7. Unavailable / permission denied /proc/diskstats renders explicit reason cleanly
+        let mut denied_snap = Snapshot::new(200, 5, SnapshotMode::Fixture);
+        denied_snap
+            .push(
+                MetricObservation::new(
+                    "disk.state",
+                    "proc.diskstats",
+                    Unit::Count,
+                    200,
+                    MetricState::PermissionDenied("diskstats access denied".into()),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        view.detail = false;
+        view.update.as_mut().unwrap().snapshot = denied_snap;
+        let denied = render(100, 30, &mut view);
+        assert!(denied.contains("Disk I/O permission_denied: diskstats access denied"));
+        view.detail = true;
+        let denied_detail = render(100, 45, &mut view);
+        assert!(denied_detail.contains("--- Block Devices / Disk I/O (/proc/diskstats) ---"));
+        assert!(denied_detail.contains("Disk I/O permission_denied: diskstats access denied"));
+        assert!(!denied_detail.contains("Source Status: permission_denied"));
     }
 }
