@@ -326,3 +326,23 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Completely backward-compatible additive feature. `#![forbid(unsafe_code)]` preserved across all crates.
 
+## ADR-038 — Block-device Disk I/O panel and detail inspector on CPU/Memory tab (2026-11-11)
+
+**Status:** implemented in Task AG-22.
+
+**Context:** `LinuxCollector` already collects per-device `/proc/diskstats` counters and derived read/write rates (`disk.state`, `disk.<dev>.{read,write}.{bytes,bytes_per_second}`), and `Tab 2` (`2: CPU/Mem`) exposes CPU I/O wait ticks and PSI I/O stall percentages (`pressure.io.some.avg10.percent`). However, `Tab 2` previously omitted block-device throughput tables, and its `Enter` detail modal showed only `Active Disk Devices: {disk.state}`, requiring operators investigating I/O contention to switch to `Tab 1` and search raw dotted metric names. Additionally, `View::filtered_item_count` for `Tab::CpuMemory` previously counted raw snapshot metrics rather than displayed items.
+
+**Decision:**
+1. Extract [`collect_disk_io_rows`](../apps/lidash/src/tui.rs) in `apps/lidash/src/tui.rs` to group `disk.<dev>.{read,write}.{bytes,bytes_per_second}` observations deterministically in `BTreeMap` device order using prefix/suffix stripping (`strip_prefix("disk.")` + exact `.read.bytes` / `.write.bytes` / `.bytes_per_second` suffixes), supporting device names containing dots (e.g. `loop.0`, `nvme0n1p1`) while excluding `disk.state`.
+2. Add shared binary unit formatters (`format_binary_scaled`, `format_bytes_value`, `metric_as_f64`, `format_metric_bytes`) so Disk I/O throughput (`B/s`–`TB/s`) and cumulative byte totals (`B`–`TiB`) render consistently across wide and narrow terminals without inventing zeros for unavailable metrics.
+3. Upgrade `draw_cpu_mem`:
+   - On standard/tall terminals (`area.height >= 15 + psi_height` in body, i.e., `>= 19` when unwrapped 2-line `PSI & Load` on `width >= 48` and `>= 20+` on narrow or wrapped layouts), render a dedicated scrollable `Disk I/O (/proc/diskstats)` table below `PSI & Load` (`Device`, `Read Rate`, `Write Rate`, `Total Read`, `Total Write` on `width >= 70`; `Device`/`Read/s`/`Write/s` on `48 <= width < 70`; `Dev`/`R/s`/`W/s` on `width < 48`).
+   - Classify rate status via `classify_disk_rate_status` and surface `[awaiting rate baseline]` (`[baseline]` when the full title exceeds panel width) for initial samples, `[rate error]` / `[rate denied]` / `[rate unavailable]` when rate computation fails, and explicit typed `disk.state` failure messages when `/proc/diskstats` is unsupported, denied, or empty.
+   - On shorter medium terminals (`psi_base_lines + compact_lines <= area.height - 12`, i.e., `15 <= area.height < 19` on `width >= 48` when the summary fits cleanly on one line), append a concise `Disk I/O` summary inside `PSI & Load`, suppressing it when wrapping would clip metrics.
+4. Extend `format_cpu_memory_detail` with a fifth section (`--- Block Devices / Disk I/O (/proc/diskstats) ---`) reporting `Source Status: available (<n> device|devices)` (or the typed `disk.state` unavailable explanation without duplication) and per-device read/write rates, cumulative human/raw byte totals, and typed unavailability reasons.
+5. Align `View::filtered_item_count` on `Tab::CpuMemory` with `collect_disk_io_rows(&update.snapshot).len()` so keyboard scrolling bounds cleanly against displayed block devices, while ignoring `n`/`p` inside Tab 2's host-wide detail modal and Help view so text scroll is preserved.
+
+**Alternatives:** Adding a fifth top-level tab solely for block devices would fragment CPU I/O-wait and PSI I/O stall correlation. Surfacing `/proc/diskstats` directly alongside CPU ticks and PSI I/O pressure keeps symptom correlation in one view with zero schema or collector overhead.
+
+**Migration / limits:** Purely additive UI/presentation slice over existing `/proc/diskstats` snapshot metrics. `#![forbid(unsafe_code)]` and read-only guarantees remain unchanged.
+

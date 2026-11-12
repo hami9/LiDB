@@ -394,3 +394,35 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `python scripts/check_docs.py`: PASS (157 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests in 11.398s)
 
+## 2026-11-11T21:45:35Z — Task AG-22: Block-device Disk I/O panel and detail inspector on Tab 2
+
+- **Metadata**:
+  - Branch: `agent/antigravity/ag-22-disk-io-view` (base: `main` at `05cd76f`, release `v0.0.20`)
+  - Environment: Windows host (`cargo fmt`, `cargo clippy`, `cargo test`, Python doc/CI checks) plus cross-target Linux compilation (`clippy` for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`); native Linux CI/CodeQL pending PR execution.
+  - Changed files: `apps/lidash/src/tui.rs`, `apps/lidash/README.md`, `docs/DECISIONS.md` (ADR-038), `.AGENTS/STATE.md`, `.AGENTS/WORKLOG.md`.
+- **Summary**:
+  - Surfaced already-collected `/proc/diskstats` telemetry (`disk.state` and `disk.<dev>.{read,write}.{bytes,bytes_per_second}`) on `Tab::CpuMemory` (`2: CPU/Mem`) in `apps/lidash/src/tui.rs`:
+    - Extracted shared binary byte/rate formatting helpers (`format_binary_scaled`, `format_rate_value`, `format_bytes_value`, `metric_as_f64`, `format_metric_rate`, `format_metric_bytes`), including `-0.0` normalization and singular/plural `device_noun` formatting.
+    - Implemented deterministic `BTreeMap`-backed block-device aggregation (`DiskIoRow`, `collect_disk_io_rows`) handling arbitrary dotted device names (such as `loop.0` or `nvme0n1`) by suffix matching rather than naive dot splitting.
+    - Extended `View::filtered_item_count` and footer shortcuts so `Up/Down` scrolling on `Tab::CpuMemory` bounds cleanly against the active block-device rows, while ignoring `n`/`p` in Help view and Tab 2's host-wide detail modal so text scroll position stays intact.
+    - Upgraded `draw_cpu_mem` to measure wrapped `PSI & Load` height and wrapped compact `Disk I/O` line height via Ratatui `Paragraph::line_count(inner_width)`, rendering `draw_disk_io_panel` when height permits (`area.height >= 15 + psi_height`) and `format_disk_io_compact_line` when it fits cleanly without narrow-width clipping.
+    - Added `DiskRateStatus` / `classify_disk_rate_status` and `format_disk_io_unavailable_message` so initial samples display `[awaiting rate baseline]` (falling back to `[baseline]` when narrow), counter-reset/error states display `[rate error]` / `[rate denied]` / `[rate unavailable]`, and unavailable `/proc/diskstats` states surface typed explanations without substituting zero.
+    - Extended `format_cpu_memory_detail` with Section 5 (`--- Block Devices / Disk I/O (/proc/diskstats) ---`) showing `Source Status: available (<n> device|devices)` (or the typed `disk.state` fallback without duplicate error text) plus per-device read/write throughput and cumulative totals (`human (exact B)`).
+  - Updated `apps/lidash/README.md` (`2: CPU/Mem` description) and recorded `ADR-038` in `docs/DECISIONS.md`.
+  - Added unit tests `format_bytes_value_and_binary_scaling`, `collect_disk_io_rows_handles_dotted_names_and_ignores_state`, and `cpu_memory_tab_renders_disk_io_panel_scrolling_and_detail_modal` (`134` workspace tests passing).
+- **Five-axis quality-gate review** (incorporating independent static review findings prior to commit):
+  1. Architecture & layering: Core crates (`lidb-core`, `lidb-collect`, `lidb-protocol`) unchanged; UI aggregation and rendering consume existing `Snapshot` metrics cleanly inside `apps/lidash/src/tui.rs`.
+  2. Safety, privacy & security: `#![forbid(unsafe_code)]` preserved; read-only in-memory presentation of already-collected bounded block-device counters (`MAX_DEVICES = 64`), no elevated privileges or system changes.
+  3. Linux runtime & hardware truthfulness: Verified compilation and fixture-backed tests on Windows host plus `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` cross-target `clippy`; no simulated fixture claimed as native Linux hardware evidence; full Linux runner execution & CodeQL occur on GitHub Actions upon PR open.
+  4. Code quality & maintainability: Consolidated duplicate binary scaling into `format_binary_scaled` (normalizing `-0.0`); dynamically measured wrapped `PSI & Load` and compact `Disk I/O` heights via `line_count`; classified awaiting-baseline and rate-error states cleanly (`classify_disk_rate_status`); removed duplicate unavailable text in Section 5 modal; resolved all Medium/Low/Nit review findings (`7ab5dea4-e462-4814-88d2-9ac8e7737421`).
+  5. Test & release gate coverage: Verified post-edit `cargo fmt`, `clippy` (host + both Linux targets), `134` workspace tests, `158` Markdown links, and `23` CI Python tests (`8.872s`); PR titled with `feat(tui):` targets patch release `v0.0.21` (`scripts/release/version.py`).
+- **Verification**:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (134 tests: 37 lidash lib, 0 lidash bin, 10 lidash cli, 52 lidb-collect, 33 lidb-core, 2 lidb-protocol)
+  - `python scripts/check_docs.py`: PASS (158 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests in 8.872s)
+
+
