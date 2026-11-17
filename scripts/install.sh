@@ -154,8 +154,19 @@ if [ -z "$INSTALL_TAG" ]; then
         fi
     fi
     if [ -z "$INSTALL_TAG" ]; then
-        # Fallback to direct redirect header lookup
-        INSTALL_TAG=$($FETCH_CMD -I "https://github.com/$REPO/releases/latest" 2>/dev/null | grep -i "location:" | sed -E 's|.*/tag/(.*)|\1|' | tr -d '\r\n')
+        # Fallback to direct redirect header lookup (only when redirecting to /tag/<tag>)
+        INSTALL_TAG=$($FETCH_CMD -I "https://github.com/$REPO/releases/latest" 2>/dev/null | grep -i "^location:.*/tag/" | tail -n 1 | sed -E 's|.*/tag/([^[:space:]]+).*|\1|' | tr -d '\r\n' || true)
+    fi
+    if [ -z "$INSTALL_TAG" ]; then
+        # Fallback to GitHub releases Atom feed / HTML page (avoids api.github.com IP rate limits and includes pre-releases)
+        RELEASE_FEED=$($FETCH_CMD "https://github.com/$REPO/releases.atom" 2>/dev/null || $FETCH_CMD "https://github.com/$REPO/releases" 2>/dev/null || true)
+        if [ -n "$RELEASE_FEED" ]; then
+            INSTALL_TAG=$(printf "%s" "$RELEASE_FEED" | grep -o "/$REPO/releases/tag/v[0-9A-Za-z._-]*" | head -n 1 | sed "s|/$REPO/releases/tag/||" | tr -d '\r\n' || true)
+        fi
+    fi
+    if [ -z "$INSTALL_TAG" ] && command -v git >/dev/null 2>&1; then
+        # Fallback to local Git release tags when executed inside a repository checkout
+        INSTALL_TAG=$(git tag -l 'v*' --sort=-v:refname 2>/dev/null | head -n 1 | tr -d '\r\n' || true)
     fi
     if [ -z "$INSTALL_TAG" ]; then
         error "Could not automatically determine the latest release tag. Specify with --tag <tag>."

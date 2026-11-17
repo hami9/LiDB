@@ -346,3 +346,20 @@ Restore the terminal before worker cleanup on every return path. Cancellation wa
 
 **Migration / limits:** Purely additive UI/presentation slice over existing `/proc/diskstats` snapshot metrics. `#![forbid(unsafe_code)]` and read-only guarantees remain unchanged.
 
+## ADR-039 — Universal substring search and filtering on Tab 2 Disk I/O view (2026-11-17)
+
+**Status:** implemented in Task AG-23.
+
+**Context:** Task AG-22 surfaced per-device `/proc/diskstats` tables, compact summaries, and Section 5 detail inspection on `Tab 2` (`2: CPU/Mem`). However, `/` search activation remained gated off on `Tab::CpuMemory`, its footer omitted `/ search`, and active search queries carried over from Tabs 1, 3, or 4 were ignored by Tab 2's Disk I/O views despite appearing in the header/footer filter badge.
+
+**Decision:**
+1. Enable `/` interactive substring search across all four top-level tabs (`Tab::Metrics`, `Tab::CpuMemory`, `Tab::Network`, `Tab::Ebpf`), unify the header filter badge and footer `/ search` hint, and update `HELP_TEXT` and [lidash README](../apps/lidash/README.md) accordingly.
+2. Derive `Clone, Copy` on `DiskIoRow` and add [`filter_matches_disk`](../apps/lidash/src/tui.rs) plus shared helper `filter_disk_io_rows` matching device names, formatted rates/byte totals, raw byte counters, and typed unavailability reasons case-insensitively without regex dependencies (`contains_case_insensitive`).
+3. Bind `View::filtered_item_count` on `Tab::CpuMemory` directly over `collect_disk_io_rows` without extra filtered-vector allocations so `Up`/`Down`/`PageUp`/`PageDown` navigation clamps against active filter results.
+4. Thread `filter_query` into `draw_cpu_mem`, `draw_disk_io_panel` (with border-aware `area.width - 2` title fallbacks using `.chars().count()` and explicit zero-match diagnostics), `format_disk_io_compact_line`, and `format_cpu_memory_detail` (title badge, filtered Section 5 `[matched/total matching "<q>"]` header, and filtered device list).
+
+**Alternatives:** Keeping `/` disabled on `Tab 2` leaves an inconsistent UX whenever operators switch tabs with an active filter or filter block devices by controller/prefix (`nvme`, `loop.`, `dm-`) on hosts with up to 64 devices.
+
+**Migration / limits:** Additive in-memory UI filtering over existing bounded block-device rows (`MAX_DEVICES = 64`). `#![forbid(unsafe_code)]` and read-only guarantees remain unchanged.
+
+

@@ -190,6 +190,43 @@ fn filter_matches_ebpf(event: &EbpfLifecycleEvent, needle: &str) -> bool {
     false
 }
 
+/// Returns true if a block-device Disk I/O row matches the filter query string.
+fn filter_matches_disk(row: &DiskIoRow<'_>, needle: &str) -> bool {
+    if contains_case_insensitive(row.device, needle) {
+        return true;
+    }
+    for rate_obs in [row.read_rate, row.write_rate].into_iter().flatten() {
+        if contains_case_insensitive(&format_metric_rate(rate_obs), needle)
+            || contains_case_insensitive(&value_text(rate_obs), needle)
+        {
+            return true;
+        }
+    }
+    for bytes_obs in [row.read_bytes, row.write_bytes].into_iter().flatten() {
+        if contains_case_insensitive(&format_metric_bytes(bytes_obs), needle)
+            || contains_case_insensitive(&value_text(bytes_obs), needle)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Filters block-device Disk I/O rows by an optional case-insensitive substring query.
+fn filter_disk_io_rows<'a>(
+    rows: &[DiskIoRow<'a>],
+    filter_query: Option<&str>,
+) -> Vec<DiskIoRow<'a>> {
+    match filter_query {
+        Some(query) => rows
+            .iter()
+            .copied()
+            .filter(|r| filter_matches_disk(r, query))
+            .collect(),
+        None => rows.to_vec(),
+    }
+}
+
 impl View {
     /// Returns the trimmed active filter query string, or `None` when empty or whitespace-only.
     #[must_use]
@@ -317,7 +354,13 @@ impl View {
                     .count(),
                 None => update.snapshot.metrics().len(),
             },
-            Tab::CpuMemory => collect_disk_io_rows(&update.snapshot).len(),
+            Tab::CpuMemory => {
+                let rows = collect_disk_io_rows(&update.snapshot);
+                match query {
+                    Some(q) => rows.iter().filter(|r| filter_matches_disk(r, q)).count(),
+                    None => rows.len(),
+                }
+            }
             Tab::Network => update.network.as_ref().map_or(0, |n| match query {
                 Some(q) => n
                     .sockets()
@@ -402,7 +445,7 @@ impl View {
                     return true;
                 }
             }
-            KeyCode::Char('/') if !self.help && self.tab != Tab::CpuMemory => {
+            KeyCode::Char('/') if !self.help => {
                 self.filtering = true;
                 self.detail = false;
                 self.text_scroll = 0;
@@ -584,9 +627,6 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
     };
     let filter_label = view.filter_display();
     let header_title = match filter_label {
-        Some(q) if view.tab == Tab::CpuMemory => {
-            format!(" LiDB {mode} | filter: \"{q}\" (Tabs 1/3/4) | read-only host metrics ")
-        }
         Some(q) => format!(" LiDB {mode} | filter: \"{q}\" | read-only host metrics "),
         None => format!(" LiDB {mode} | read-only host metrics "),
     };
@@ -633,10 +673,6 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                     "[Filter: \"{q}\" (c to clear)] | q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
                 )
             }
-        } else if view.tab == Tab::CpuMemory {
-            format!(
-                "[Filter: \"{q}\" (c to clear)] | q quit | Tab / 1-4 tab | ? help | Enter detail | Up/Down scroll"
-            )
         } else {
             format!(
                 "[Filter: \"{q}\" (c to clear)] | q quit | / search | Tab / 1-4 tab | ? help | Enter detail | Up/Down scroll"
@@ -652,15 +688,13 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
             } else {
                 "q quit | Up/Dn / PgUp/PgDn scroll text | n/p item"
             }
-        } else if view.tab == Tab::CpuMemory {
-            "q quit | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
         } else {
             "q quit | / search | Tab / 1-4 tab | Space pause | [ / ] history | ? help | Enter detail | Up/Down scroll"
         };
         frame.render_widget(Paragraph::new(shortcuts), layout[2]);
     }
     if view.help {
-        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\n/: interactive substring search filter across Metrics, Sockets, and eBPF events\nc: clear active search filter (or Esc when not in search input mode)\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for active item (or confirm search query in filter mode)\nUp/Down, j/k: scroll items (scroll text in help/details)\nn, p: next/previous item (works in table and detail views)\nPageUp/PageDown: scroll ten items or one page of text\nHome/End: first/last item or start/end of text\n\nSearch queries match case-insensitively across metric names, sources, units, endpoints, family, and states.\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
+        const HELP_TEXT: &str = "q, Esc, Ctrl-C: quit\nTab, 1, 2, 3, 4, Left/Right: switch between 1:Metrics, 2:CPU/Mem, 3:Network, and 4:eBPF tabs\n/: interactive substring search filter across Metrics, Disk I/O, Sockets, and eBPF events\nc: clear active search filter (or Esc when not in search input mode)\nSpace: pause displayed snapshot (sampling continues)\n[, ]: step backward/forward in history (auto-pauses; Space resumes live)\n?, h: toggle help\nEnter: toggle full details for active item (or confirm search query in filter mode)\nUp/Down, j/k: scroll items (scroll text in help/details)\nn, p: next/previous item (works in table and detail views)\nPageUp/PageDown: scroll ten items or one page of text\nHome/End: first/last item or start/end of text\n\nSearch queries match case-insensitively across metric names, sources, units, block devices, endpoints, family, and states.\nAge is time since collection; paused values grow older.\nUnavailable states retain their reason; no missing value becomes zero.\nSkipped counts snapshots replaced before the UI consumed them.\nDropped counts metrics omitted by the collector.\nRates require two valid counter samples.\nAll timestamps use this collector's monotonic clock.\nFixture readings are test input, not live host measurements.";
         let help_body = if area.width >= 96 {
             format!("{}\n\n{}", crate::config::ASCII_LOGO, HELP_TEXT)
         } else {
@@ -770,16 +804,26 @@ pub fn draw(frame: &mut Frame<'_>, view: &mut View) {
                 };
                 (text, title)
             }
-            Tab::CpuMemory => (
-                format_cpu_memory_detail(&update.snapshot),
-                " CPU & Memory detail | Enter returns ".to_string(),
-            ),
+            Tab::CpuMemory => {
+                let text = format_cpu_memory_detail(&update.snapshot, filter_label);
+                let title = match filter_label {
+                    Some(q) => format!(" CPU & Memory detail [Filter: \"{q}\"] | Enter returns "),
+                    None => " CPU & Memory detail | Enter returns ".to_string(),
+                };
+                (text, title)
+            }
         };
         draw_text(frame, &text, &title, &mut view.text_scroll, layout[1]);
         return;
     }
     if view.tab == Tab::CpuMemory {
-        draw_cpu_mem(frame, &update.snapshot, view.scroll, layout[1]);
+        draw_cpu_mem(
+            frame,
+            &update.snapshot,
+            view.scroll,
+            filter_label,
+            layout[1],
+        );
         return;
     }
     if view.tab == Tab::Network {
@@ -959,7 +1003,7 @@ fn format_metric_bytes(metric: &MetricObservation<MetricValue>) -> String {
 }
 
 /// Grouped `/proc/diskstats` observations for a single block device.
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct DiskIoRow<'a> {
     device: &'a str,
     read_rate: Option<&'a MetricObservation<MetricValue>>,
@@ -1050,7 +1094,7 @@ fn format_uptime_duration(seconds: f64) -> String {
 }
 
 /// Formats a comprehensive deep-dive system resource summary for the CPU and Memory tab.
-fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
+fn format_cpu_memory_detail(snapshot: &Snapshot, filter_query: Option<&str>) -> String {
     let cpu_busy = metric_display(find_metric(snapshot, "cpu.busy.percent"));
     let user = metric_display(find_metric(snapshot, "cpu.user.ticks"));
     let system = metric_display(find_metric(snapshot, "cpu.system.ticks"));
@@ -1142,6 +1186,7 @@ fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
     let net_devs = metric_display(find_metric(snapshot, "network.state"));
     let disk_devs = metric_display(find_metric(snapshot, "disk.state"));
     let disk_rows = collect_disk_io_rows(snapshot);
+    let filtered_disks = filter_disk_io_rows(&disk_rows, filter_query);
     let disk_section = if disk_rows.is_empty() {
         format!(
             "\n\n--- Block Devices / Disk I/O (/proc/diskstats) ---\n{}",
@@ -1159,19 +1204,38 @@ fn format_cpu_memory_detail(snapshot: &Snapshot) -> String {
             },
             None => "not probed".to_owned(),
         };
-        let mut section = format!(
-            "\n\n--- Block Devices / Disk I/O (/proc/diskstats) ---\nSource Status: {disk_source_status}"
-        );
-        for row in &disk_rows {
-            let read_rate = format_disk_rate_detail(row.read_rate);
-            let write_rate = format_disk_rate_detail(row.write_rate);
-            let read_total = format_disk_bytes_detail(row.read_bytes);
-            let write_total = format_disk_bytes_detail(row.write_bytes);
-            let _ = write!(
-                section,
-                "\n\nDevice: {}\nRead Rate: {read_rate} (total: {read_total})\nWrite Rate: {write_rate} (total: {write_total})",
-                row.device
-            );
+        let header = match filter_query {
+            Some(q) => format!(
+                "\n\n--- Block Devices / Disk I/O [{}/{} matching \"{q}\"] (/proc/diskstats) ---\nSource Status: {disk_source_status}",
+                filtered_disks.len(),
+                disk_rows.len()
+            ),
+            None => format!(
+                "\n\n--- Block Devices / Disk I/O (/proc/diskstats) ---\nSource Status: {disk_source_status}"
+            ),
+        };
+        let mut section = header;
+        if filtered_disks.is_empty() {
+            if let Some(q) = filter_query {
+                let total = disk_rows.len();
+                let noun = device_noun(total);
+                let _ = write!(
+                    section,
+                    "\nNo block devices match filter \"{q}\" ({total} total {noun})"
+                );
+            }
+        } else {
+            for row in &filtered_disks {
+                let read_rate = format_disk_rate_detail(row.read_rate);
+                let write_rate = format_disk_rate_detail(row.write_rate);
+                let read_total = format_disk_bytes_detail(row.read_bytes);
+                let write_total = format_disk_bytes_detail(row.write_bytes);
+                let _ = write!(
+                    section,
+                    "\n\nDevice: {}\nRead Rate: {read_rate} (total: {read_total})\nWrite Rate: {write_rate} (total: {write_total})",
+                    row.device
+                );
+            }
         }
         section
     };
@@ -1446,21 +1510,51 @@ fn classify_disk_rate_status(disks: &[DiskIoRow<'_>]) -> DiskRateStatus {
 }
 
 /// Formats a single-line Disk I/O summary for medium-height CPU & Memory layouts.
-fn format_disk_io_compact_line(snapshot: &Snapshot, disks: &[DiskIoRow<'_>]) -> String {
-    if disks.is_empty() {
+fn format_disk_io_compact_line(
+    snapshot: &Snapshot,
+    all_disks: &[DiskIoRow<'_>],
+    filtered_disks: &[DiskIoRow<'_>],
+    filter_query: Option<&str>,
+) -> String {
+    if all_disks.is_empty() {
         return format_disk_io_unavailable_message(snapshot);
     }
-    let noun = device_noun(disks.len());
-    match classify_disk_rate_status(disks) {
-        DiskRateStatus::AwaitingBaseline => {
-            return format!("Disk I/O: {} {noun} (awaiting rate baseline)", disks.len());
+    if let Some(q) = filter_query {
+        let total = all_disks.len();
+        let matched = filtered_disks.len();
+        if matched == 0 {
+            return format!("Disk I/O: 0/{total} matching \"{q}\"");
         }
-        DiskRateStatus::Unavailable(label) => {
-            return format!("Disk I/O: {} {noun} ({label})", disks.len());
+        match classify_disk_rate_status(filtered_disks) {
+            DiskRateStatus::AwaitingBaseline => {
+                return format!(
+                    "Disk I/O ({matched}/{total} matching \"{q}\"): awaiting rate baseline"
+                );
+            }
+            DiskRateStatus::Unavailable(label) => {
+                return format!("Disk I/O ({matched}/{total} matching \"{q}\"): {label}");
+            }
+            DiskRateStatus::Available => {}
         }
-        DiskRateStatus::Available => {}
+    } else {
+        let noun = device_noun(all_disks.len());
+        match classify_disk_rate_status(filtered_disks) {
+            DiskRateStatus::AwaitingBaseline => {
+                return format!(
+                    "Disk I/O: {} {noun} (awaiting rate baseline)",
+                    all_disks.len()
+                );
+            }
+            DiskRateStatus::Unavailable(label) => {
+                return format!("Disk I/O: {} {noun} ({label})", all_disks.len());
+            }
+            DiskRateStatus::Available => {}
+        }
     }
-    let lead = disks
+    let Some(first) = filtered_disks.first() else {
+        return format_disk_io_unavailable_message(snapshot);
+    };
+    let lead = filtered_disks
         .iter()
         .find(|row| {
             row.read_rate
@@ -1468,29 +1562,42 @@ fn format_disk_io_compact_line(snapshot: &Snapshot, disks: &[DiskIoRow<'_>]) -> 
                 .or_else(|| row.write_rate.and_then(metric_as_f64))
                 .is_some()
         })
-        .unwrap_or(&disks[0]);
+        .unwrap_or(first);
     let read_rate = lead
         .read_rate
         .map_or_else(|| "-".into(), format_metric_rate);
     let write_rate = lead
         .write_rate
         .map_or_else(|| "-".into(), format_metric_rate);
-    format!(
-        "Disk I/O ({} {noun}): {} R {read_rate} / W {write_rate}",
-        disks.len(),
-        lead.device
-    )
+    match filter_query {
+        Some(q) => format!(
+            "Disk I/O ({}/{} matching \"{q}\"): {} R {read_rate} / W {write_rate}",
+            filtered_disks.len(),
+            all_disks.len(),
+            lead.device
+        ),
+        None => {
+            let noun = device_noun(all_disks.len());
+            format!(
+                "Disk I/O ({} {noun}): {} R {read_rate} / W {write_rate}",
+                all_disks.len(),
+                lead.device
+            )
+        }
+    }
 }
 
 /// Renders the scrollable Block Devices / Disk I/O panel inside Tab 2 (`CPU/Mem`).
 fn draw_disk_io_panel(
     frame: &mut Frame<'_>,
     snapshot: &Snapshot,
-    disks: &[DiskIoRow<'_>],
+    all_disks: &[DiskIoRow<'_>],
+    filtered_disks: &[DiskIoRow<'_>],
     scroll: usize,
+    filter_query: Option<&str>,
     area: Rect,
 ) {
-    if disks.is_empty() {
+    if all_disks.is_empty() {
         let msg = format_disk_io_unavailable_message(snapshot);
         frame.render_widget(
             Paragraph::new(msg).wrap(Wrap { trim: true }).block(
@@ -1503,35 +1610,87 @@ fn draw_disk_io_panel(
         return;
     }
 
+    let max_title_width = usize::from(area.width.saturating_sub(2));
+    if filtered_disks.is_empty() {
+        let total_all = all_disks.len();
+        let noun = device_noun(total_all);
+        let q = filter_query.unwrap_or("");
+        let full_title = format!(" Disk I/O (0 of {total_all}) [Filter: \"{q}\"] ");
+        let title = if full_title.chars().count() <= max_title_width {
+            full_title
+        } else {
+            format!(" Disk I/O (0/{total_all}) ")
+        };
+        let msg = format!("No block devices match filter \"{q}\" ({total_all} total {noun})");
+        frame.render_widget(
+            Paragraph::new(msg)
+                .wrap(Wrap { trim: true })
+                .block(Block::default().title(title).borders(Borders::ALL)),
+            area,
+        );
+        return;
+    }
+
     let visible_cap = area.height.saturating_sub(3).max(1) as usize;
-    let total = disks.len();
+    let total = filtered_disks.len();
+    let total_all = all_disks.len();
     let start = clamp_scroll(scroll, total);
     let end = start.saturating_add(visible_cap).min(total);
-    let (rate_tag, short_tag) = match classify_disk_rate_status(disks) {
+    let (rate_tag, short_tag) = match classify_disk_rate_status(filtered_disks) {
         DiskRateStatus::Available => ("", ""),
         DiskRateStatus::AwaitingBaseline => (" [awaiting rate baseline]", " [baseline]"),
         DiskRateStatus::Unavailable("rate error") => (" [rate error]", " [rate err]"),
         DiskRateStatus::Unavailable("rate denied") => (" [rate denied]", " [denied]"),
         DiskRateStatus::Unavailable(_) => (" [rate unavailable]", " [no rate]"),
     };
-    let full_title = if total > visible_cap || start > 0 {
-        format!(
-            " Disk I/O {}..{} of {} (/proc/diskstats){rate_tag} ",
-            start + 1,
-            end,
-            total
-        )
+    let title = if let Some(q) = filter_query {
+        let range_or_count = if total > visible_cap || start > 0 {
+            format!("{}..{} of {total}", start + 1, end)
+        } else {
+            let noun = device_noun(total);
+            format!("({total} {noun})")
+        };
+        let full = format!(
+            " Disk I/O {range_or_count} (/proc/diskstats) [Filter: \"{q}\" ({total}/{total_all} matched)]{rate_tag} "
+        );
+        if full.chars().count() <= max_title_width {
+            full
+        } else {
+            let medium = format!(
+                " Disk I/O {range_or_count} [Filter: \"{q}\" ({total}/{total_all} matched)]{short_tag} "
+            );
+            if medium.chars().count() <= max_title_width {
+                medium
+            } else {
+                let compact =
+                    format!(" Disk I/O ({total}/{total_all}) [Filter: \"{q}\"]{short_tag} ");
+                if compact.chars().count() <= max_title_width {
+                    compact
+                } else {
+                    format!(" Disk I/O ({total}/{total_all}){short_tag} ")
+                }
+            }
+        }
     } else {
-        let noun = device_noun(total);
-        format!(" Disk I/O ({total} {noun}, /proc/diskstats){rate_tag} ")
-    };
-    let title = if full_title.len() <= area.width as usize {
-        full_title
-    } else if total > visible_cap || start > 0 {
-        format!(" Disk I/O {}..{} of {}{short_tag} ", start + 1, end, total)
-    } else {
-        let noun = device_noun(total);
-        format!(" Disk I/O ({total} {noun}){short_tag} ")
+        let full_title = if total > visible_cap || start > 0 {
+            format!(
+                " Disk I/O {}..{} of {} (/proc/diskstats){rate_tag} ",
+                start + 1,
+                end,
+                total
+            )
+        } else {
+            let noun = device_noun(total);
+            format!(" Disk I/O ({total} {noun}, /proc/diskstats){rate_tag} ")
+        };
+        if full_title.chars().count() <= max_title_width {
+            full_title
+        } else if total > visible_cap || start > 0 {
+            format!(" Disk I/O {}..{} of {}{short_tag} ", start + 1, end, total)
+        } else {
+            let noun = device_noun(total);
+            format!(" Disk I/O ({total} {noun}){short_tag} ")
+        }
     };
 
     let (headers, widths, table_rows): (Vec<&str>, Vec<Constraint>, Vec<Row>) = if area.width >= 70
@@ -1551,7 +1710,7 @@ fn draw_disk_io_panel(
                 Constraint::Percentage(20),
                 Constraint::Percentage(20),
             ],
-            disks
+            filtered_disks
                 .iter()
                 .skip(start)
                 .take(visible_cap)
@@ -1583,7 +1742,7 @@ fn draw_disk_io_panel(
                 Constraint::Percentage(33),
                 Constraint::Percentage(33),
             ],
-            disks
+            filtered_disks
                 .iter()
                 .skip(start)
                 .take(visible_cap)
@@ -1607,7 +1766,13 @@ fn draw_disk_io_panel(
 }
 
 /// Renders the dedicated CPU and Memory overview dashboard tab.
-fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, scroll: usize, area: Rect) {
+fn draw_cpu_mem(
+    frame: &mut Frame<'_>,
+    snapshot: &Snapshot,
+    scroll: usize,
+    filter_query: Option<&str>,
+    area: Rect,
+) {
     let cpu_busy = find_metric(snapshot, "cpu.busy.percent");
     let (cpu_pct, cpu_label) = match cpu_busy.map(MetricObservation::state) {
         Some(MetricState::Available(val)) => {
@@ -1754,6 +1919,7 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, scroll: usize, area:
     }
 
     let disk_rows = collect_disk_io_rows(snapshot);
+    let filtered_disks = filter_disk_io_rows(&disk_rows, filter_query);
 
     let psi_cpu = metric_display(find_metric(snapshot, "pressure.cpu.some.avg10.percent"));
     let psi_mem = metric_display(find_metric(snapshot, "pressure.memory.some.avg10.percent"));
@@ -1801,7 +1967,12 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, scroll: usize, area:
     // Reserve 10 fixed rows (CPU 3, Mem/Swap 3, CPU Ticks 4) + psi_height + min 5 for Disk I/O.
     let show_disk_panel = area.height >= 10_u16.saturating_add(psi_height).saturating_add(5);
     if !show_disk_panel {
-        let compact = Line::from(format_disk_io_compact_line(snapshot, &disk_rows));
+        let compact = Line::from(format_disk_io_compact_line(
+            snapshot,
+            &disk_rows,
+            &filtered_disks,
+            filter_query,
+        ));
         let compact_lines = Paragraph::new(compact.clone())
             .wrap(Wrap { trim: true })
             .line_count(inner_width) as u16;
@@ -1882,7 +2053,15 @@ fn draw_cpu_mem(frame: &mut Frame<'_>, snapshot: &Snapshot, scroll: usize, area:
     frame.render_widget(psi_load_paragraph, rows[3]);
 
     if show_disk_panel {
-        draw_disk_io_panel(frame, snapshot, &disk_rows, scroll, rows[4]);
+        draw_disk_io_panel(
+            frame,
+            snapshot,
+            &disk_rows,
+            &filtered_disks,
+            scroll,
+            filter_query,
+            rows[4],
+        );
     }
 }
 
@@ -3671,6 +3850,58 @@ mod tests {
         assert!(filter_matches_ebpf(&event_v6, "ipv6"));
         assert!(filter_matches_ebpf(&event_v6, "[::1]:8443"));
         assert!(filter_matches_ebpf(&event_v6, "[2001:db8::1]:443"));
+
+        // 4. Disk I/O row matching (device name, dotted name, formatted/raw rates & bytes, reasons)
+        let nvme_read_rate = MetricObservation::new(
+            "disk.nvme0n1.read.bytes_per_second",
+            "proc.diskstats",
+            Unit::BytesPerSecond,
+            100,
+            MetricState::Available(MetricValue::Number(52_428_800.0)),
+        )
+        .unwrap();
+        let nvme_read_bytes = MetricObservation::new(
+            "disk.nvme0n1.read.bytes",
+            "proc.diskstats",
+            Unit::Bytes,
+            100,
+            MetricState::Available(MetricValue::Integer(1_073_741_824)),
+        )
+        .unwrap();
+        let disk_row = DiskIoRow {
+            device: "nvme0n1",
+            read_rate: Some(&nvme_read_rate),
+            write_rate: None,
+            read_bytes: Some(&nvme_read_bytes),
+            write_bytes: None,
+        };
+        assert!(filter_matches_disk(&disk_row, "NVME"));
+        assert!(filter_matches_disk(&disk_row, "nvme0n1"));
+        assert!(filter_matches_disk(&disk_row, "50.0 MB/s"));
+        assert!(filter_matches_disk(&disk_row, "1.0 GiB"));
+        assert!(filter_matches_disk(&disk_row, "1073741824"));
+        assert!(!filter_matches_disk(&disk_row, "zram0"));
+
+        let awaiting_rate = MetricObservation::new(
+            "disk.loop.0.read.bytes_per_second",
+            "proc.diskstats",
+            Unit::BytesPerSecond,
+            100,
+            MetricState::TemporarilyUnavailable(
+                "rate requires a second successful observation".into(),
+            ),
+        )
+        .unwrap();
+        let loop_row = DiskIoRow {
+            device: "loop.0",
+            read_rate: Some(&awaiting_rate),
+            write_rate: None,
+            read_bytes: None,
+            write_bytes: None,
+        };
+        assert!(filter_matches_disk(&loop_row, "loop.0"));
+        assert!(filter_matches_disk(&loop_row, "rate requires"));
+        assert!(!filter_matches_disk(&loop_row, "nvme"));
     }
 
     #[test]
@@ -3869,12 +4100,14 @@ mod tests {
         assert!(!view.is_filtered());
         assert!(view.help);
 
-        // '/' is ignored when Help modal is open or on CpuMemory tab.
+        // '/' is ignored when Help modal is open, and opens search on Tab::CpuMemory.
         assert!(!view.handle_key(press(KeyCode::Char('/'))));
         assert!(!view.filtering);
         view.help = false;
         view.tab = Tab::CpuMemory;
         assert!(!view.handle_key(press(KeyCode::Char('/'))));
+        assert!(view.filtering);
+        assert!(!view.handle_key(press(KeyCode::Esc)));
         assert!(!view.filtering);
 
         // Ctrl-C exits immediately even while typing inside search prompt.
@@ -4229,6 +4462,69 @@ mod tests {
         assert!(!detail_out.contains("n/p item"));
         view.text_scroll = 0;
 
+        // 4b. Substring filtering on Tab 2 Disk I/O table, compact summary, scroll, and detail modal
+        view.detail = false;
+        view.filter = "NVMe".to_string();
+        let filtered_wide = render(120, 30, &mut view);
+        assert!(filtered_wide.contains("filter: \"NVMe\""));
+        assert!(!filtered_wide.contains("(Tabs 1/3/4)"));
+        assert!(filtered_wide.contains("[Filter: \"NVMe\" (1/4 matched)]"));
+        assert!(filtered_wide.contains("nvme0n1"));
+        assert!(!filtered_wide.contains("sda"));
+        assert!(!filtered_wide.contains("dm-0"));
+
+        let filtered_narrow = render(50, 30, &mut view);
+        assert!(filtered_narrow.contains("Disk I/O (1/4) [Filter: \"NVMe\"]"));
+        assert!(filtered_narrow.contains("nvme0n1"));
+
+        view.scroll_by(10);
+        assert_eq!(view.scroll, 0);
+
+        // Border width off-by-two guard: 39-char compact filter title falls back at width 40 (inner 38)
+        view.filter = "1073741824".to_string();
+        let boundary = render(40, 30, &mut view);
+        assert!(boundary.contains("Disk I/O (1/4)"));
+        assert!(!boundary.contains("Disk I/O (1/4) [Filter:"));
+
+        // Filtered multi-device scroll clamping from stale large scroll ("5" matches dm-0, nvme0n1, sda => 3 devices, max 2)
+        view.filter = "5".to_string();
+        view.scroll = 10;
+        view.scroll_by(-1);
+        assert_eq!(view.scroll, 1);
+        view.scroll = 0;
+
+        view.filter = "NVMe".to_string();
+        let filtered_compact = render(100, 20, &mut view);
+        assert!(filtered_compact
+            .contains("Disk I/O (1/4 matching \"NVMe\"): nvme0n1 R 50.0 MB/s / W 10.0 MB/s"));
+
+        view.detail = true;
+        let filtered_detail = render(100, 60, &mut view);
+        assert!(filtered_detail.contains("CPU & Memory detail [Filter: \"NVMe\"] | Enter returns"));
+        assert!(filtered_detail.contains(
+            "--- Block Devices / Disk I/O [1/4 matching \"NVMe\"] (/proc/diskstats) ---"
+        ));
+        assert!(filtered_detail.contains("Device: nvme0n1"));
+        assert!(!filtered_detail.contains("Device: sda"));
+
+        // Zero-match filter on Tab 2
+        view.detail = false;
+        view.filter = "zram99".to_string();
+        let zero_wide = render(120, 30, &mut view);
+        assert!(zero_wide.contains("Disk I/O (0 of 4) [Filter: \"zram99\"]"));
+        assert!(zero_wide.contains("No block devices match filter \"zram99\" (4 total devices)"));
+
+        let zero_compact = render(100, 20, &mut view);
+        assert!(zero_compact.contains("Disk I/O: 0/4 matching \"zram99\""));
+
+        view.detail = true;
+        let zero_detail = render(100, 60, &mut view);
+        assert!(zero_detail.contains("No block devices match filter \"zram99\" (4 total devices)"));
+
+        view.filter.clear();
+        view.detail = false;
+        view.scroll = 0;
+
         // 5. Sample #1 awaiting rate baseline marks status truthfully (never zero!)
         let mut first_snap = Snapshot::new(100, 5, SnapshotMode::Fixture);
         first_snap
@@ -4332,6 +4628,11 @@ mod tests {
         view.update.as_mut().unwrap().snapshot = denied_snap;
         let denied = render(100, 30, &mut view);
         assert!(denied.contains("Disk I/O permission_denied: diskstats access denied"));
+        view.filter = "sda".to_string();
+        let denied_filtered = render(100, 30, &mut view);
+        assert!(denied_filtered.contains("Disk I/O permission_denied: diskstats access denied"));
+        assert!(!denied_filtered.contains("0/0 matching"));
+        view.filter.clear();
         view.detail = true;
         let denied_detail = render(100, 45, &mut view);
         assert!(denied_detail.contains("--- Block Devices / Disk I/O (/proc/diskstats) ---"));

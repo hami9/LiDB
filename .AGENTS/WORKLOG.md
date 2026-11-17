@@ -425,4 +425,34 @@ Next action: review/integrate the tested public Core PR, then select one focused
   - `python scripts/check_docs.py`: PASS (158 local links verified)
   - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests in 8.872s)
 
+## 2026-11-17T21:04:46Z — Task AG-23: Universal `/` substring search and filtering for Tab 2 Disk I/O view
+
+- **Metadata**:
+  - Branch: `agent/antigravity/ag-23-disk-io-filter` (base: `main` at `5ea6fe4`, release `v0.0.21`)
+  - Environment: Windows host (`cargo fmt`, `cargo clippy`, `cargo test`, Python doc/CI checks) plus cross-target Linux compilation (`clippy` for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`); native Linux CI/CodeQL executing via PR #80.
+  - Changed files: `apps/lidash/src/tui.rs`, `apps/lidash/README.md`, `scripts/install.sh`, `docs/DECISIONS.md` (ADR-039), `.AGENTS/STATE.md`, `.AGENTS/WORKLOG.md`.
+- **Summary**:
+  - Closed incompatible Dependabot PR #78 (`build(deps): bump instability from 0.3.1 to 0.3.14`) because `instability@0.3.14` and transitive `darling@0.24.1` require `rustc 1.88.0`, violating the `Rust 1.85.0` MSRV pinned in `rust-toolchain.toml`.
+  - Extended interactive `/` substring search and filtering to `Tab::CpuMemory` (`2: CPU/Mem`) in `apps/lidash/src/tui.rs`:
+    - Derived `Clone, Copy` on `DiskIoRow<'a>`, added `filter_matches_disk` (reusing `contains_case_insensitive` across device name, formatted/raw rates and bytes, and typed unavailable reasons) and shared helper `filter_disk_io_rows`.
+    - Removed the `self.tab != Tab::CpuMemory` guard in `View::handle_key`, removed the stale `(Tabs 1/3/4)` header qualifier on `Tab::CpuMemory`, unified the footer `/ search` hint across all 4 tabs, updated `HELP_TEXT`, and kept `View::filtered_item_count` allocation-free over `collect_disk_io_rows` so `Up/Down` scrolling clamps accurately.
+    - Threaded `filter_query` into `draw_cpu_mem`, `draw_disk_io_panel` (border-aware `area.width - 2` filtered titles using `.chars().count()` and explicit zero-match diagnostics), `format_disk_io_compact_line` (matched/total compact summary & 0-match text using defensive `.first()`), and `format_cpu_memory_detail` (title badge, Section 5 `[matched/total matching "<q>"]` header, and filtered device list).
+  - Hardened `scripts/install.sh` release tag fallback after `Docs and policy` caught shared-runner `api.github.com` rate-limiting on PR #80: required `^location:.*/tag/` on redirect headers and added `releases.atom` / `/releases` HTML / `git tag -l 'v*' --sort=-v:refname` fallbacks for pre-release-only repositories.
+  - Updated `apps/lidash/README.md` (`/` shortcut docs) and recorded `ADR-039` in `docs/DECISIONS.md`.
+  - Expanded existing unit tests `filter_matching_metrics_sockets_and_ebpf_events`, `handle_key_search_and_filter_state_machine`, and `cpu_memory_tab_renders_disk_io_panel_scrolling_and_detail_modal` to cover Tab 2 search activation, `filter_matches_disk`, header badge, mixed-case preservation, boundary width (`40x30`) title fallback, multi-device filtered scroll clamping, typed unavailable fallback while filtered, and zero-match rendering (`134` workspace tests passing).
+- **Five-axis quality-gate review** (incorporating independent static review findings prior to commit):
+  1. Architecture & layering: Core crates (`lidb-core`, `lidb-collect`, `lidb-protocol`) unchanged; Disk I/O filtering uses existing UI helpers (`contains_case_insensitive`, `filter_disk_io_rows`) scoped inside `apps/lidash/src/tui.rs`; installer tag resolution remains self-contained in `scripts/install.sh`.
+  2. Safety, privacy & security: `#![forbid(unsafe_code)]` preserved; read-only in-memory matching over already-collected bounded block-device metrics (`MAX_DEVICES = 64`), no new dependencies or privileges; Dependabot PR #78 closed to uphold MSRV security/toolchain pin; installer fallbacks match explicit `/releases/tag/v...` and `v*` tag names without unverified script execution.
+  3. Linux runtime & hardware truthfulness: Verified compilation and fixture-backed tests on Windows host plus `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` cross-target `clippy`; no simulated fixture claimed as hardware Linux evidence; native Linux CI & CodeQL execute on PR #80.
+  4. Code quality & maintainability: Shared `filter_disk_io_rows` helper avoids duplicating filter logic across rendering and detail views while keeping `View::filtered_item_count` allocation-free; resolved all Medium/Low/Nit findings from independent `code-reviewer` (`7be23a08-ec2f-456d-ba26-1e7cf0245e31`) including `(Tabs 1/3/4)` header removal, `area.width - 2` border-aware titles, lazy candidate formatting, defensive `.first()`, `HELP_TEXT`/`WORKLOG.md` accuracy, and expanded edge-case tests.
+  5. Test & release gate coverage: Verified post-edit `cargo fmt`, `clippy` (host + both Linux targets), `134` workspace tests, `160` Markdown links, and `23` CI Python tests (`27.912s`); PR #80 titled with `feat(tui):` targets patch release `v0.0.22` (`scripts/release/version.py`).
+- **Verification**:
+  - `cargo fmt --all -- --check`: PASS
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target x86_64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo clippy --target aarch64-unknown-linux-gnu --all-targets --locked -- -D warnings`: PASS
+  - `cargo test --workspace --locked --all-targets`: PASS (134 tests: 37 lidash lib, 0 lidash bin, 10 lidash cli, 52 lidb-collect, 33 lidb-core, 2 lidb-protocol)
+  - `python scripts/check_docs.py`: PASS (160 local links verified)
+  - `python -m unittest discover -s tests/ci -p "test_*.py"`: PASS (23 tests in 27.912s)
+
 
